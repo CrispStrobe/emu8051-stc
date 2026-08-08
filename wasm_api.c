@@ -319,3 +319,17 @@ EMSCRIPTEN_KEEPALIVE
 void emu_set_vcc(double vcc) {
     stc.vcc = vcc;
 }
+
+/* Register boundary A board callbacks from JS.
+ * Function pointers are created via Emscripten's addFunction(). */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_board_callbacks(
+    stc12_pin_callback on_pin,
+    stc12_read_pin_callback on_read,
+    stc12_read_analog_callback on_analog,
+    stc12_advance_callback on_advance,
+    void *user_data)
+{
+    stc12_set_board_callbacks(&stc, on_pin, on_read, on_analog,
+                              on_advance, user_data);
+}

@@ -43,6 +43,7 @@ EXPORTS := \
 	_emu_get_time_ns_lo \
 	_emu_get_time_ns_hi \
 	_emu_set_vcc \
+	_emu_set_board_callbacks \
 	_malloc \
 	_free
 
@@ -50,7 +51,8 @@ EXPORT_LIST := $(shell echo '$(EXPORTS)' | tr ' ' ',')
 
 EMFLAGS := \
 	-s EXPORTED_FUNCTIONS="[$(EXPORT_LIST)]" \
-	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8']" \
+	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8','addFunction','removeFunction']" \
+	-s ALLOW_TABLE_GROWTH=1 \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME="createEmu8051" \
 	-s ALLOW_MEMORY_GROWTH=1 \
