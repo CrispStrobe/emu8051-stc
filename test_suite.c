@@ -1036,6 +1036,17 @@ static void test_djnz_mem(void) {
     teardown();
 }
 
+/* Forward declarations for edge case tests */
+static void test_rlc(void);
+static void test_anl_c_bit(void);
+static void test_jc_taken(void);
+static void test_jnc_not_taken(void);
+static void test_inc_dptr_wrap(void);
+static void test_subb_flags(void);
+static void test_add_flags(void);
+static void test_cjne_carry(void);
+static void test_cjne_no_carry(void);
+
 int main(void) {
     printf("=== Firmware test suite (synthetic machine code) ===\n\n");
 
@@ -1089,6 +1100,15 @@ int main(void) {
     test_ext_int0();
     test_parity();
     test_parity_odd();
+    test_rlc();
+    test_anl_c_bit();
+    test_jc_taken();
+    test_jnc_not_taken();
+    test_inc_dptr_wrap();
+    test_subb_flags();
+    test_add_flags();
+    test_cjne_carry();
+    test_cjne_no_carry();
 
     /* Indirect @Ri addressing */
     test_inc_indirect();
@@ -1144,4 +1164,95 @@ int main(void) {
 
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
+}
+
+/* Additional edge case tests */
+
+static void test_rlc(void) {
+    setup();
+    /* SETB C; MOV A,#81h; RLC A -> A=03, C=1 */
+    uint8_t p[] = { 0xD3, 0x74, 0x81, 0x33, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(ACC == 0x03, "RLC: C=1,A=81h -> A=03h");
+    CHECK(PSW & PSWMASK_C, "RLC: old bit7=1 -> C=1");
+    teardown();
+}
+
+
+
+static void test_anl_c_bit(void) {
+    setup();
+    /* SETB C; SETB 00h; ANL C,00h -> C=1&1=1 */
+    uint8_t p[] = { 0xD3, 0xD2, 0x00, 0x82, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(PSW & PSWMASK_C, "ANL C,bit: 1&1=1");
+    teardown();
+}
+
+static void test_jc_taken(void) {
+    setup();
+    /* SETB C; JC +2; MOV A,#FF; MOV A,#42; SJMP $ */
+    uint8_t p[] = { 0xD3, 0x40, 0x02, 0x74, 0xFF, 0x74, 0x42, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x42, "JC taken: C=1 -> jumped past MOV A,#FFh");
+    teardown();
+}
+
+static void test_jnc_not_taken(void) {
+    setup();
+    /* SETB C; JNC +2; MOV A,#42; SJMP $ */
+    uint8_t p[] = { 0xD3, 0x50, 0x02, 0x74, 0x42, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x42, "JNC not taken: C=1 -> fell through");
+    teardown();
+}
+
+static void test_inc_dptr_wrap(void) {
+    setup();
+    /* MOV DPTR,#FFFFh; INC DPTR -> DPTR=0000h */
+    uint8_t p[] = { 0x90, 0xFF, 0xFF, 0xA3, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(DPH == 0x00, "INC DPTR wrap: DPH=00");
+    CHECK(DPL == 0x00, "INC DPTR wrap: DPL=00");
+    teardown();
+}
+
+static void test_subb_flags(void) {
+    setup();
+    /* CLR C; MOV A,#80h; SUBB A,#01h -> A=7Fh, OV=1, AC=1 */
+    uint8_t p[] = { 0xC3, 0x74, 0x80, 0x94, 0x01, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(ACC == 0x7F, "SUBB flags: 80h-01h=7Fh");
+    CHECK(PSW & PSWMASK_OV, "SUBB flags: OV set (sign change)");
+    CHECK(PSW & PSWMASK_AC, "SUBB flags: AC set (half-borrow)");
+    teardown();
+}
+
+static void test_add_flags(void) {
+    setup();
+    /* MOV A,#7Fh; ADD A,#01h -> A=80h, OV=1 */
+    uint8_t p[] = { 0x74, 0x7F, 0x24, 0x01, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(ACC == 0x80, "ADD flags: 7Fh+01h=80h");
+    CHECK(PSW & PSWMASK_OV, "ADD flags: OV set (pos+pos=neg)");
+    CHECK(!(PSW & PSWMASK_C), "ADD flags: no carry");
+    teardown();
+}
+
+static void test_cjne_carry(void) {
+    setup();
+    /* MOV A,#10h; CJNE A,#20h,+0; -> C=1 (A < operand) */
+    uint8_t p[] = { 0x74, 0x10, 0xB4, 0x20, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(PSW & PSWMASK_C, "CJNE carry: A(10h) < imm(20h) -> C=1");
+    teardown();
+}
+
+static void test_cjne_no_carry(void) {
+    setup();
+    /* MOV A,#30h; CJNE A,#20h,+0; -> C=0 (A > operand) */
+    uint8_t p[] = { 0x74, 0x30, 0xB4, 0x20, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(!(PSW & PSWMASK_C), "CJNE carry: A(30h) > imm(20h) -> C=0");
+    teardown();
 }
