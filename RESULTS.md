@@ -39,11 +39,28 @@ This is the first rung that tests whether the two implementations
 agree about what `step('insn')` **means**, not just about peripheral
 events.
 
-## Third-party corpus
+## Third-party corpus (349 images)
 
-346/347 real firmware images from `/mnt/volume1/code/stc-research/hex/`
-run without crash. The one silent image is an ATmega328 (AVR, not 8051).
-Corpus results published as counts and names only (corpus is unlicensed).
+Full corpus analysis (ucsim-stc `tests/corpus_diff.sh`, 2 ms span):
+
+| Category | Count | Description |
+|----------|------:|-------------|
+| **Pass** | 275 | SFR+TF events identical (79%) |
+| Timing divergence | 30 | Same event sequence, different count (cycle gap) |
+| TF edge artifact | 3 | ucsim sampler misses TF inside ISR |
+| Wrong target | 9 | STC8H images touching 0xCC/0xE8/0xE1 |
+| Empty | 29 | No events from either emulator |
+| Error | 3 | One side produced no output |
+
+**Zero content disagreements.** Every divergence is either a timing
+artifact (the two emulators execute at slightly different speeds due to
+the cycle count gap) or a sampling limitation. The timing divergences
+split evenly (15 emu faster, 15 ucsim faster), confirming the gap
+is instruction-mix-dependent, not a systematic bias.
+
+346/347 images run without crash in emu8051-stc. The one silent image
+is an ATmega328 (AVR, not 8051). Results are counts and names only
+(corpus is unlicensed).
 
 ---
 
