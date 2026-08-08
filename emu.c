@@ -44,6 +44,7 @@
 #endif
 #include "emu8051.h"
 #include "emulator.h"
+#include "stc12.h"
 
 unsigned char history[HISTORY_LINES * (128 + 64 + sizeof(int))];
 
@@ -70,6 +71,10 @@ int view = MAIN_VIEW;
 int pout[4] = { 0 };
 
 int breakpoint = -1;
+
+// STC12 mode
+static int stc12_enabled = 0;
+static struct stc12_state stc12;
 
 // returns time in 1ms units
 int getTick()
@@ -298,12 +303,20 @@ int main(int parc, char ** pars)
 
     reset(&emu, 1);
 
+    // STC12 init is deferred until after argument parsing
+    // (so -stc12 flag is processed first)
+
     if (parc > 1)
     {
         for (i = 1; i < parc; i++)
         {
             if (pars[i][0] == '-' || pars[i][0] == '/')
             {
+                if (strcmp("stc12",pars[i]+1) == 0)
+                {
+                    stc12_enabled = 1;
+                }
+                else
                 if (strcmp("step_instruction",pars[i]+1) == 0)
                 {
                     opt_step_instruction = 1;
@@ -397,6 +410,7 @@ int main(int parc, char ** pars)
                         "emu8051 [options] [filename]\n\n"
                         "Both the filename and options are optional. Available options:\n\n"
                         "Option            Alternate   description\n"
+                        "-stc12                        Enable STC12C5A60S2 mode\n"
                         "-step_instruction -si         Step one instruction at a time\n"
                         "-noexc_iret_sp    -nosp       Disable sp iret exception\n"
                         "-noexc_iret_acc   -noacc      Disable acc iret exception\n"
@@ -424,6 +438,12 @@ int main(int parc, char ** pars)
                 }
             }
         }
+    }
+
+    // Initialize STC12 mode if requested
+    if (stc12_enabled) {
+        stc12_init(&emu, &stc12);
+        emu.skip_timers = true; // STC12 handles timers itself
     }
 
     //  Initialize ncurses
@@ -542,10 +562,12 @@ int main(int parc, char ** pars)
         case 'z':
 	    // Equivalent of "R)eset (init regs, set PC to zero)"
 	    reset(&emu, 0);
+	    if (stc12_enabled) stc12_init(&emu, &stc12);
 	    break;
         case 'Z':
 	    // Equivalent of "W)ipe (init regs, set PC to zero, clear memory)"
 	    reset(&emu, 1);
+	    if (stc12_enabled) stc12_init(&emu, &stc12);
 	    break;
         case KEY_END:
             clocks = 0;
@@ -601,6 +623,7 @@ int main(int parc, char ** pars)
                         targetclocks--;
                         clocks += 12;
                         ticked = tick(&emu);
+                        if (stc12_enabled) stc12_tick(&emu, &stc12);
                         logicboard_tick(&emu);
                     }
                 }
@@ -609,6 +632,7 @@ int main(int parc, char ** pars)
                     targetclocks--;
                     clocks += 12;
                     ticked = tick(&emu);
+                    if (stc12_enabled) stc12_tick(&emu, &stc12);
                     logicboard_tick(&emu);
                 }
 

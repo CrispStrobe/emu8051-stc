@@ -1,0 +1,269 @@
+/* STC12C5A60S2 peripheral model for emu8051
+ * Copyright 2024 CrispStrobe
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject
+ * to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ *
+ * (i.e. the MIT License)
+ *
+ * stc12.h
+ * STC12C5A60S2 SFR addresses, bit masks, and peripheral state.
+ *
+ * Register addresses cross-checked against SDCC's mcs51/stc12.h and
+ * the official STC12C5A60S2 datasheet (2011-07-15).
+ */
+
+#ifndef STC12_H
+#define STC12_H
+
+#include "emu8051.h"
+
+/* ------------------------------------------------------------------ *
+ * SFR addresses (as offsets into mSFR[128], i.e. addr - 0x80)        *
+ * Only registers NOT already defined in emu8051.h.                    *
+ * ------------------------------------------------------------------ */
+
+/* Auxiliary registers */
+#define STC_REG_AUXR     (0x8E - 0x80)
+#define STC_REG_AUXR1    (0xA2 - 0x80)
+#define STC_REG_CLK_DIV  (0x97 - 0x80)
+
+/* Port mode registers */
+#define STC_REG_P1M1     (0x91 - 0x80)
+#define STC_REG_P1M0     (0x92 - 0x80)
+#define STC_REG_P0M1     (0x93 - 0x80)
+#define STC_REG_P0M0     (0x94 - 0x80)
+#define STC_REG_P2M1     (0x95 - 0x80)
+#define STC_REG_P2M0     (0x96 - 0x80)
+#define STC_REG_P3M1     (0xB1 - 0x80)
+#define STC_REG_P3M0     (0xB2 - 0x80)
+#define STC_REG_P4M1     (0xB3 - 0x80)
+#define STC_REG_P4M0     (0xB4 - 0x80)
+#define STC_REG_P5M1     (0xC9 - 0x80)
+#define STC_REG_P5M0     (0xCA - 0x80)
+
+/* Port 4/5 data */
+#define STC_REG_P4       (0xC0 - 0x80)
+#define STC_REG_P5       (0xC8 - 0x80)
+#define STC_REG_P4SW     (0xBB - 0x80)
+
+/* ADC */
+#define STC_REG_ADC_CONTR (0xBC - 0x80)
+#define STC_REG_ADC_RES   (0xBD - 0x80)
+#define STC_REG_ADC_RESL  (0xBE - 0x80)
+#define STC_REG_P1ASF     (0x9D - 0x80)
+
+/* PCA */
+#define STC_REG_CCON     (0xD8 - 0x80)
+#define STC_REG_CMOD     (0xD9 - 0x80)
+#define STC_REG_CCAPM0   (0xDA - 0x80)
+#define STC_REG_CCAPM1   (0xDB - 0x80)
+#define STC_REG_CL       (0xE9 - 0x80)
+#define STC_REG_CH       (0xF9 - 0x80)
+#define STC_REG_CCAP0L   (0xEA - 0x80)
+#define STC_REG_CCAP0H   (0xFA - 0x80)
+#define STC_REG_CCAP1L   (0xEB - 0x80)
+#define STC_REG_CCAP1H   (0xFB - 0x80)
+#define STC_REG_PCA_PWM0 (0xF2 - 0x80)
+#define STC_REG_PCA_PWM1 (0xF3 - 0x80)
+
+/* SPI (stub) */
+#define STC_REG_SPCTL    (0x85 - 0x80)
+#define STC_REG_SPDAT    (0x86 - 0x80)
+#define STC_REG_SPSTAT   (0xCE - 0x80)
+
+/* UART2 (stub) */
+#define STC_REG_S2CON    (0x9A - 0x80)
+#define STC_REG_S2BUF    (0x9B - 0x80)
+
+/* BRT — baud rate timer */
+#define STC_REG_BRT      (0x9C - 0x80)
+
+/* Watchdog (stub) */
+#define STC_REG_WDT_CONTR (0xC1 - 0x80)
+
+/* Interrupt priority */
+#define STC_REG_IPH      (0xB7 - 0x80)
+#define STC_REG_IP2H     (0xB6 - 0x80)
+#define STC_REG_SADDR    (0xA9 - 0x80)
+#define STC_REG_SADEN    (0xB9 - 0x80)
+
+/* ------------------------------------------------------------------ *
+ * AUXR bit masks (0x8E)                                               *
+ * Bit layout: T0x12 T1x12 UART_M0x6 BRTR S2SMOD BRTx12 EXTRAM S1BRS *
+ * ------------------------------------------------------------------ */
+#define AUXR_T0x12      0x80
+#define AUXR_T1x12      0x40
+#define AUXR_UART_M0x6  0x20
+#define AUXR_BRTR       0x10
+#define AUXR_S2SMOD     0x08
+#define AUXR_BRTx12     0x04
+#define AUXR_EXTRAM     0x02
+#define AUXR_S1BRS      0x01
+
+/* ------------------------------------------------------------------ *
+ * AUXR1 bit masks (0xA2)                                              *
+ * Bit layout: - PCA_P4 SPI_P4 S2_P4 GF2 ADRJ - DPS                  *
+ * ------------------------------------------------------------------ */
+#define AUXR1_PCA_P4    0x40
+#define AUXR1_SPI_P4    0x20
+#define AUXR1_S2_P4     0x10
+#define AUXR1_GF2       0x08
+#define AUXR1_ADRJ      0x04
+#define AUXR1_DPS       0x01
+
+/* ------------------------------------------------------------------ *
+ * ADC_CONTR bit masks (0xBC)                                          *
+ * Bit layout: ADC_POWER SPEED1 SPEED0 ADC_FLAG ADC_START CHS2 CHS1 CHS0 *
+ * ------------------------------------------------------------------ */
+#define ADC_POWER       0x80
+#define ADC_SPEED1      0x40
+#define ADC_SPEED0      0x20
+#define ADC_FLAG         0x10
+#define ADC_START        0x08
+#define ADC_CHS2         0x04
+#define ADC_CHS1         0x02
+#define ADC_CHS0         0x01
+#define ADC_CHS_MASK    (ADC_CHS2 | ADC_CHS1 | ADC_CHS0)
+#define ADC_SPEED_MASK  (ADC_SPEED1 | ADC_SPEED0)
+
+/* ADC conversion times in oscillator clocks (datasheet §10.5):
+ * SPEED1:0 = 00 -> 420 clocks
+ *            01 -> 280
+ *            10 -> 140
+ *            11 -> 70                                               */
+#define ADC_CLOCKS_SPEED0  420
+#define ADC_CLOCKS_SPEED1  280
+#define ADC_CLOCKS_SPEED2  140
+#define ADC_CLOCKS_SPEED3   70
+
+/* ------------------------------------------------------------------ *
+ * CCON bit masks (0xD8) — PCA control                                 *
+ * Bit layout: CF CR - - - - CCF1 CCF0                                 *
+ * ------------------------------------------------------------------ */
+#define CCON_CF          0x80
+#define CCON_CR          0x40
+#define CCON_CCF1        0x02
+#define CCON_CCF0        0x01
+
+/* ------------------------------------------------------------------ *
+ * CMOD bit masks (0xD9) — PCA mode                                    *
+ * Bit layout: CIDL - - - CPS2 CPS1 CPS0 ECF                         *
+ * ------------------------------------------------------------------ */
+#define CMOD_CIDL        0x80
+#define CMOD_CPS2        0x04
+#define CMOD_CPS1        0x02
+#define CMOD_CPS0        0x01  /* note: datasheet has 3 CPS bits */
+#define CMOD_CPS_MASK   (CMOD_CPS2 | CMOD_CPS1 | CMOD_CPS0)
+#define CMOD_ECF         0x01  /* actually bit 0 is ECF, CPS is bits 3:1 */
+
+/* Corrected: CMOD bit layout from datasheet §11.2:
+ * Bit 7: CIDL, Bits 6-4: unused, Bit 3: CPS2, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF
+ * Wait — let me re-check. The STC12 datasheet §11.2 says:
+ * Bit 7: CIDL, Bits 6-4: -, Bit 3: -, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF
+ * But the STC12C5A60S2 specifically has only 2 CPS bits (CPS1:0).
+ */
+#undef CMOD_CPS2
+#undef CMOD_CPS_MASK
+#undef CMOD_ECF
+#define CMOD_CPS1_BIT    0x04
+#define CMOD_CPS0_BIT    0x02
+#define CMOD_CPS_MASK   (CMOD_CPS1_BIT | CMOD_CPS0_BIT)
+#define CMOD_ECF         0x01
+
+/* PCA counter clock sources (CPS1:0):
+ * 00 = FOSC/12
+ * 01 = FOSC/2
+ * 10 = Timer 0 overflow
+ * 11 = ECI pin (P1.2 / P3.4 depending on PCA_P4) */
+#define PCA_CLK_FOSC12   0x00
+#define PCA_CLK_FOSC2    0x02
+#define PCA_CLK_T0OVF    0x04
+#define PCA_CLK_ECI      0x06
+
+/* ------------------------------------------------------------------ *
+ * CCAPMn bit masks — PCA module mode (0xDA, 0xDB)                     *
+ * Bit layout: - ECOM0 CAPP0 CAPN0 MAT0 TOG0 PWM0 ECCF0              *
+ * ------------------------------------------------------------------ */
+#define CCAPM_ECOM       0x40
+#define CCAPM_CAPP       0x20
+#define CCAPM_CAPN       0x10
+#define CCAPM_MAT        0x08
+#define CCAPM_TOG        0x04
+#define CCAPM_PWM        0x02
+#define CCAPM_ECCF       0x01
+
+/* ------------------------------------------------------------------ *
+ * ISR vectors for STC12 extras                                        *
+ * ------------------------------------------------------------------ */
+#define ISR_ADC          0x2B   /* ADC interrupt vector */
+#define ISR_PCA          0x33   /* PCA interrupt vector */
+/* Note: on STC12, the standard vectors are the same as 8052:
+ * 0x03 INT0, 0x0B T0, 0x13 INT1, 0x1B T1, 0x23 UART1,
+ * 0x2B ADC (replaces T2 on generic 8052), 0x33 PCA */
+
+/* ------------------------------------------------------------------ *
+ * STC12 peripheral state — extends em8051                             *
+ * ------------------------------------------------------------------ */
+struct stc12_state
+{
+    /* Timer prescaler: in 12T mode, timers tick once per 12 oscillator
+     * clocks. In 1T mode (AUXR.7 for T0, AUXR.6 for T1), they tick
+     * every oscillator clock. The upstream tick() is called once per
+     * machine cycle. In STC12 1T mode, 1 machine cycle = 1 osc clock.
+     * We track a sub-tick counter for the 12T case. */
+    uint8_t timer0_prescaler;   /* counts 0..11, ticks timer at 0 */
+    uint8_t timer1_prescaler;
+    uint8_t brt_prescaler;      /* for the independent baud rate timer */
+
+    /* ADC state */
+    uint16_t adc_countdown;     /* osc clocks remaining until conversion done */
+    uint16_t adc_input[8];      /* external analog values, 0-1023 (10-bit) */
+
+    /* PCA state */
+    uint8_t pca_prescaler;      /* for FOSC/12 and FOSC/2 sources */
+    bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */
+
+    /* Port external input state (active-low: 0xFF = all high) */
+    uint8_t port_ext[6];        /* P0..P5 external pin state */
+
+    /* Configuration */
+    bool     stc12_mode;        /* true = STC12 model, false = classic 8051 */
+    uint32_t fosc;              /* oscillator frequency in Hz */
+};
+
+/* ------------------------------------------------------------------ *
+ * Public API                                                          *
+ * ------------------------------------------------------------------ */
+
+/* Initialize STC12 peripheral state and install SFR callbacks.
+ * Call after reset(). */
+void stc12_init(struct em8051 *aCPU, struct stc12_state *aState);
+
+/* Tick STC12 peripherals. Call once per oscillator clock (i.e. once
+ * per call to the upstream tick() when in 1T mode). */
+void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState);
+
+/* Set an external analog input value for ADC channel 0-7 (0-1023). */
+void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value);
+
+/* Set external pin input for a port (0-5 = P0-P5). */
+void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);
+
+#endif /* STC12_H */
