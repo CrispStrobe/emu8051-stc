@@ -12,11 +12,22 @@
 *.la
 *.a
 
-#binary file
+# Binaries
 emu
+test_stc12
+test_blink
+test_adc
+test_integration
+emu_trace
 
-#editor temp files
+# WASM build output
+build/
+
+# Editor temp files
 \#*
 .\#*
 *~
 ~*
+
+# CLAUDE.md is gitignored by convention
+CLAUDE.md
