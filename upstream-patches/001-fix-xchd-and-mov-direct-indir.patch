@@ -1,0 +1,60 @@
+From: CrispStrobe <cze+github@mailbox.org>
+Subject: Fix XCHD A,@Ri and MOV direct,@Ri opcode bugs
+
+Two opcode bugs found by systematic testing of all addressing modes.
+
+1. XCHD A,@Ri (0xD6/0xD7): The low nibble exchange reads the already-
+   modified ACC instead of saving the original value first. The memory
+   byte's low nibble ends up as a copy of the new ACC low nibble, not
+   the old one. Fix: save ACC & 0x0F before overwriting ACC.
+
+   MCS-51 spec: "Exchanges the low-order nibble of the Accumulator
+   (bits 3-0) with that of the internal RAM location indirectly
+   addressed by the specified register."
+
+   Test: A=0x34, @R0=0x12. Expected: A=0x32, @R0=0x14.
+   Before fix: A=0x32, @R0=0x12 (nibble not exchanged).
+
+2. MOV direct,@Ri (0x86/0x87): Source and destination are swapped.
+   The code reads from OPERAND1 (the direct address) and writes to
+   INDIR_RX_ADDRESS (@Ri), when it should do the opposite.
+
+   MCS-51 spec: "Moves the contents of the internal RAM location
+   addressed indirectly through register Ri to the direct address."
+   Source = @Ri, destination = direct.
+
+   Test: R0=0x30, IRAM[0x30]=0x88. MOV 0x40,@R0.
+   Expected: IRAM[0x40]=0x88.
+   Before fix: IRAM[0x40]=0x00, IRAM[0x30]=0x00 (data destroyed).
+
+---
+ opcodes.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/opcodes.c b/opcodes.c
+index abc1234..def5678 100644
+--- a/opcodes.c
++++ b/opcodes.c
+@@ -843,9 +843,10 @@ static uint8_t mov_mem_indir_rx(struct em8051 *aCPU)
+ {
+-    uint8_t address_from = OPERAND1;
+-    uint8_t address_to = INDIR_RX_ADDRESS;
+-    uint8_t value = read_mem_indir(aCPU, address_from);
++    /* MOV direct,@Ri: read from @Ri, write to direct address */
++    uint8_t address_to = OPERAND1;       /* direct address */
++    uint8_t address_from = INDIR_RX_ADDRESS; /* @Ri */
++    uint8_t value = read_mem_indir(aCPU, address_from);
+     write_mem(aCPU, address_to, value);
+     PC += 2;
+     return 1;
+@@ -1334,7 +1335,8 @@ static uint8_t xchd_a_indir_rx(struct em8051 *aCPU)
+ {
+     uint8_t address = INDIR_RX_ADDRESS;
+     uint8_t value = read_mem_indir(aCPU, address);
+-    ACC = (ACC & 0xf0) | (value & 0x0f);
+-    value = (value & 0xf0) | (ACC & 0x0f);
++    uint8_t old_acc_low = ACC & 0x0f;
++    ACC = (ACC & 0xf0) | (value & 0x0f);
++    value = (value & 0xf0) | old_acc_low;
+     write_mem_indir(aCPU, address, value);
+     PC++;

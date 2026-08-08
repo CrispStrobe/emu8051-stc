@@ -68,42 +68,131 @@ constants in `stc12.h` should be updated.
 
 ## 3. Upstream bug: XCHD A,@Ri reads modified ACC
 
-**What:** `XCHD A,@Ri` (opcodes 0xD6, 0xD7) exchanges the low nibbles of
-A and the indirect memory byte. The upstream implementation modifies ACC
-first, then reads `ACC & 0x0f` for the memory write — getting the new low
-nibble, not the original.
+**Opcodes:** 0xD6 (`XCHD A,@R0`), 0xD7 (`XCHD A,@R1`).
+
+**MCS-51 definition** (Intel MCS-51 Microcontroller Family User's Manual,
+§3.3 "XCHD"): "Exchanges the low-order nibble of the Accumulator (bits 3–0)
+with that of the internal RAM location indirectly addressed by the specified
+register. The high-order nibbles of each register are not affected."
+
+The operation is: `A[3:0] ⇄ (Ri)[3:0]`, a simultaneous swap.
+
+**Bug:** The upstream code modifies ACC first, then reads `ACC & 0x0f` for
+the memory write — getting the new low nibble, not the original:
 
 ```c
 // Bug (upstream):
-ACC = (ACC & 0xf0) | (value & 0x0f);     // OK — A low = mem low
-value = (value & 0xf0) | (ACC & 0x0f);   // BUG — reads new A, not old
+ACC = (ACC & 0xf0) | (value & 0x0f);     // A low = mem low ✓
+value = (value & 0xf0) | (ACC & 0x0f);   // reads NEW A low ✗
 
 // Fix:
 uint8_t old_acc_low = ACC & 0x0f;
 ACC = (ACC & 0xf0) | (value & 0x0f);
-value = (value & 0xf0) | old_acc_low;    // uses saved value
+value = (value & 0xf0) | old_acc_low;
 ```
 
-**Test:** `A=34h, @R0=12h → after XCHD: A=32h, @R0=14h`. Without the
-fix, @R0 stays 12h (the "swapped" nibble is a copy of what was just written
-to A).
+**Proof:**
 
-**Where:** `opcodes.c`, `xchd_a_indir_rx()`.
+| | Before | Expected after | Bug produces |
+|---|--------|---------------|-------------|
+| A | 0x34 | 0x32 | 0x32 (correct) |
+| @R0 | 0x12 | 0x14 | 0x12 (unchanged — nibble "swapped" with itself) |
+
+The bug is invisible when the low nibbles happen to be equal (e.g. `A=12h, @R0=32h`),
+which is why it survived untested.
+
+**Minimal test:**
+```c
+/* R0=30h, IRAM[30h]=12h, A=34h; XCHD A,@R0 */
+uint8_t p[] = { 0x78, 0x30, 0x76, 0x12, 0x74, 0x34, 0xD6, 0x80, 0xFE };
+// After: assert(ACC == 0x32 && IRAM[0x30] == 0x14);
+```
+
+**Where:** `opcodes.c`, `xchd_a_indir_rx()`. Upstream patch in `upstream-patches/`.
 
 ---
 
 ## 4. Upstream bug: MOV direct,@Ri has source and destination swapped
 
-**What:** `MOV direct,@Ri` (opcodes 0x86, 0x87) should read from `@Ri`
-(indirect through R0/R1) and write to the direct address (the operand byte).
-The upstream implementation has `address_from = OPERAND1` (the direct
-address) and `address_to = INDIR_RX_ADDRESS` (the @Ri address) — exactly
-backwards. It reads from the direct address and writes to @Ri.
+**Opcodes:** 0x86 (`MOV direct,@R0`), 0x87 (`MOV direct,@R1`).
 
-**Effect:** `MOV 40h,@R0` with `R0=30h, IRAM[30h]=88h` produces
-`IRAM[40h]=00h` (read from empty 40h) and `IRAM[30h]=00h` (wrote the
-zero to 30h). The intended result is `IRAM[40h]=88h`.
+**MCS-51 definition** (Intel MCS-51 User's Manual, §3.3 "MOV direct,@Ri"):
+"Moves the contents of the internal RAM location addressed indirectly through
+register Ri to the direct address indicated." Source = @Ri, destination = direct.
 
-**Test:** `MOV R0,#30h; MOV @R0,#88h; MOV 40h,@R0` → assert `IRAM[40h]==88h`.
+**Bug:** The upstream code has `address_from = OPERAND1` (the direct address
+operand) and `address_to = INDIR_RX_ADDRESS` (the Ri-indirect address) —
+exactly backwards. It reads from the direct address and writes to @Ri.
 
-**Where:** `opcodes.c`, `mov_mem_indir_rx()`.
+```c
+// Bug (upstream):
+uint8_t address_from = OPERAND1;          // direct addr — should be DEST
+uint8_t address_to = INDIR_RX_ADDRESS;    // @Ri — should be SOURCE
+
+// Fix:
+uint8_t address_to = OPERAND1;            // direct addr = destination
+uint8_t address_from = INDIR_RX_ADDRESS;  // @Ri = source
+```
+
+**Proof:**
+
+| | Before | Expected after | Bug produces |
+|---|--------|---------------|-------------|
+| IRAM[30h] (source, @R0) | 0x88 | 0x88 (unchanged) | 0x00 (overwritten!) |
+| IRAM[40h] (dest, direct) | 0x00 | 0x88 (copied) | 0x00 (read from here instead) |
+
+The bug is destructive: it zeroes the source and writes nothing useful to the
+destination. Any program using `MOV direct,@Ri` silently corrupts data.
+
+**Minimal test:**
+```c
+/* R0=30h, IRAM[30h]=88h; MOV 40h,@R0 */
+uint8_t p[] = { 0x78, 0x30, 0x76, 0x88, 0x86, 0x40, 0x80, 0xFE };
+// After: assert(IRAM[0x40] == 0x88);
+```
+
+**Where:** `opcodes.c`, `mov_mem_indir_rx()`. Upstream patch in `upstream-patches/`.
+
+---
+
+## 5. Differential trace divergence: emu8051-stc vs ucsim-stc
+
+**Firmware:** `01-blink.hex` compiled by SDCC 4.2.0 for STC12C5A60S2.
+**FOSC:** 11059200 Hz. Both traces use nanosecond timestamps computed as
+`osc_clocks * 1_000_000_000 / fosc`.
+
+### Timing divergence
+
+The first SFR write (`MOV P1M0,#03h` at address 0x0062) occurs at:
+- **emu8051-stc:** 48474 ns
+- **ucsim-stc:** 72790 ns
+
+That is 24316 ns (~49%) difference for the same startup code. One of the
+two is miscounting instruction cycle times during SDCC's `__sdcc_program_startup`
+sequence (LJMP, LCALL, MOV, JZ, data-init loops).
+
+### PC sequence divergence
+
+After init (SFR 0x92 = 0x03, both at address 0x006A):
+
+| emu8051-stc | ucsim-stc |
+|-------------|-----------|
+| 006A | 006A |
+| 006C | 006C |
+| **0072** | **00A5** |
+
+At PC=006C the two emulators take different branches through the same
+code. This is either a conditional-flag disagreement (one of the two
+set PSW flags differently during init) or a different memory state
+(the data-init loop wrote different values, so a compare/branch diverges).
+
+### What this means
+
+The timing difference needs investigation: which one matches the 8051
+instruction cycle table? The PC divergence is likely caused by the timing
+disagreement if it makes the startup data-init loop count differently.
+
+**Status:** first genuine divergence, reported as-is. Root cause is NOT
+yet determined — doing so requires stepping both emulators side by side
+through the startup code and finding the first instruction where they
+disagree on cycle count or flags.
