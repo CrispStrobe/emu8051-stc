@@ -63,3 +63,47 @@ STC12 datasheet revision or STC example code gives different numbers, the
 constants in `stc12.h` should be updated.
 
 **Status:** single-source. Marked accordingly in the shared spec.
+
+---
+
+## 3. Upstream bug: XCHD A,@Ri reads modified ACC
+
+**What:** `XCHD A,@Ri` (opcodes 0xD6, 0xD7) exchanges the low nibbles of
+A and the indirect memory byte. The upstream implementation modifies ACC
+first, then reads `ACC & 0x0f` for the memory write — getting the new low
+nibble, not the original.
+
+```c
+// Bug (upstream):
+ACC = (ACC & 0xf0) | (value & 0x0f);     // OK — A low = mem low
+value = (value & 0xf0) | (ACC & 0x0f);   // BUG — reads new A, not old
+
+// Fix:
+uint8_t old_acc_low = ACC & 0x0f;
+ACC = (ACC & 0xf0) | (value & 0x0f);
+value = (value & 0xf0) | old_acc_low;    // uses saved value
+```
+
+**Test:** `A=34h, @R0=12h → after XCHD: A=32h, @R0=14h`. Without the
+fix, @R0 stays 12h (the "swapped" nibble is a copy of what was just written
+to A).
+
+**Where:** `opcodes.c`, `xchd_a_indir_rx()`.
+
+---
+
+## 4. Upstream bug: MOV direct,@Ri has source and destination swapped
+
+**What:** `MOV direct,@Ri` (opcodes 0x86, 0x87) should read from `@Ri`
+(indirect through R0/R1) and write to the direct address (the operand byte).
+The upstream implementation has `address_from = OPERAND1` (the direct
+address) and `address_to = INDIR_RX_ADDRESS` (the @Ri address) — exactly
+backwards. It reads from the direct address and writes to @Ri.
+
+**Effect:** `MOV 40h,@R0` with `R0=30h, IRAM[30h]=88h` produces
+`IRAM[40h]=00h` (read from empty 40h) and `IRAM[30h]=00h` (wrote the
+zero to 30h). The intended result is `IRAM[40h]=88h`.
+
+**Test:** `MOV R0,#30h; MOV @R0,#88h; MOV 40h,@R0` → assert `IRAM[40h]==88h`.
+
+**Where:** `opcodes.c`, `mov_mem_indir_rx()`.

@@ -628,6 +628,414 @@ static void test_parity_odd(void) {
  * Main                                                                *
  * ================================================================== */
 
+/* ================================================================== *
+ * Indirect @Ri addressing modes                                       *
+ * ================================================================== */
+
+static void test_inc_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#41h; INC @R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x41, 0x06, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0x42, "INC @R0: 41h->42h");
+    teardown();
+}
+
+static void test_dec_indirect(void) {
+    setup();
+    /* MOV R1,#31h; MOV @R1,#10h; DEC @R1 */
+    uint8_t p[] = { 0x79, 0x31, 0x77, 0x10, 0x17, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x31) == 0x0F, "DEC @R1: 10h->0Fh");
+    teardown();
+}
+
+static void test_add_a_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#05h; MOV A,#03h; ADD A,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x05, 0x74, 0x03, 0x26, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x08, "ADD A,@R0: 03h+05h=08h");
+    teardown();
+}
+
+static void test_addc_a_indirect(void) {
+    setup();
+    /* SETB C; MOV R1,#30h; MOV @R1,#02h; MOV A,#03h; ADDC A,@R1 */
+    uint8_t p[] = { 0xD3, 0x79, 0x30, 0x77, 0x02, 0x74, 0x03, 0x37, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x06, "ADDC A,@R1: 03h+02h+C=06h");
+    teardown();
+}
+
+static void test_subb_a_indirect(void) {
+    setup();
+    /* CLR C; MOV R0,#30h; MOV @R0,#03h; MOV A,#10h; SUBB A,@R0 */
+    uint8_t p[] = { 0xC3, 0x78, 0x30, 0x76, 0x03, 0x74, 0x10, 0x96, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x0D, "SUBB A,@R0: 10h-03h=0Dh");
+    teardown();
+}
+
+static void test_orl_a_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#0Fh; MOV A,#F0h; ORL A,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x0F, 0x74, 0xF0, 0x46, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xFF, "ORL A,@R0: F0h|0Fh=FFh");
+    teardown();
+}
+
+static void test_anl_a_indirect(void) {
+    setup();
+    /* MOV R1,#30h; MOV @R1,#AAh; MOV A,#F0h; ANL A,@R1 */
+    uint8_t p[] = { 0x79, 0x30, 0x77, 0xAA, 0x74, 0xF0, 0x57, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xA0, "ANL A,@R1: F0h&AAh=A0h");
+    teardown();
+}
+
+static void test_xrl_a_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#FFh; MOV A,#55h; XRL A,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0xFF, 0x74, 0x55, 0x66, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xAA, "XRL A,@R0: 55h^FFh=AAh");
+    teardown();
+}
+
+static void test_xch_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#ABh; MOV A,#CDh; XCH A,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0xAB, 0x74, 0xCD, 0xC6, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xAB, "XCH A,@R0: A<->@R0");
+    CHECK(IRAM(0x30) == 0xCD, "XCH A,@R0: mem got old A");
+    teardown();
+}
+
+static void test_xchd(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#12h; MOV A,#34h; XCHD A,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x12, 0x74, 0x34, 0xD6, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x32, "XCHD: A low nibble swapped with @R0 low nibble");
+    CHECK(IRAM(0x30) == 0x14, "XCHD: @R0 low nibble = old A low nibble");
+    teardown();
+}
+
+static void test_mov_indirect_a(void) {
+    setup();
+    /* MOV A,#77h; MOV R1,#40h; MOV @R1,A */
+    uint8_t p[] = { 0x74, 0x77, 0x79, 0x40, 0xF7, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x40) == 0x77, "MOV @R1,A: IRAM[40h]=77h");
+    teardown();
+}
+
+static void test_mov_mem_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#88h; MOV 40h,@R0 */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x88, 0x86, 0x40, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x40) == 0x88, "MOV mem,@R0: IRAM[40h]=88h");
+    teardown();
+}
+
+static void test_mov_indirect_mem(void) {
+    setup();
+    /* MOV 30h,#55h; MOV R0,#40h; MOV @R0,30h */
+    uint8_t p[] = { 0x75, 0x30, 0x55, 0x78, 0x40, 0xA6, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(IRAM(0x40) == 0x55, "MOV @R0,mem: IRAM[40h]=55h");
+    teardown();
+}
+
+static void test_movx_indirect_ri(void) {
+    setup();
+    /* MOV R0,#34h; MOV A,#BBh; MOVX @R0,A; CLR A; MOVX A,@R0 */
+    /* Note: MOVX @Ri uses 8-bit address (P2 as high byte, default 0xFF) */
+    uint8_t p[] = { 0x78, 0x34, 0x74, 0xBB, 0xF2, 0xE4, 0xE2, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    /* Address = P2:R0 = FF34h */
+    CHECK(ACC == 0xBB, "MOVX @R0: xdata round-trip via Ri");
+    teardown();
+}
+
+/* ================================================================== *
+ * Memory-operand variants of arithmetic/logic                         *
+ * ================================================================== */
+
+static void test_add_a_mem(void) {
+    setup();
+    /* MOV 30h,#05h; MOV A,#03h; ADD A,30h */
+    uint8_t p[] = { 0x75, 0x30, 0x05, 0x74, 0x03, 0x25, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x08, "ADD A,mem: 03h+05h=08h");
+    teardown();
+}
+
+static void test_addc_a_mem(void) {
+    setup();
+    /* SETB C; MOV 30h,#02h; MOV A,#03h; ADDC A,30h */
+    uint8_t p[] = { 0xD3, 0x75, 0x30, 0x02, 0x74, 0x03, 0x35, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x06, "ADDC A,mem: 03h+02h+C=06h");
+    teardown();
+}
+
+static void test_subb_a_mem(void) {
+    setup();
+    /* CLR C; MOV 30h,#05h; MOV A,#10h; SUBB A,30h */
+    uint8_t p[] = { 0xC3, 0x75, 0x30, 0x05, 0x74, 0x10, 0x95, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x0B, "SUBB A,mem: 10h-05h=0Bh");
+    teardown();
+}
+
+static void test_orl_a_mem(void) {
+    setup();
+    /* MOV 30h,#0Fh; MOV A,#F0h; ORL A,30h */
+    uint8_t p[] = { 0x75, 0x30, 0x0F, 0x74, 0xF0, 0x45, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xFF, "ORL A,mem: F0h|0Fh=FFh");
+    teardown();
+}
+
+static void test_xrl_a_mem(void) {
+    setup();
+    /* MOV 30h,#AAh; MOV A,#55h; XRL A,30h */
+    uint8_t p[] = { 0x75, 0x30, 0xAA, 0x74, 0x55, 0x65, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xFF, "XRL A,mem: 55h^AAh=FFh");
+    teardown();
+}
+
+static void test_dec_mem(void) {
+    setup();
+    /* MOV 30h,#10h; DEC 30h */
+    uint8_t p[] = { 0x75, 0x30, 0x10, 0x15, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0x0F, "DEC mem: 10h->0Fh");
+    teardown();
+}
+
+/* ================================================================== *
+ * Memory-destination logic ops                                        *
+ * ================================================================== */
+
+static void test_orl_mem_imm(void) {
+    setup();
+    /* MOV 30h,#F0h; ORL 30h,#0Fh */
+    uint8_t p[] = { 0x75, 0x30, 0xF0, 0x43, 0x30, 0x0F, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0xFF, "ORL mem,#imm: F0h|0Fh=FFh");
+    teardown();
+}
+
+static void test_anl_mem_a(void) {
+    setup();
+    /* MOV 30h,#FFh; MOV A,#0Fh; ANL 30h,A */
+    uint8_t p[] = { 0x75, 0x30, 0xFF, 0x74, 0x0F, 0x52, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(IRAM(0x30) == 0x0F, "ANL mem,A: FFh&0Fh=0Fh");
+    teardown();
+}
+
+static void test_anl_mem_imm(void) {
+    setup();
+    /* MOV 30h,#FFh; ANL 30h,#AAh */
+    uint8_t p[] = { 0x75, 0x30, 0xFF, 0x53, 0x30, 0xAA, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0xAA, "ANL mem,#imm: FFh&AAh=AAh");
+    teardown();
+}
+
+static void test_xrl_mem_a(void) {
+    setup();
+    /* MOV 30h,#AAh; MOV A,#FFh; XRL 30h,A */
+    uint8_t p[] = { 0x75, 0x30, 0xAA, 0x74, 0xFF, 0x62, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(IRAM(0x30) == 0x55, "XRL mem,A: AAh^FFh=55h");
+    teardown();
+}
+
+static void test_xrl_mem_imm(void) {
+    setup();
+    /* MOV 30h,#FFh; XRL 30h,#0Fh */
+    uint8_t p[] = { 0x75, 0x30, 0xFF, 0x63, 0x30, 0x0F, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0xF0, "XRL mem,#imm: FFh^0Fh=F0h");
+    teardown();
+}
+
+static void test_mov_mem_mem(void) {
+    setup();
+    /* MOV 30h,#42h; MOV 40h,30h */
+    uint8_t p[] = { 0x75, 0x30, 0x42, 0x85, 0x30, 0x40, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x40) == 0x42, "MOV mem,mem: IRAM[40h]=42h");
+    teardown();
+}
+
+static void test_mov_mem_a(void) {
+    setup();
+    /* MOV A,#33h; MOV 30h,A */
+    uint8_t p[] = { 0x74, 0x33, 0xF5, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x30) == 0x33, "MOV mem,A: IRAM[30h]=33h");
+    teardown();
+}
+
+static void test_xch_a_mem(void) {
+    setup();
+    /* MOV 30h,#ABh; MOV A,#CDh; XCH A,30h */
+    uint8_t p[] = { 0x75, 0x30, 0xAB, 0x74, 0xCD, 0xC5, 0x30, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0xAB, "XCH A,mem: A gets old mem value");
+    CHECK(IRAM(0x30) == 0xCD, "XCH A,mem: mem gets old A");
+    teardown();
+}
+
+/* ================================================================== *
+ * Bit operations (remaining)                                          *
+ * ================================================================== */
+
+static void test_orl_c_bit(void) {
+    setup();
+    /* CLR C; SETB 00h; ORL C,00h -> C=1 */
+    uint8_t p[] = { 0xC3, 0xD2, 0x00, 0x72, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(PSW & PSWMASK_C, "ORL C,bit: C|1=1");
+    teardown();
+}
+
+static void test_orl_c_compl_bit(void) {
+    setup();
+    /* CLR C; CLR 00h; ORL C,/00h -> C|(!0)=C|1=1 */
+    uint8_t p[] = { 0xC3, 0xC2, 0x00, 0xA0, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(PSW & PSWMASK_C, "ORL C,/bit: C|(NOT 0)=1");
+    teardown();
+}
+
+static void test_anl_c_compl_bit(void) {
+    setup();
+    /* SETB C; SETB 00h; ANL C,/00h -> 1&(!1)=0 */
+    uint8_t p[] = { 0xD3, 0xD2, 0x00, 0xB0, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(!(PSW & PSWMASK_C), "ANL C,/bit: 1&(NOT 1)=0");
+    teardown();
+}
+
+static void test_mov_c_from_bit(void) {
+    setup();
+    /* SETB 00h; MOV C,00h */
+    uint8_t p[] = { 0xD2, 0x00, 0xA2, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(PSW & PSWMASK_C, "MOV C,bit: C=1 from bit");
+    teardown();
+}
+
+static void test_cpl_bit(void) {
+    setup();
+    /* CLR 00h; CPL 00h -> bit=1 */
+    uint8_t p[] = { 0xC2, 0x00, 0xB2, 0x00, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(IRAM(0x20) & 0x01, "CPL bit: 0->1");
+    teardown();
+}
+
+static void test_cpl_c(void) {
+    setup();
+    /* CLR C; CPL C -> C=1 */
+    uint8_t p[] = { 0xC3, 0xB3, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 10);
+    CHECK(PSW & PSWMASK_C, "CPL C: 0->1");
+    teardown();
+}
+
+/* ================================================================== *
+ * Rotate through carry                                                *
+ * ================================================================== */
+
+static void test_rrc(void) {
+    setup();
+    /* SETB C; MOV A,#00h; RRC A -> A=80h, C=0 */
+    uint8_t p[] = { 0xD3, 0x74, 0x00, 0x13, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 20);
+    CHECK(ACC == 0x80, "RRC A: C=1,A=00h -> A=80h");
+    CHECK(!(PSW & PSWMASK_C), "RRC A: old bit0=0 -> C=0");
+    teardown();
+}
+
+/* ================================================================== *
+ * Remaining branch/jump instructions                                  *
+ * ================================================================== */
+
+static void test_jmp_indirect(void) {
+    setup();
+    /* MOV DPTR,#0100h; MOV A,#05h; JMP @A+DPTR
+     * At 0105h: MOV A,#42h; SJMP $ */
+    uint8_t p[] = { 0x90, 0x01, 0x00, 0x74, 0x05, 0x73 };
+    memcpy(cpu.mCodeMem, p, sizeof(p));
+    cpu.mCodeMem[0x105] = 0x74;
+    cpu.mCodeMem[0x106] = 0x42;
+    cpu.mCodeMem[0x107] = 0x80;
+    cpu.mCodeMem[0x108] = 0xFE;
+    for (int i = 0; i < 30; i++) { tick(&cpu); stc12_tick(&cpu, &stc); }
+    CHECK(ACC == 0x42, "JMP @A+DPTR: jumped to 0105h");
+    teardown();
+}
+
+static void test_movc_pc(void) {
+    setup();
+    /* MOV A,#02h; MOVC A,@A+PC
+     * PC will be at +2 after MOVC fetch, so reads code[PC+2+A] */
+    /* At addr 0: 74 02 83 xx xx yy — MOVC reads code[0x02+0x02+1]=code[5]
+     * Actually: PC points to next instruction after MOVC, which is at addr 3.
+     * So reads code[3+2] = code[5] */
+    cpu.mCodeMem[0] = 0x74; /* MOV A,#02h */
+    cpu.mCodeMem[1] = 0x02;
+    cpu.mCodeMem[2] = 0x83; /* MOVC A,@A+PC */
+    cpu.mCodeMem[3] = 0x80; /* SJMP $ */
+    cpu.mCodeMem[4] = 0xFE;
+    cpu.mCodeMem[5] = 0x42; /* target data */
+    for (int i = 0; i < 20; i++) { tick(&cpu); stc12_tick(&cpu, &stc); }
+    CHECK(ACC == 0x42, "MOVC A,@A+PC: code[PC+A]=42h");
+    teardown();
+}
+
+static void test_cjne_a_mem(void) {
+    setup();
+    /* MOV 30h,#10h; MOV A,#10h; CJNE A,30h,+2; MOV A,#01h; SJMP $ */
+    uint8_t p[] = { 0x75, 0x30, 0x10, 0x74, 0x10, 0xB5, 0x30, 0x02,
+                    0x74, 0x01, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x01, "CJNE A,mem: equal -> no jump");
+    teardown();
+}
+
+static void test_cjne_indirect(void) {
+    setup();
+    /* MOV R0,#30h; MOV @R0,#05h; CJNE @R0,#05h,+2; MOV A,#01; SJMP $ */
+    uint8_t p[] = { 0x78, 0x30, 0x76, 0x05, 0xB6, 0x05, 0x02,
+                    0x74, 0x01, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x01, "CJNE @R0,#imm: equal -> no jump");
+    teardown();
+}
+
+static void test_djnz_mem(void) {
+    setup();
+    /* MOV 30h,#03h; loop: DJNZ 30h,loop; MOV A,#99h; SJMP $ */
+    uint8_t p[] = { 0x75, 0x30, 0x03, 0xD5, 0x30, 0xFD, 0x74, 0x99, 0x80, 0xFE };
+    load_and_run(p, sizeof(p), 30);
+    CHECK(ACC == 0x99, "DJNZ mem: counted down 3->0");
+    CHECK(IRAM(0x30) == 0x00, "DJNZ mem: mem=0 after loop");
+    teardown();
+}
+
 int main(void) {
     printf("=== Firmware test suite (synthetic machine code) ===\n\n");
 
@@ -681,6 +1089,58 @@ int main(void) {
     test_ext_int0();
     test_parity();
     test_parity_odd();
+
+    /* Indirect @Ri addressing */
+    test_inc_indirect();
+    test_dec_indirect();
+    test_add_a_indirect();
+    test_addc_a_indirect();
+    test_subb_a_indirect();
+    test_orl_a_indirect();
+    test_anl_a_indirect();
+    test_xrl_a_indirect();
+    test_xch_indirect();
+    test_xchd();
+    test_mov_indirect_a();
+    test_mov_mem_indirect();
+    test_mov_indirect_mem();
+    test_movx_indirect_ri();
+
+    /* Memory-operand arithmetic/logic */
+    test_add_a_mem();
+    test_addc_a_mem();
+    test_subb_a_mem();
+    test_orl_a_mem();
+    test_xrl_a_mem();
+    test_dec_mem();
+
+    /* Memory-destination logic */
+    test_orl_mem_imm();
+    test_anl_mem_a();
+    test_anl_mem_imm();
+    test_xrl_mem_a();
+    test_xrl_mem_imm();
+    test_mov_mem_mem();
+    test_mov_mem_a();
+    test_xch_a_mem();
+
+    /* Bit operations */
+    test_orl_c_bit();
+    test_orl_c_compl_bit();
+    test_anl_c_compl_bit();
+    test_mov_c_from_bit();
+    test_cpl_bit();
+    test_cpl_c();
+
+    /* Rotate */
+    test_rrc();
+
+    /* Branches */
+    test_jmp_indirect();
+    test_movc_pc();
+    test_cjne_a_mem();
+    test_cjne_indirect();
+    test_djnz_mem();
 
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;

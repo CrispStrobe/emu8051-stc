@@ -842,8 +842,9 @@ static uint8_t mov_mem_mem(struct em8051 *aCPU)
 
 static uint8_t mov_mem_indir_rx(struct em8051 *aCPU)
 {
-    uint8_t address_from = OPERAND1;
-    uint8_t address_to = INDIR_RX_ADDRESS;
+    /* MOV direct,@Ri: read from @Ri, write to direct address */
+    uint8_t address_to = OPERAND1;       /* direct address */
+    uint8_t address_from = INDIR_RX_ADDRESS; /* @Ri */
     uint8_t value = read_mem_indir(aCPU, address_from);
     write_mem(aCPU, address_to, value);
     PC += 2;
@@ -1335,8 +1336,9 @@ static uint8_t xchd_a_indir_rx(struct em8051 *aCPU)
 {
     uint8_t address = INDIR_RX_ADDRESS;
     uint8_t value = read_mem_indir(aCPU, address);
+    uint8_t old_acc_low = ACC & 0x0f;
     ACC = (ACC & 0xf0) | (value & 0x0f);
-    value = (value & 0xf0) | (ACC & 0x0f);
+    value = (value & 0xf0) | old_acc_low;
     write_mem_indir(aCPU, address, value);
     PC++;
     return 0;
