@@ -16,11 +16,18 @@ timer overflow flags) on all tested firmware images.
 | `01-blink` | Timer 0 mode 1 (FOSC/12), port mode, LED toggle | 49 | 10 ms | **Identical** |
 | `02-adc` | ADC power/start/flag, P1ASF, input mode | 54 | 10 ms | **Identical** |
 | `03-potentiometer` | ADC ch2, variable blink rate | 15+ | 3 ms | **Identical** |
-| `04-multi-when` | Timer 0 ISR, cooperative scheduler, 2 tasks | 37 | 10 ms | **Identical** |
+| `04-multi-when` | Timer 0 ISR, cooperative scheduler, 2 tasks | 5 SFR + 2 TF | 3 ms | **SFR identical; TF missed by ucsim*** |
 | `05-timer-1t` | **AUXR.T0x12=1 (1T mode)**, Timer 0 at FOSC | 16 | 3 ms | **Identical** |
 
 Timestamp agreement: within **0.6%** on init events, **0.1%** on timer
 events. Previous gap was 49% before cycle count corrections.
+
+*04-multi-when: ucsim's Python-based trace sampler steps one instruction
+at a time and samples SFRs after each step. When the Timer 0 ISR fires,
+TF0 is set AND cleared within a single interrupt dispatch — the sampler
+never sees it in the set state. This is a known ucsim sampling limitation
+(documented in their COORD file), not a peripheral disagreement. The 5
+SFR events that both see are identical in content.
 
 **PC-level agreement is not claimed and is not the goal.** Both emulators
 inherit their instruction set from well-tested cores (emu8051, µCsim).
