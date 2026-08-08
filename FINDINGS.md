@@ -295,3 +295,19 @@ After ucsim's fix, the timing gap dropped from 25% (269 clocks) to
 This is a worked example of why two independent implementations are
 worth maintaining: the differential comparison detected the bug, and
 the empirical proof (test_cycles.c) identified which side was wrong.
+
+---
+
+## 9. 8052 Timer 2 cannot coexist with STC12 Port 5
+
+The standard 8052 Timer 2 registers (T2CON 0xC8, RCAP2L 0xCA, RCAP2H
+0xCB, TL2 0xCC, TH2 0xCD) occupy addresses that the STC12 uses for
+Port 5 (P5 0xC8, P5M0 0xCA). These are the same addresses with
+different functions.
+
+The STC12/STC15 do NOT have a standard 8052 Timer 2. The STC15 has
+its own Timer 2 at different addresses (T2H 0xD6, T2L 0xD7), which
+is already implemented.
+
+An 8052 Timer 2 model would only be relevant for AT89C52-style chips,
+which are a different target. Marked as out-of-scope for this model.
