@@ -27,10 +27,10 @@ enum dbg_bp_kind { BP_CODE, BP_YIELD, BP_WRITE, BP_READ };
 
 struct dbg_breakpoint {
     enum dbg_bp_kind kind;
+    uint16_t addr;               /* code address (used for code AND yield BPs) */
     union {
-        uint16_t addr;           /* code breakpoint */
-        struct { uint8_t task; uint16_t state; } yield;
-        struct { enum dbg_space space; uint16_t addr; uint16_t len; } watch;
+        struct { uint8_t task; uint16_t state; } yield; /* yield metadata */
+        struct { enum dbg_space space; uint16_t len; } watch;
     };
     int id;                      /* handle, assigned on set */
     bool active;

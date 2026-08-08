@@ -123,13 +123,13 @@ bool dbg_tick(struct dbg_target *t)
             }
             break;
         case BP_YIELD:
-            if (t->syms.n_tasks > bp->yield.task) {
-                uint16_t state = read_iram16(t->cpu,
-                    t->syms.tasks[bp->yield.task].state_addr);
-                if (state == bp->yield.state) {
-                    emit_halt(t, HALT_BP, bp->id);
-                    return true;
-                }
+            /* Per ucsim-stc coordination: yield breakpoints use the
+             * code address from the symbol table's yields[].addr field,
+             * NOT a write-watch on <task>_state. This ensures both
+             * emulators halt at the same instruction. */
+            if (t->cpu->mPC == bp->addr) {
+                emit_halt(t, HALT_BP, bp->id);
+                return true;
             }
             break;
         case BP_WRITE:
