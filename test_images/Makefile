@@ -29,6 +29,6 @@ builddirs:
 	mkdir -p build/01-blink build/02-adc
 
 clean:
-	rm -rf build $(HEXFILES)
+	rm -rf build
 
 .PHONY: all clean builddirs

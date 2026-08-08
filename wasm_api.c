@@ -236,4 +236,86 @@ void emu_set_port_input(int port, uint8_t value) {
 EMSCRIPTEN_KEEPALIVE
 void emu_set_fosc(uint32_t hz) {
     stc.fosc = hz;
+    if (hz > 0)
+        stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / hz + 0.5);
+}
+
+/* ------------------------------------------------------------------ *
+ * Boundary A — pin bus API                                            *
+ * These conform to simulation-contract.md boundary A.                 *
+ * ------------------------------------------------------------------ */
+
+/* Get the current pin state for boundary A consumers.
+ * Returns: mode (0=quasi, 1=pushpull, 2=input, 3=opendrain) */
+EMSCRIPTEN_KEEPALIVE
+int emu_get_pin_mode(int port, int bit) {
+    if (port < 0 || port > 5 || bit < 0 || bit > 7) return 0;
+    static const uint8_t m1_regs[] = {
+        STC_REG_P0M1, STC_REG_P1M1, STC_REG_P2M1,
+        STC_REG_P3M1, STC_REG_P4M1, STC_REG_P5M1
+    };
+    static const uint8_t m0_regs[] = {
+        STC_REG_P0M0, STC_REG_P1M0, STC_REG_P2M0,
+        STC_REG_P3M0, STC_REG_P4M0, STC_REG_P5M0
+    };
+    int m1 = (cpu.mSFR[m1_regs[port]] >> bit) & 1;
+    int m0 = (cpu.mSFR[m0_regs[port]] >> bit) & 1;
+    return (m1 << 1) | m0;
+}
+
+/* Get the latch (drive) value for a pin */
+EMSCRIPTEN_KEEPALIVE
+int emu_get_pin_drive(int port, int bit) {
+    if (port < 0 || port > 5 || bit < 0 || bit > 7) return 1;
+    static const uint8_t port_regs[] = {
+        REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5
+    };
+    return (cpu.mSFR[port_regs[port]] >> bit) & 1;
+}
+
+/* Set external pin input from the board (digital).
+ * Use this instead of emu_set_port_input for per-pin control. */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_pin_input(int port, int bit, int level) {
+    if (port < 0 || port > 5 || bit < 0 || bit > 7) return;
+    if (level)
+        stc.port_ext[port] |= (1 << bit);
+    else
+        stc.port_ext[port] &= ~(1 << bit);
+}
+
+/* Set ADC input as voltage (0.0 .. VCC).
+ * The MCU converts to 10-bit counts internally. */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_adc_voltage(int channel, double volts) {
+    if (channel < 0 || channel >= 8) return;
+    double vcc = stc.vcc > 0.0 ? stc.vcc : 5.0;
+    if (volts < 0.0) volts = 0.0;
+    if (volts > vcc) volts = vcc;
+    stc.adc_input[channel] = (uint16_t)(volts / vcc * 1023.0 + 0.5);
+}
+
+/* Run until the MCU clock reaches target_ns. Returns instructions executed. */
+EMSCRIPTEN_KEEPALIVE
+int emu_advance_to_ns(uint32_t target_ns_lo, uint32_t target_ns_hi) {
+    if (!initialized) return 0;
+    uint64_t target = ((uint64_t)target_ns_hi << 32) | target_ns_lo;
+    return stc12_advance_to(&cpu, &stc, target);
+}
+
+/* Get current MCU time in nanoseconds (returns low 32 bits; use _hi for upper). */
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_get_time_ns_lo(void) {
+    return (uint32_t)(stc12_get_time_ns(&stc) & 0xFFFFFFFF);
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_get_time_ns_hi(void) {
+    return (uint32_t)(stc12_get_time_ns(&stc) >> 32);
+}
+
+/* Set VCC (supply voltage for ADC reference). Default 5.0. */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_vcc(double vcc) {
+    stc.vcc = vcc;
 }

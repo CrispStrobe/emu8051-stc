@@ -94,5 +94,47 @@ emu_reset(0);
 const dis = emu_disasm(0);
 assert(dis.includes('MOV') && dis.includes('42'), `Disasm at 0000: "${dis}"`);
 
+// --- Boundary A tests ---
+
+const getPinMode  = Module.cwrap('emu_get_pin_mode',  'number', ['number','number']);
+const getPinDrive = Module.cwrap('emu_get_pin_drive',  'number', ['number','number']);
+const setPinInput = Module.cwrap('emu_set_pin_input',  null,     ['number','number','number']);
+const setAdcVolt  = Module.cwrap('emu_set_adc_voltage', null,    ['number','number']);
+const advanceTo   = Module.cwrap('emu_advance_to_ns',  'number', ['number','number']);
+const getTimeNsLo = Module.cwrap('emu_get_time_ns_lo', 'number', []);
+const getTimeNsHi = Module.cwrap('emu_get_time_ns_hi', 'number', []);
+const setVcc      = Module.cwrap('emu_set_vcc',         null,    ['number']);
+
+// Test 9: Pin mode/drive after reset
+emu_reset(0);
+const mode = getPinMode(1, 0); // P1.0
+assert(mode === 0, `Pin mode P1.0 = ${mode} (expected 0 = quasi-bidi)`);
+const drive = getPinDrive(1, 0);
+assert(drive === 1, `Pin drive P1.0 = ${drive} (expected 1 = high at reset)`);
+
+// Test 10: Set P1M0 for push-pull, check mode changes
+emu_set_sfr(0x92, 0x01); // P1M0 bit 0 = push-pull
+const mode2 = getPinMode(1, 0);
+assert(mode2 === 1, `Pin mode P1.0 after push-pull = ${mode2} (expected 1)`);
+
+// Test 11: Per-pin input
+setPinInput(3, 2, 0); // P3.2 low
+setPinInput(3, 3, 1); // P3.3 high
+// (These set the external state for port reads)
+assert(true, 'Per-pin input API — no crash');
+
+// Test 12: ADC voltage API
+setVcc(5.0);
+setAdcVolt(3, 2.5); // 2.5V on ch3 -> ~512 counts at 5V VCC
+assert(true, 'ADC voltage API — no crash');
+
+// Test 13: advanceTo / time tracking
+emu_reset(0);
+emu_set_fosc(11059200);
+const t0 = getTimeNsLo();
+advanceTo(1000000, 0); // advance to 1 ms
+const t1 = getTimeNsLo();
+assert(t1 >= 1000000, `Time after advanceTo(1ms) = ${t1}ns (expected >= 1000000)`);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

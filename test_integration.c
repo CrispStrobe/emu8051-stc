@@ -339,6 +339,82 @@ static void test_pca_compare(void) {
 }
 
 /* ================================================================== *
+ * Test 5b: PCA 8-bit PWM mode                                        *
+ * ================================================================== */
+static void test_pca_pwm(void) {
+    printf("\n--- test_pca_pwm ---\n");
+    setup();
+
+    /* Set up PCA module 0 in 8-bit PWM mode:
+     * CCAPM0 = ECOM | PWM = 0x42
+     * Set CCAP0H = 0x80 (50% duty — output low when CL < 0x80, high when >= 0x80)
+     * Actually per datasheet: output is low when CL < CCAPnL, high when >= CCAPnL.
+     * On CL overflow (0xFF -> 0x00), CCAPnL is reloaded from CCAPnH. */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;  /* PCA running */
+    cpu.mSFR[STC_REG_CMOD] = CMOD_CPS0_BIT;  /* FOSC/2 */
+    cpu.mSFR[STC_REG_CCAPM0] = CCAPM_ECOM | CCAPM_PWM;
+    cpu.mSFR[STC_REG_CCAP0H] = 0x80;  /* reload value */
+    cpu.mSFR[STC_REG_CCAP0L] = 0x80;  /* initial compare value */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    /* Run 256 PCA ticks = 512 osc clocks to complete one CL cycle */
+    run_clocks(512);
+    uint8_t cl = cpu.mSFR[STC_REG_CL];
+    CHECK(cl == 0x00, "PCA PWM: CL wrapped to 0 after 256 PCA ticks");
+
+    /* CCAPnL should have been reloaded from CCAPnH on overflow */
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0x80,
+          "PCA PWM: CCAP0L reloaded from CCAP0H on CL overflow");
+
+    /* Run to mid-cycle: 128 PCA ticks = 256 osc clocks -> CL = 0x80 */
+    run_clocks(256);
+    cl = cpu.mSFR[STC_REG_CL];
+    CHECK(cl == 0x80, "PCA PWM: CL = 0x80 at mid-cycle");
+
+    /* Test with different duty: CCAP0H = 0x40 (25% duty) */
+    cpu.mSFR[STC_REG_CCAP0H] = 0x40;
+    /* Run another full cycle to trigger reload */
+    /* CL is at 0x80, needs 128 more ticks to overflow, then reload */
+    run_clocks(256); /* 128 PCA ticks -> CL overflows, reloads CCAP0L from 0x40 */
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0x40,
+          "PCA PWM: CCAP0L reloaded to 0x40 after duty change");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 5c: PCA with Timer 0 overflow clock source                     *
+ * ================================================================== */
+static void test_pca_t0_clock(void) {
+    printf("\n--- test_pca_t0_clock ---\n");
+    setup();
+
+    /* PCA clock = Timer 0 overflow */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = CMOD_CPS1_BIT;  /* CPS=10 = T0 overflow */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+
+    /* Set up Timer 0 in mode 2 (auto-reload), 1T mode, reload=0xFE
+     * so it overflows every 2 ticks */
+    cpu.mSFR[STC_REG_AUXR] |= AUXR_T0x12;
+    cpu.mSFR[REG_TMOD] = TMODMASK_M1_0; /* mode 2 */
+    cpu.mSFR[REG_TH0] = 0xFE;
+    cpu.mSFR[REG_TL0] = 0xFE;
+    cpu.mSFR[REG_TCON] |= TCONMASK_TR0;
+    stc.timer0_prescaler = 0;
+
+    /* Run 4 osc clocks -> 2 T0 overflows -> PCA counter should be 2 */
+    run_clocks(4);
+    uint16_t pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 2, "PCA T0-clock: counter=2 after 2 Timer 0 overflows");
+
+    teardown();
+}
+
+/* ================================================================== *
  * Test 6: Port open-drain mode                                        *
  * ================================================================== */
 static void test_port_open_drain(void) {
@@ -491,6 +567,8 @@ int main(int argc, char **argv) {
     test_timer0_1t_synthetic();
     test_pca_counter();
     test_pca_compare();
+    test_pca_pwm();
+    test_pca_t0_clock();
     test_port_open_drain();
     test_adc_edges();
     test_timer0_mode0();

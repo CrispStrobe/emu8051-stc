@@ -219,6 +219,42 @@
  * 0x2B ADC (replaces T2 on generic 8052), 0x33 PCA */
 
 /* ------------------------------------------------------------------ *
+ * Boundary A — the pin bus (MCU ⇄ board)                              *
+ *                                                                     *
+ * Conforms to simulation-contract.md boundary A. The MCU owns time    *
+ * and pushes pin changes; the board is passive and only answers.      *
+ * ------------------------------------------------------------------ */
+
+/* Pin mode, matching the contract's PinMode type */
+enum stc12_pin_mode {
+    PIN_QUASI    = 0,   /* quasi-bidirectional (reset default) */
+    PIN_PUSHPULL = 1,   /* push-pull */
+    PIN_INPUT    = 2,   /* input-only (high impedance) */
+    PIN_OPENDRAIN = 3   /* open-drain */
+};
+
+/* Callback: the MCU changed what it does to a pin.
+ * port = 0..5 (P0..P5), bit = 0..7,
+ * mode = pin mode, drive_high = latch value. */
+typedef void (*stc12_pin_callback)(int port, int bit,
+                                   enum stc12_pin_mode mode,
+                                   bool drive_high,
+                                   void *user_data);
+
+/* Callback: the MCU wants to read a digital pin level from the board.
+ * Returns 0 or 1. */
+typedef int (*stc12_read_pin_callback)(int port, int bit,
+                                       void *user_data);
+
+/* Callback: the MCU wants to read an analog voltage from the board.
+ * Returns volts (0.0 .. VCC). The MCU converts to counts itself. */
+typedef double (*stc12_read_analog_callback)(int port, int bit,
+                                             void *user_data);
+
+/* Callback: time has advanced. t_ns = nanoseconds since reset. */
+typedef void (*stc12_advance_callback)(uint64_t t_ns, void *user_data);
+
+/* ------------------------------------------------------------------ *
  * STC12 peripheral state — extends em8051                             *
  * ------------------------------------------------------------------ */
 struct stc12_state
@@ -246,6 +282,22 @@ struct stc12_state
     /* Configuration */
     bool     stc12_mode;        /* true = STC12 model, false = classic 8051 */
     uint32_t fosc;              /* oscillator frequency in Hz */
+    double   vcc;               /* supply voltage, default 5.0 */
+
+    /* Boundary A callbacks (all optional — NULL = legacy mode) */
+    stc12_pin_callback         on_pin_change;
+    stc12_read_pin_callback    on_read_pin;
+    stc12_read_analog_callback on_read_analog;
+    stc12_advance_callback     on_advance;
+    void                      *board_user_data;
+
+    /* Time tracking */
+    uint64_t osc_clocks;        /* total oscillator clocks since reset */
+    uint64_t ns_per_clock_x16;  /* (1e9 / fosc) * 16, fixed-point */
+
+    /* Shadow of last-emitted pin state, for change detection */
+    uint8_t pin_mode_shadow[6];  /* per-pin mode nibble: 2 bits per pin packed */
+    uint8_t pin_drive_shadow[6]; /* last latch value emitted per port */
 };
 
 /* ------------------------------------------------------------------ *
@@ -263,7 +315,29 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState);
 /* Set an external analog input value for ADC channel 0-7 (0-1023). */
 void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value);
 
-/* Set external pin input for a port (0-5 = P0-P5). */
+/* Set external pin input for a port (0-5 = P0-P5).
+ * Legacy API — use boundary A callbacks for new integrations. */
 void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);
+
+/* ------------------------------------------------------------------ *
+ * Boundary A API                                                      *
+ * ------------------------------------------------------------------ */
+
+/* Register boundary A callbacks. All are optional (NULL = disabled).
+ * user_data is passed through to every callback. */
+void stc12_set_board_callbacks(struct stc12_state *aState,
+                               stc12_pin_callback on_pin,
+                               stc12_read_pin_callback on_read,
+                               stc12_read_analog_callback on_analog,
+                               stc12_advance_callback on_advance,
+                               void *user_data);
+
+/* Run until the MCU's clock reaches target_ns (nanoseconds since reset).
+ * Calls on_advance at the end. Returns number of instructions executed. */
+int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
+                     uint64_t target_ns);
+
+/* Get current MCU time in nanoseconds since reset. */
+uint64_t stc12_get_time_ns(struct stc12_state *aState);
 
 #endif /* STC12_H */

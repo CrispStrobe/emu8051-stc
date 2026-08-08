@@ -35,6 +35,14 @@ EXPORTS := \
 	_emu_set_adc_input \
 	_emu_set_port_input \
 	_emu_set_fosc \
+	_emu_get_pin_mode \
+	_emu_get_pin_drive \
+	_emu_set_pin_input \
+	_emu_set_adc_voltage \
+	_emu_advance_to_ns \
+	_emu_get_time_ns_lo \
+	_emu_get_time_ns_hi \
+	_emu_set_vcc \
 	_malloc \
 	_free
 

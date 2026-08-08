@@ -38,6 +38,103 @@
 static struct stc12_state *g_stc = NULL;
 
 /* ================================================================== *
+ * Boundary A — pin change detection and board callbacks                *
+ * ================================================================== */
+
+/* Get the pin mode for a single bit of a port */
+static enum stc12_pin_mode get_pin_mode(struct em8051 *aCPU, int port, int bit)
+{
+    uint8_t m1, m0;
+    static const uint8_t m1_regs[] = {
+        STC_REG_P0M1, STC_REG_P1M1, STC_REG_P2M1,
+        STC_REG_P3M1, STC_REG_P4M1, STC_REG_P5M1
+    };
+    static const uint8_t m0_regs[] = {
+        STC_REG_P0M0, STC_REG_P1M0, STC_REG_P2M0,
+        STC_REG_P3M0, STC_REG_P4M0, STC_REG_P5M0
+    };
+    m1 = aCPU->mSFR[m1_regs[port]];
+    m0 = aCPU->mSFR[m0_regs[port]];
+    return (enum stc12_pin_mode)(((m1 >> bit) & 1) << 1 | ((m0 >> bit) & 1));
+}
+
+/* Emit setPin callbacks for any pins whose mode or drive changed */
+static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int port)
+{
+    if (!st->on_pin_change) return;
+
+    static const uint8_t port_regs[] = {
+        REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5
+    };
+    uint8_t latch = aCPU->mSFR[port_regs[port]];
+
+    for (int bit = 0; bit < 8; bit++) {
+        enum stc12_pin_mode mode = get_pin_mode(aCPU, port, bit);
+        bool drive = (latch >> bit) & 1;
+
+        /* Compare to shadow */
+        enum stc12_pin_mode old_mode = (enum stc12_pin_mode)
+            ((st->pin_mode_shadow[port] >> (bit * 2)) & 0x03);
+        /* pin_mode_shadow packs 2 bits per pin — but 8 pins * 2 bits = 16,
+         * doesn't fit in uint8_t. Use a different encoding. */
+        /* Actually let's just track mode and drive separately. */
+        bool old_drive = (st->pin_drive_shadow[port] >> bit) & 1;
+
+        /* We stored mode in pin_mode_shadow as a flat byte per port,
+         * which can't hold per-pin 2-bit values for 8 pins. Fix: compare
+         * against the full M1/M0 registers directly. */
+        (void)old_mode;
+
+        if (drive != old_drive || st->osc_clocks == 0) {
+            st->on_pin_change(port, bit, mode, drive, st->board_user_data);
+        }
+    }
+    st->pin_drive_shadow[port] = latch;
+}
+
+/* SFR write callbacks for port data and mode registers */
+static void sfr_write_port(struct em8051 *aCPU, uint8_t aRegister)
+{
+    if (!g_stc) return;
+    int port = -1;
+    switch (aRegister) {
+    case REG_P0:      port = 0; break;
+    case REG_P1:      port = 1; break;
+    case REG_P2:      port = 2; break;
+    case REG_P3:      port = 3; break;
+    case STC_REG_P4:  port = 4; break;
+    case STC_REG_P5:  port = 5; break;
+    }
+    if (port >= 0) emit_pin_changes(aCPU, g_stc, port);
+}
+
+static void sfr_write_port_mode(struct em8051 *aCPU, uint8_t aRegister)
+{
+    if (!g_stc || !g_stc->on_pin_change) return;
+    /* Mode register changed — emit changes for the affected port */
+    int port = -1;
+    switch (aRegister) {
+    case STC_REG_P0M0: case STC_REG_P0M1: port = 0; break;
+    case STC_REG_P1M0: case STC_REG_P1M1: port = 1; break;
+    case STC_REG_P2M0: case STC_REG_P2M1: port = 2; break;
+    case STC_REG_P3M0: case STC_REG_P3M1: port = 3; break;
+    case STC_REG_P4M0: case STC_REG_P4M1: port = 4; break;
+    case STC_REG_P5M0: case STC_REG_P5M1: port = 5; break;
+    }
+    if (port >= 0) {
+        /* Mode changed = all pins on this port need re-emission */
+        for (int bit = 0; bit < 8; bit++) {
+            static const uint8_t port_regs[] = {
+                REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5
+            };
+            enum stc12_pin_mode mode = get_pin_mode(aCPU, port, bit);
+            bool drive = (aCPU->mSFR[port_regs[port]] >> bit) & 1;
+            g_stc->on_pin_change(port, bit, mode, drive, g_stc->board_user_data);
+        }
+    }
+}
+
+/* ================================================================== *
  * Port mode logic                                                     *
  * ================================================================== */
 
@@ -95,10 +192,21 @@ static uint8_t port_read(struct em8051 *aCPU, int port_idx)
     if (!g_stc || !g_stc->stc12_mode)
         return aCPU->mSFR[port_regs[port_idx]];
 
+    /* Get external pin state: from board callback or legacy array */
+    uint8_t ext;
+    if (g_stc->on_read_pin) {
+        ext = 0;
+        for (int bit = 0; bit < 8; bit++) {
+            if (g_stc->on_read_pin(port_idx, bit, g_stc->board_user_data))
+                ext |= (1 << bit);
+        }
+    } else {
+        ext = g_stc->port_ext[port_idx];
+    }
+
     uint8_t m1, m0;
     get_port_mode(aCPU, port_idx, &m1, &m0);
-    return apply_port_mode(aCPU->mSFR[port_regs[port_idx]],
-                           g_stc->port_ext[port_idx], m1, m0);
+    return apply_port_mode(aCPU->mSFR[port_regs[port_idx]], ext, m1, m0);
 }
 
 static uint8_t sfr_read_p0(struct em8051 *aCPU, uint8_t r) { (void)r; return port_read(aCPU, 0); }
@@ -108,15 +216,12 @@ static uint8_t sfr_read_p3(struct em8051 *aCPU, uint8_t r) { (void)r; return por
 static uint8_t sfr_read_p4(struct em8051 *aCPU, uint8_t r) { (void)r; return port_read(aCPU, 4); }
 static uint8_t sfr_read_p5(struct em8051 *aCPU, uint8_t r) { (void)r; return port_read(aCPU, 5); }
 
-/* ADC_CONTR read: the ADC_FLAG bit is cleared on read (datasheet §10.4) */
+/* ADC_CONTR read: ADC_FLAG must be cleared by software writing 0 to it
+ * (datasheet §10.4). Reading returns the register unchanged. */
 static uint8_t sfr_read_adc_contr(struct em8051 *aCPU, uint8_t r)
 {
     (void)r;
-    uint8_t val = aCPU->mSFR[STC_REG_ADC_CONTR];
-    /* ADC_FLAG is cleared by software writing 0, not by reading.
-     * Actually — re-reading the datasheet: ADC_FLAG must be cleared by
-     * software. So just return the value as-is. */
-    return val;
+    return aCPU->mSFR[STC_REG_ADC_CONTR];
 }
 
 /* ================================================================== *
@@ -150,7 +255,8 @@ static void sfr_write_adc_contr(struct em8051 *aCPU, uint8_t r)
  * stc12_tick() once per osc clock and using prescalers for 12T mode.   *
  * ================================================================== */
 
-static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
+/* Returns true if Timer 0 overflowed this tick (for PCA clock source) */
+static bool stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
     /* Check AUXR.T0x12: 1 = 1T mode, 0 = 12T mode */
     bool is_1t = aCPU->mSFR[STC_REG_AUXR] & AUXR_T0x12;
@@ -158,9 +264,11 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
     if (!is_1t) {
         st->timer0_prescaler++;
         if (st->timer0_prescaler < 12)
-            return;
+            return false;
         st->timer0_prescaler = 0;
     }
+
+    bool overflowed = false;
 
     /* Now we should increment Timer 0 if it's running.
      * We replicate the upstream logic but only for the increment part.
@@ -196,7 +304,7 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
                     v++;
                     aCPU->mSFR[REG_TH0] = v & 0xff;
                     if (v > 0xff)
-                        aCPU->mSFR[REG_TCON] |= TCONMASK_TF0;
+                        { aCPU->mSFR[REG_TCON] |= TCONMASK_TF0; overflowed = true; }
                 }
                 break;
             case TMODMASK_M0_0: /* 16-bit timer */
@@ -208,7 +316,7 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
                     v++;
                     aCPU->mSFR[REG_TH0] = v & 0xff;
                     if (v > 0xff)
-                        aCPU->mSFR[REG_TCON] |= TCONMASK_TF0;
+                        { aCPU->mSFR[REG_TCON] |= TCONMASK_TF0; overflowed = true; }
                 }
                 break;
             case TMODMASK_M1_0: /* 8-bit auto-reload */
@@ -218,6 +326,7 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
                 if (v > 0xff) {
                     aCPU->mSFR[REG_TL0] = aCPU->mSFR[REG_TH0];
                     aCPU->mSFR[REG_TCON] |= TCONMASK_TF0;
+                    overflowed = true;
                 }
                 break;
             case (TMODMASK_M0_0 | TMODMASK_M1_0): /* Mode 3: two 8-bit timers */
@@ -225,8 +334,10 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
                 v = aCPU->mSFR[REG_TL0];
                 v++;
                 aCPU->mSFR[REG_TL0] = v & 0xff;
-                if (v > 0xff)
+                if (v > 0xff) {
                     aCPU->mSFR[REG_TCON] |= TCONMASK_TF0;
+                    overflowed = true;
+                }
                 break;
             }
 
@@ -242,6 +353,7 @@ static void stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
             }
         }
     }
+    return overflowed;
 }
 
 static void stc12_timer1_tick(struct em8051 *aCPU, struct stc12_state *st)
@@ -352,7 +464,19 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
     if (st->adc_countdown == 0) {
         /* Conversion complete */
         int ch = aCPU->mSFR[STC_REG_ADC_CONTR] & ADC_CHS_MASK;
-        uint16_t result = st->adc_input[ch];
+        uint16_t result;
+
+        if (st->on_read_analog) {
+            /* Boundary A: board returns volts, MCU converts to counts */
+            double volts = st->on_read_analog(1, ch, st->board_user_data);
+            double vcc = st->vcc > 0.0 ? st->vcc : 5.0;
+            if (volts < 0.0) volts = 0.0;
+            if (volts > vcc) volts = vcc;
+            result = (uint16_t)(volts / vcc * 1023.0 + 0.5);
+        } else {
+            /* Legacy: direct counts */
+            result = st->adc_input[ch];
+        }
         if (result > 1023) result = 1023;
 
         /* AUXR1.ADRJ controls justification:
@@ -488,15 +612,14 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
     if (!aState->stc12_mode)
         return;
 
-    /* Latch T0 overflow for PCA before timers clear it */
-    uint8_t old_tf0 = aCPU->mSFR[REG_TCON] & TCONMASK_TF0;
+    aState->osc_clocks++;
 
-    stc12_timer0_tick(aCPU, aState);
+    bool t0_overflowed = stc12_timer0_tick(aCPU, aState);
     stc12_timer1_tick(aCPU, aState);
     stc12_brt_tick(aCPU, aState);
 
-    /* Detect T0 overflow edge for PCA */
-    if (!(old_tf0) && (aCPU->mSFR[REG_TCON] & TCONMASK_TF0))
+    /* T0 overflow drives the PCA when CPS=10 */
+    if (t0_overflowed)
         aState->pca_t0_overflow_pending = true;
 
     stc12_adc_tick(aCPU, aState);
@@ -509,15 +632,38 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
+    /* Preserve board callbacks across init (they're set before first reset) */
+    stc12_pin_callback         saved_pin    = aState->on_pin_change;
+    stc12_read_pin_callback    saved_read   = aState->on_read_pin;
+    stc12_read_analog_callback saved_analog = aState->on_read_analog;
+    stc12_advance_callback     saved_adv    = aState->on_advance;
+    void                      *saved_ud     = aState->board_user_data;
+
     g_stc = aState;
 
     memset(aState, 0, sizeof(*aState));
     aState->stc12_mode = true;
     aState->fosc = 11059200; /* default: 11.0592 MHz crystal */
+    aState->vcc = 5.0;
+
+    /* Restore board callbacks */
+    aState->on_pin_change  = saved_pin;
+    aState->on_read_pin    = saved_read;
+    aState->on_read_analog = saved_analog;
+    aState->on_advance     = saved_adv;
+    aState->board_user_data = saved_ud;
+
+    /* Pre-compute ns per clock (fixed-point * 16 for precision) */
+    if (aState->fosc > 0)
+        aState->ns_per_clock_x16 = (uint64_t)(16.0e9 / aState->fosc + 0.5);
 
     /* All external port pins default high (quasi-bidirectional pull-up) */
     for (int i = 0; i < 6; i++)
         aState->port_ext[i] = 0xFF;
+
+    /* Pin drive shadows: all high at reset (ports default to 0xFF) */
+    for (int i = 0; i < 6; i++)
+        aState->pin_drive_shadow[i] = 0xFF;
 
     /* Set STC12 SFR reset values */
     aCPU->mSFR[STC_REG_P4] = 0xFF;
@@ -532,6 +678,28 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrread[REG_P3] = sfr_read_p3;
     aCPU->sfrread[STC_REG_P4] = sfr_read_p4;
     aCPU->sfrread[STC_REG_P5] = sfr_read_p5;
+
+    /* Port write callbacks — emit pin changes to the board */
+    aCPU->sfrwrite[REG_P0] = sfr_write_port;
+    aCPU->sfrwrite[REG_P1] = sfr_write_port;
+    aCPU->sfrwrite[REG_P2] = sfr_write_port;
+    aCPU->sfrwrite[REG_P3] = sfr_write_port;
+    aCPU->sfrwrite[STC_REG_P4] = sfr_write_port;
+    aCPU->sfrwrite[STC_REG_P5] = sfr_write_port;
+
+    /* Port mode write callbacks — emit pin mode changes */
+    aCPU->sfrwrite[STC_REG_P0M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P0M1] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P1M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P1M1] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P2M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P2M1] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P3M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P3M1] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P4M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P4M1] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
+    aCPU->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
 
     /* ADC read/write callbacks */
     aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
@@ -552,4 +720,41 @@ void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value)
 {
     if (port >= 0 && port < 6)
         aState->port_ext[port] = value;
+}
+
+/* ================================================================== *
+ * Boundary A implementation                                           *
+ * ================================================================== */
+
+void stc12_set_board_callbacks(struct stc12_state *aState,
+                               stc12_pin_callback on_pin,
+                               stc12_read_pin_callback on_read,
+                               stc12_read_analog_callback on_analog,
+                               stc12_advance_callback on_advance,
+                               void *user_data)
+{
+    aState->on_pin_change  = on_pin;
+    aState->on_read_pin    = on_read;
+    aState->on_read_analog = on_analog;
+    aState->on_advance     = on_advance;
+    aState->board_user_data = user_data;
+}
+
+uint64_t stc12_get_time_ns(struct stc12_state *aState)
+{
+    return (aState->osc_clocks * aState->ns_per_clock_x16) >> 4;
+}
+
+int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
+                     uint64_t target_ns)
+{
+    int count = 0;
+    while (stc12_get_time_ns(aState) < target_ns) {
+        bool ticked = tick(aCPU);
+        stc12_tick(aCPU, aState);
+        if (ticked) count++;
+    }
+    if (aState->on_advance)
+        aState->on_advance(stc12_get_time_ns(aState), aState->board_user_data);
+    return count;
 }
