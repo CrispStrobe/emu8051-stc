@@ -7,17 +7,27 @@ sequences over 10 ms of simulated time.
 
 ## The claim
 
-Over **10 ms** at FOSC = 11,059,200 Hz, both emulators emit identical
-SFR-write and timer-overflow event sequences on all tested firmware.
+Over **3–10 ms** of simulated time at FOSC = 11,059,200 Hz, both
+emulators emit identical **peripheral event sequences** (SFR writes and
+timer overflow flags) on all tested firmware images.
 
-| Image | Events | Span | Result |
-|-------|--------|------|--------|
-| `01-blink` (polled timer, LED toggle) | 49 | 10 ms | **Identical** |
-| `02-adc` (ADC power/start/flag cycle) | 54 | 10 ms | **Identical** |
-| `03-potentiometer` (ADC ch2, variable blink) | comparable | 10 ms | **Identical** |
+| Image | Peripherals exercised | Events | Span | Result |
+|-------|-----------------------|--------|------|--------|
+| `01-blink` | Timer 0 mode 1 (FOSC/12), port mode, LED toggle | 49 | 10 ms | **Identical** |
+| `02-adc` | ADC power/start/flag, P1ASF, input mode | 54 | 10 ms | **Identical** |
+| `03-potentiometer` | ADC ch2, variable blink rate | 15+ | 3 ms | **Identical** |
+| `04-multi-when` | Timer 0 ISR, cooperative scheduler, 2 tasks | 37 | 10 ms | **Identical** |
+| `05-timer-1t` | **AUXR.T0x12=1 (1T mode)**, Timer 0 at FOSC | 16 | 3 ms | **Identical** |
 
 Timestamp agreement: within **0.6%** on init events, **0.1%** on timer
 events. Previous gap was 49% before cycle count corrections.
+
+**PC-level agreement is not claimed and is not the goal.** Both emulators
+inherit their instruction set from well-tested cores (emu8051, µCsim).
+What was genuinely unknown was whether the **STC12 peripherals** — Timer
+1T/12T, port modes, ADC, PCA — behave the same. Those are the parts each
+fork wrote independently from the datasheet, and those are where a
+disagreement would be informative. The peripheral events match.
 
 ## What is compared
 
