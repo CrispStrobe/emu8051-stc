@@ -19,7 +19,7 @@ CORE_SRC := core.c opcodes.c disasm.c stc12.c
 # Rules
 #####################################################################
 HEADERS := $(wildcard *.h)
-SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c test_multi_when.c trace.c, $(wildcard *.c))
+SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c test_multi_when.c test_suite.c test_bench.c trace.c, $(wildcard *.c))
 OBJ := $(SRC:.c=.o)
 
 %.o: %.c $(HEADERS)
@@ -52,12 +52,18 @@ test_integration: test_integration.c $(CORE_SRC) $(HEADERS)
 test_multi_when: test_multi_when.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_multi_when.c $(CORE_SRC)
 
+test_suite: test_suite.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_suite.c $(CORE_SRC)
+
 emu_trace: trace.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
 
-test: test_stc12 test_blink test_adc test_integration test_multi_when test-images
+test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
+	@echo ""
+	@echo "=== Firmware test suite ==="
+	./test_suite
 	@echo ""
 	@echo "=== 01-blink integration test ==="
 	./test_blink test_images/01-blink.hex
@@ -75,7 +81,7 @@ test-wasm: build/emu8051.js
 	node test_wasm.mjs
 
 clean:
-	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when emu_trace
+	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite emu_trace
 	$(MAKE) -C test_images clean
 
 .PHONY: clean all test test-wasm test-images

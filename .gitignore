@@ -18,6 +18,9 @@ test_stc12
 test_blink
 test_adc
 test_integration
+test_multi_when
+test_suite
+test_bench
 emu_trace
 
 # WASM build output
