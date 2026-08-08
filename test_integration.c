@@ -858,6 +858,86 @@ static void test_adc_restart(void) {
     teardown();
 }
 
+
+
+/* ================================================================== *
+ * Test 16: STC15 ADRJ trap (§2.1 of STC15-PERIPHERAL-MODEL.md)       *
+ * ================================================================== */
+static void test_stc15_adrj(void) {
+    printf("\n--- test_stc15_adrj ---\n");
+    setup();
+
+    /* Set part to STC15 */
+    stc12_set_part(&stc, PART_STC15);
+
+    /* Set ADC input */
+    stc12_set_adc_input(&stc, 0, 768);
+
+    /* On STC15, ADRJ is in CLK_DIV (0x97) bit 5, not AUXR1 (0xA2) bit 2 */
+
+    /* Test ADRJ=0 (default): high 8 in RES, low 2 in RESL */
+    cpu.mSFR[STC_REG_CLK_DIV] &= ~0x20; /* ADRJ=0 */
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 0;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+
+    /* 768 = 0x300. ADRJ=0: RES = 0xC0, RESL = 0x00 */
+    CHECK(cpu.mSFR[STC_REG_ADC_RES] == 0xC0,
+          "STC15 ADRJ=0: RES=0xC0");
+    CHECK(cpu.mSFR[STC_REG_ADC_RESL] == 0x00,
+          "STC15 ADRJ=0: RESL=0x00");
+
+    /* Test ADRJ=1 via CLK_DIV bit 5 (STC15 location) */
+    stc12_set_adc_input(&stc, 0, 1023);
+    cpu.mSFR[STC_REG_CLK_DIV] |= 0x20; /* ADRJ=1 in CLK_DIV */
+    /* Make sure AUXR1 bit 2 is clear — on STC12 this would control ADRJ */
+    cpu.mSFR[STC_REG_AUXR1] &= ~0x04;
+
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 0;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+
+    /* 1023 = 0x3FF. ADRJ=1: RESL = 0xFF, RES = 0x03 */
+    CHECK(cpu.mSFR[STC_REG_ADC_RESL] == 0xFF,
+          "STC15 ADRJ=1 (CLK_DIV.5): RESL=0xFF");
+    CHECK(cpu.mSFR[STC_REG_ADC_RES] == 0x03,
+          "STC15 ADRJ=1 (CLK_DIV.5): RES=0x03");
+
+    /* Verify the STC12 ADRJ location (AUXR1.2) is ignored on STC15 */
+    cpu.mSFR[STC_REG_CLK_DIV] &= ~0x20; /* ADRJ=0 in CLK_DIV */
+    cpu.mSFR[STC_REG_AUXR1] |= 0x04;    /* ADRJ=1 in AUXR1 (should be ignored) */
+
+    stc12_set_adc_input(&stc, 0, 768);
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 0;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+
+    /* AUXR1.ADRJ should be ignored on STC15; CLK_DIV.ADRJ=0 controls */
+    CHECK(cpu.mSFR[STC_REG_ADC_RES] == 0xC0,
+          "STC15: AUXR1.ADRJ ignored, uses CLK_DIV");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 17: SFR validation (stage 0)                                   *
+ * ================================================================== */
+static void test_sfr_validation(void) {
+    printf("\n--- test_sfr_validation ---\n");
+
+    /* STC12 valid SFRs */
+    CHECK(stc12_is_valid_sfr(0x80), "SFR valid: P0 (0x80)");
+    CHECK(stc12_is_valid_sfr(0x90), "SFR valid: P1 (0x90)");
+    CHECK(stc12_is_valid_sfr(0x8E), "SFR valid: AUXR (0x8E)");
+    CHECK(stc12_is_valid_sfr(0xBC), "SFR valid: ADC_CONTR (0xBC)");
+    CHECK(stc12_is_valid_sfr(0xD8), "SFR valid: CCON (0xD8)");
+
+    /* Not on STC12 */
+    CHECK(!stc12_is_valid_sfr(0x84), "SFR invalid: 0x84 (S4CON on STC15)");
+    CHECK(!stc12_is_valid_sfr(0xD6), "SFR invalid: 0xD6 (T2H on STC15)");
+    CHECK(!stc12_is_valid_sfr(0xAA), "SFR invalid: 0xAA (WKTCL on STC15)");
+}
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
 
@@ -880,6 +960,10 @@ int main(int argc, char **argv) {
     test_boundary_a_read_callbacks();
     test_pca_ecf_isolation();
     test_adc_restart();
+
+
+    test_stc15_adrj();
+    test_sfr_validation();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
