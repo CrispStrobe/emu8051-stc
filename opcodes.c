@@ -170,7 +170,7 @@ static uint8_t ljmp_address(struct em8051 *aCPU)
     uint16_t address = (OPERAND1 << 8) | OPERAND2;
     PC = address;
 
-    return 1;
+    return 2; /* 2 machine cycles (MCS-51) */
 }
 
 
@@ -266,7 +266,7 @@ static uint8_t lcall_address(struct em8051 *aCPU)
     push_to_stack(aCPU, (PC + 3) >> 8);
     PC = (OPERAND1 << 8) |
          (OPERAND2 << 0);
-    return 1;
+    return 2; /* 2 machine cycles (MCS-51) */
 }
 
 static uint8_t rrc_a(struct em8051 *aCPU)
@@ -508,7 +508,7 @@ static uint8_t jc_offset(struct em8051 *aCPU)
     {
         PC += 2;
     }
-    return 1;
+    return 2; /* 2 machine cycles (MCS-51) */
 }
 
 static uint8_t orl_mem_a(struct em8051 *aCPU)
@@ -565,7 +565,7 @@ static uint8_t jnc_offset(struct em8051 *aCPU)
     {
         PC += (signed char)OPERAND1 + 2;
     }
-    return 1;
+    return 2; /* 2 machine cycles (MCS-51) */
 }
 
 static uint8_t anl_mem_a(struct em8051 *aCPU)
@@ -732,7 +732,7 @@ static uint8_t orl_c_bitaddr(struct em8051 *aCPU)
 static uint8_t jmp_indir_a_dptr(struct em8051 *aCPU)
 {
     PC = DPTR + ACC;
-    return 1;
+    return 2; /* 2 machine cycles (MCS-51) */
 }
 
 static uint8_t mov_a_imm(struct em8051 *aCPU)
@@ -1395,7 +1395,7 @@ static uint8_t mov_a_mem(struct em8051 *aCPU)
     ACC = value;
 
     PC += 2;
-    return 2; /* 2 machine cycles (MCS-51) */
+    return 0; /* 1 machine cycle (MCS-51: MOV A,direct / MOV direct,A) */
 }
 
 static uint8_t mov_a_indir_rx(struct em8051 *aCPU)
@@ -1454,7 +1454,7 @@ static uint8_t mov_mem_a(struct em8051 *aCPU)
     uint8_t address = OPERAND1;
     write_mem(aCPU, address, ACC);
     PC += 2;
-    return 2; /* 2 machine cycles (MCS-51) */
+    return 0; /* 1 machine cycle (MCS-51: MOV A,direct / MOV direct,A) */
 }
 
 static uint8_t mov_indir_rx_a(struct em8051 *aCPU)

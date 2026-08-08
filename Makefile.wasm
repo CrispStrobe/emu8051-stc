@@ -10,7 +10,7 @@ EMCC := emcc
 CFLAGS := -O2 -Wall -Wextra -Wno-unused-parameter
 
 # Core source files (no curses, no TUI)
-SRC := core.c opcodes.c disasm.c stc12.c wasm_api.c
+SRC := core.c opcodes.c disasm.c stc12.c debug.c wasm_api.c
 
 OUTDIR := build
 OUT := $(OUTDIR)/emu8051.js
@@ -44,6 +44,31 @@ EXPORTS := \
 	_emu_get_time_ns_hi \
 	_emu_set_vcc \
 	_emu_set_board_callbacks \
+	_emu_dbg_state \
+	_emu_dbg_run \
+	_emu_dbg_halt \
+	_emu_dbg_step \
+	_emu_dbg_reset \
+	_emu_dbg_tick \
+	_emu_dbg_run_until_ns \
+	_emu_dbg_set_bp_code \
+	_emu_dbg_set_bp_yield \
+	_emu_dbg_clear_bp \
+	_emu_dbg_read_mem \
+	_emu_dbg_write_mem \
+	_emu_dbg_pc \
+	_emu_dbg_acc \
+	_emu_dbg_b \
+	_emu_dbg_dptr \
+	_emu_dbg_sp \
+	_emu_dbg_psw \
+	_emu_dbg_rn \
+	_emu_dbg_bw_ms \
+	_emu_dbg_task_state \
+	_emu_dbg_task_until \
+	_emu_dbg_set_bw_ms_addr \
+	_emu_dbg_set_task \
+	_emu_dbg_set_on_halt \
 	_malloc \
 	_free
 
@@ -53,6 +78,7 @@ EMFLAGS := \
 	-s EXPORTED_FUNCTIONS="[$(EXPORT_LIST)]" \
 	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8','addFunction','removeFunction']" \
 	-s ALLOW_TABLE_GROWTH=1 \
+	-s WASM_BIGINT=1 \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME="createEmu8051" \
 	-s ALLOW_MEMORY_GROWTH=1 \

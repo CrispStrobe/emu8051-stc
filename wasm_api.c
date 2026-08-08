@@ -32,9 +32,11 @@
 #include <emscripten/emscripten.h>
 #include "emu8051.h"
 #include "stc12.h"
+#include "debug.h"
 
 static struct em8051 cpu;
 static struct stc12_state stc;
+static struct dbg_target dbg;
 static int initialized = 0;
 
 /* No-op exception handler for WASM */
@@ -63,6 +65,7 @@ void emu_init(int stc12_mode) {
         cpu.skip_timers = true;
     }
 
+    dbg_init(&dbg, &cpu, &stc);
     initialized = 1;
 }
 
@@ -332,4 +335,152 @@ void emu_set_board_callbacks(
 {
     stc12_set_board_callbacks(&stc, on_pin, on_read, on_analog,
                               on_advance, user_data);
+}
+
+/* ------------------------------------------------------------------ *
+ * Boundary D — debug control (DEBUG-CONTROL-MODEL.md §7)              *
+ * ------------------------------------------------------------------ */
+
+/* State: 0 = halted, 1 = running */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_state(void) {
+    return dbg_get_state(&dbg);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_run(void) {
+    dbg_run(&dbg);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_halt(void) {
+    dbg_halt(&dbg);
+}
+
+/* Step: kind 0=insn, 1=line, 2=block, 3=over, 4=out. Returns 0 on success. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_step(int kind, int count) {
+    if (kind < 0 || kind > 4) return -1;
+    return dbg_step(&dbg, (enum dbg_step_kind)kind, count);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_reset(void) {
+    dbg_reset(&dbg);
+}
+
+/* Tick — call in a loop while state == running. Returns 1 if halted. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_tick(void) {
+    return dbg_tick(&dbg) ? 1 : 0;
+}
+
+/* Run until halted or N ns elapsed. Returns 1 if halted by BP/step. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_run_until_ns(uint32_t ns_lo, uint32_t ns_hi) {
+    uint64_t target = ((uint64_t)ns_hi << 32) | ns_lo;
+    while (dbg_get_state(&dbg) == DBG_RUNNING) {
+        if (stc12_get_time_ns(&stc) > target) {
+            dbg_halt(&dbg);
+            return 0;
+        }
+        if (dbg_tick(&dbg)) return 1;
+    }
+    return 0;
+}
+
+/* Breakpoints. kind: 0=code, 1=yield, 2=write, 3=read */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_set_bp_code(uint16_t addr) {
+    struct dbg_breakpoint bp = { .kind = BP_CODE, .addr = addr };
+    return dbg_set_breakpoint(&dbg, &bp);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_set_bp_yield(uint16_t addr, uint8_t task, uint16_t state) {
+    struct dbg_breakpoint bp = {
+        .kind = BP_YIELD, .addr = addr,
+        .yield = { .task = task, .state = state }
+    };
+    return dbg_set_breakpoint(&dbg, &bp);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_clear_bp(int handle) {
+    dbg_clear_breakpoint(&dbg, handle);
+}
+
+/* Memory: space 0=code, 1=iram, 2=sfr, 3=xram, 4=bit */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_read_mem(int space, uint16_t addr, int len) {
+    /* Returns a pointer to a static buffer. Caller reads HEAPU8. */
+    static uint8_t buf[256];
+    if (len > 256) len = 256;
+    dbg_read_mem(&dbg, (enum dbg_space)space, addr, buf, len);
+    return (int)(uintptr_t)buf;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_write_mem(int space, uint16_t addr, int value) {
+    uint8_t v = (uint8_t)value;
+    dbg_write_mem(&dbg, (enum dbg_space)space, addr, &v, 1);
+}
+
+/* Registers */
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_dbg_pc(void) { return dbg_get_pc(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t emu_dbg_acc(void) { return dbg_get_acc(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t emu_dbg_b(void) { return dbg_get_b(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_dbg_dptr(void) { return dbg_get_dptr(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t emu_dbg_sp(void) { return dbg_get_sp(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t emu_dbg_psw(void) { return dbg_get_psw(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t emu_dbg_rn(int n) { return dbg_get_rn(&dbg, n); }
+
+/* Level 1 position (§2) */
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_dbg_bw_ms(void) { return dbg_get_bw_ms(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_dbg_task_state(int idx) { return dbg_get_task_state(&dbg, idx); }
+
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_dbg_task_until(int idx) { return dbg_get_task_until(&dbg, idx); }
+
+/* Symbol table: set bw_ms address and task count.
+ * Task addresses are set per-task with emu_dbg_set_task. */
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_set_bw_ms_addr(uint16_t addr) {
+    dbg.syms.bw_ms_addr = addr;
+}
+
+static struct dbg_task_pos wasm_tasks[8];
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_set_task(int idx, uint16_t state_addr, uint16_t until_addr) {
+    if (idx < 0 || idx >= 8) return;
+    wasm_tasks[idx].state_addr = state_addr;
+    wasm_tasks[idx].until_addr = until_addr;
+    dbg.syms.tasks = wasm_tasks;
+    if (idx >= dbg.syms.n_tasks) dbg.syms.n_tasks = idx + 1;
+}
+
+/* Halt callback */
+static dbg_on_halt_fn wasm_halt_cb = NULL;
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_set_on_halt(dbg_on_halt_fn fn) {
+    wasm_halt_cb = fn;
+    dbg_set_on_halt(&dbg, fn, NULL);
 }
