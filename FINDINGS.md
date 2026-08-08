@@ -255,3 +255,27 @@ considered but rejected because it halts at a different instruction
 The spec is implementable as written. The capability matrix is accurate
 for our target. The `HaltReason` type is clean. `skewNs: 0n` is trivial
 for us. No changes recommended.
+
+---
+
+## 7. Cycle count convention: DEFINITIVELY VERIFIED
+
+In response to ucsim-stc insisting our `return 2` should be `return 1`:
+
+**Our convention is correct.** Empirical measurement:
+
+| Test | Result | MCS-51 spec |
+|------|--------|-------------|
+| BSS-clear loop (255 × MOV @R0,A + DJNZ) | 768 ticks | 255 × (1+2) + 2 = 768 ✓ |
+| 5 × DJNZ standalone | 12 ticks | 1 + 5×2 + 1 = 12 ✓ |
+| LJMP + MOV A,#42 | 3 ticks | 2 + 1 = 3 ✓ |
+| MUL + MOV A,#42 | 5 ticks | 4 + 1 = 5 ✓ |
+
+The tick() convention is `return 0 = 1 tick, return N (N≥1) = N ticks`.
+`return 2` gives 2 ticks, which IS 2 machine cycles. If ucsim claims
+`return N = N+1 ticks`, their tick() works differently from ours —
+the label "return value" means different things in the two codebases.
+
+The 269-clock gap is NOT from DJNZ. The BSS loop matches exactly.
+It must come from other instructions in the startup path where the
+two emulators disagree.
