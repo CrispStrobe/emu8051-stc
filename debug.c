@@ -110,6 +110,12 @@ bool dbg_tick(struct dbg_target *t)
 
     if (!ticked) return false; /* still in multi-cycle instruction */
 
+    /* Profiling: record PC hit */
+    if (t->profiling && t->pc_histogram) {
+        t->pc_histogram[t->cpu->mPC & 0xFFFF]++;
+        t->profile_total++;
+    }
+
     /* Check breakpoints */
     for (int i = 0; i < DBG_MAX_BP; i++) {
         struct dbg_breakpoint *bp = &t->bps[i];
@@ -352,4 +358,34 @@ void dbg_set_on_halt(struct dbg_target *t, dbg_on_halt_fn fn, void *data)
 uint64_t dbg_get_time_ns(struct dbg_target *t)
 {
     return stc12_get_time_ns(t->stc);
+}
+
+/* ================================================================== *
+ * Profiling: PC histogram                                             *
+ * ================================================================== */
+
+void dbg_profile_start(struct dbg_target *t)
+{
+    if (!t->pc_histogram)
+        t->pc_histogram = calloc(65536, sizeof(uint32_t));
+    else
+        memset(t->pc_histogram, 0, 65536 * sizeof(uint32_t));
+    t->profile_total = 0;
+    t->profiling = true;
+}
+
+void dbg_profile_stop(struct dbg_target *t)
+{
+    t->profiling = false;
+}
+
+uint32_t dbg_profile_get(struct dbg_target *t, uint16_t addr)
+{
+    if (!t->pc_histogram) return 0;
+    return t->pc_histogram[addr];
+}
+
+uint32_t dbg_profile_total(struct dbg_target *t)
+{
+    return t->profile_total;
 }

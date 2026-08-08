@@ -86,6 +86,11 @@ struct dbg_target {
     /* Halt callback */
     dbg_on_halt_fn on_halt;
     void *on_halt_data;
+
+    /* Profiling */
+    bool profiling;
+    uint32_t *pc_histogram;  /* 64K entries, allocated on start */
+    uint32_t profile_total;
 };
 
 /* ------------------------------------------------------------------ *
@@ -139,5 +144,13 @@ void dbg_set_on_halt(struct dbg_target *t, dbg_on_halt_fn fn, void *data);
 
 /* Time */
 uint64_t dbg_get_time_ns(struct dbg_target *t);
+
+/* Profiling: PC histogram. Call dbg_profile_start to begin, then
+ * dbg_profile_get to read counts. Each code address that executes
+ * during profiling increments its counter. */
+void dbg_profile_start(struct dbg_target *t);
+void dbg_profile_stop(struct dbg_target *t);
+uint32_t dbg_profile_get(struct dbg_target *t, uint16_t addr);
+uint32_t dbg_profile_total(struct dbg_target *t);
 
 #endif /* DEBUG_H */
