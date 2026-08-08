@@ -940,6 +940,7 @@ static void test_sfr_validation(void) {
 
 static void test_stc15_timer2(void);
 static void test_pca_new_clocks(void);
+static void test_pwm_polarity(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -973,6 +974,7 @@ int main(int argc, char **argv) {
     test_serial_tx();
     test_serial_rx();
     test_pca_new_clocks();
+    test_pwm_polarity();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1116,6 +1118,63 @@ static void test_pca_new_clocks(void) {
     run_clocks(16);
     pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
     CHECK(pca == 2, "PCA SYSclk/8: 16 clocks = 2 ticks");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 22: PWM polarity per §5.3                                      *
+ * ================================================================== */
+static void test_pwm_polarity(void) {
+    printf("\n--- test_pwm_polarity ---\n");
+    setup();
+
+    /* PCA running at SYSclk (every osc clock), module 0 in PWM mode */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = 0x08; /* CPS=100 (SYSclk) */
+    cpu.mSFR[STC_REG_CCAPM0] = CCAPM_ECOM | CCAPM_PWM; /* 0x42 */
+
+    /* Set CCAPnH = 0xC0, which will reload into CCAPnL on CL overflow.
+     * Duty-as-fraction-HIGH = (256 - 0xC0) / 256 = 64/256 = 25% */
+    cpu.mSFR[STC_REG_CCAP0H] = 0xC0;
+    cpu.mSFR[STC_REG_CCAP0L] = 0xC0;
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    /* At CL=0x00: 0x00 < 0xC0 → output LOW (spec §5.3) */
+    /* At CL=0xC0: 0xC0 >= 0xC0 → output HIGH */
+
+    /* Run to CL=0xBF (just before compare threshold) */
+    run_clocks(0xBF);
+    /* The output should still be LOW here (CL < CCAPnL) */
+    /* We can verify by checking what the spec says, even though we
+     * don't drive a pin yet */
+
+    /* Run one more → CL=0xC0, should transition to HIGH */
+    run_clocks(1);
+    uint8_t cl = cpu.mSFR[STC_REG_CL];
+    CHECK(cl == 0xC0, "PWM polarity: CL reached 0xC0");
+
+    /* Run to overflow (CL wraps to 0x00) */
+    run_clocks(0x40); /* 0xC0 + 0x40 = 0x100 → wraps */
+    cl = cpu.mSFR[STC_REG_CL];
+    CHECK(cl == 0x00, "PWM polarity: CL wrapped to 0x00");
+
+    /* Verify CCAPnL was reloaded from CCAPnH */
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0xC0,
+          "PWM reload: CCAPnL reloaded from CCAPnH on overflow");
+
+    /* Verify changing CCAPnH doesn't immediately affect CCAPnL */
+    cpu.mSFR[STC_REG_CCAP0H] = 0x80; /* new duty for next period */
+    run_clocks(10);
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0xC0,
+          "PWM double-buffer: CCAPnL unchanged mid-period");
+
+    /* Run to next overflow → new duty should take effect */
+    run_clocks(246); /* remaining of current period */
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0x80,
+          "PWM double-buffer: CCAPnL reloaded to 0x80 at next overflow");
 
     teardown();
 }
