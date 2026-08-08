@@ -103,7 +103,13 @@ int emu_run(int cycles) {
         bool ticked = tick(&cpu);
         if (stc.stc12_mode)
             stc12_tick(&cpu, &stc);
-        if (ticked) count++;
+        if (ticked) {
+            count++;
+            if (dbg.profiling && dbg.pc_histogram) {
+                dbg.pc_histogram[cpu.mPC & 0xFFFF]++;
+                dbg.profile_total++;
+            }
+        }
     }
     return count;
 }
