@@ -2,14 +2,16 @@
 
 | File | Size | SHA-256 |
 |------|------|---------|
-| `emu8051.js` | 19 KB | `5c70f2a0e3075ef28a998c13f1f3cb5e19a669cc5919db9735c35d3845b1cf25` |
-| `emu8051.wasm` | 56 KB | `6546370bf643cd0e78012e96926bfe6d7a83ca34d10d73ea3612779e9bc0b85e` |
+| `emu8051.js` | 19 KB | `a41313458b36960171888878675708048f9fd32cb5bb6e9305b5b2c4eaa6a0ef` |
+| `emu8051.wasm` | 56 KB | `6632ae7fbcd10b26d9e2cd8d40bb76e2aff08208db5af515cd0542265a51782a` |
 
 **Emscripten:** emcc 6.0.6
-**Source commit:** `0455a54`
+**Source commit:** `ed47735`
 **Build:** `make -f Makefile.wasm`
 **Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.
 
-40+ exported functions: CPU core, boundary A (pin bus), boundary D
-(debug control), UART TX/RX, PC histogram profiling, pin history
-ring buffer, watchdog, STC15 delta.
+Peripherals: Timer 0/1 (1T/12T), ADC, PCA/PWM (8 sources), UART1/2,
+SPI, watchdog, port modes, STC15 Timer 2, STC15 ADRJ trap.
+Debug: run/halt/step/breakpoints/memory/registers/profiling/pin history.
+Boundary A: push-mode pin callbacks, ADC in volts, advanceTo(ns).
+Boundary D: consumes=[] (takes nothing).
