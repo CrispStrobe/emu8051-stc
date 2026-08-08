@@ -1,92 +1,125 @@
-emu8051
-=======
+emu8051-stc
+===========
 
-8051/8052 emulator with curses-based UI
+Fork of [jarikomppa/emu8051](https://github.com/jarikomppa/emu8051) (MIT)
+with an **STC12C5A60S2** peripheral model and a **WASM build** for use in
+the browser.
 
-Binaries and info: http://iki.fi/sol/8051.html
+The upstream emulator is a clean, ~7 k-line 8051/8052 simulator with a
+curses TUI. This fork adds the STC12-specific SFR set, 1T/12T timer
+prescaling, port mode logic, a 10-bit ADC, and PCA/PWM — enough to run
+real STC12 firmware images in simulation and, via Emscripten, inside a web
+app.
 
-Note on git history - when I wrote this, I kept version backups as zip files; I created the version history by submitting each of the zips in order. Apologies for the submit messages..
+What changed from upstream
+--------------------------
 
-What
-====
+| Area | What |
+|------|------|
+| **SFR set** | 44 STC12-specific registers added (`stc12.h`): AUXR, port mode (PxM1/PxM0), ADC, PCA/PWM, SPI/UART2/WDT stubs |
+| **1T/12T timers** | AUXR.7 (T0x12) and AUXR.6 (T1x12) switch Timer 0/1 between FOSC/12 and FOSC/1. Both states tested explicitly. |
+| **Port modes** | PxM1/PxM0 implement quasi-bidirectional, push-pull, input-only, and open-drain per pin |
+| **ADC** | 10-bit, 8 channels, 4 speed settings, ADRJ justification. Register sequence from datasheet (not confirmed on silicon). |
+| **PCA** | 16-bit counter, FOSC/12 / FOSC/2 / T0-overflow clock sources, compare/match, 8-bit PWM |
+| **WASM** | `Makefile.wasm` builds `emu8051.js` + `emu8051.wasm` (12 K + 49 K) via Emscripten. Modularized as `createEmu8051()`. |
+| **`-stc12` flag** | Runtime switch; without it behaviour is identical to upstream emu8051 |
 
-This is a simulator of the 8051/8052 microcontrollers. For sake of simplicity, I'm only referring to 8051, although the emulator can emulate either one. For more information about the 8-bit chip(s), please check out www.8052.com or look up the data sheets. Intel, being the originator of the architecture, naturally has information as well.
+Build
+-----
 
-The 8051 is a pretty easy chip to play with, in both hardware and software. Hence, it's a good chip to use as an example when teaching about computer hardware. Unfortunately, the simulators in use in my school were a bit outdated, so I decided to write a new one.
+### Native (curses TUI)
 
-The scope of the emulator is to help test and debug 8051 assembler programs. What is particularily left out is clock-cycle exact simulation of processor pins. (For instance, MUL is a 48-clock operation on the 8051. On which clock cycle does the CPU read the operands? Or write the result?). Such simulation might help in designing some hardware, but for most uses it is unneccessary and complicated.
+```bash
+sudo apt-get install libncurses5-dev
+make
+./emu -stc12 firmware.hex
+```
 
-The emulator is designed to have two separate modules, consisting of the emulator core and separate front-end. This enables the creation of different kinds of front-ends. For instance, this lets the user use the emulator core as a DLL in a C/C++ application which can simulate other kinds of hardware (such as leds, switches, displays, audio, or whatnot).
+### WASM (browser / Node)
 
-Simulation accuracy is valued over speed. Nevertheless, already at v.0.1 the emulator could run at over-realtime speeds on a P4/2.6GHz (running the emulator at over 12MHz). Based on profiler output, over half of the processing time is wasted on pipeline trashing when branching to the opcode functions. This could possibly be helped by JITing the code, but that is considered unneccessary at this point. Also, CPUs with shorter pipelines are not harmed by this behavior as badly.
+```bash
+# one-time: install Emscripten
+git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
+source ~/emsdk/emsdk_env.sh
 
-License
-=======
+# build
+make -f Makefile.wasm
+# -> build/emu8051.js + build/emu8051.wasm
+```
 
-The emulator core is written completely in ANSI C for portability, and the sources are available under the MIT license.
+### Test images (requires SDCC)
 
-Copyright 2006 Jari Komppa
+```bash
+sudo apt-get install sdcc
+make test-images          # builds test_images/01-blink.hex, 02-adc.hex
+```
 
-Permission is hereby granted, free of charge, to any person obtaining 
-a copy of this software and associated documentation files (the 
-"Software"), to deal in the Software without restriction, including 
-without limitation the rights to use, copy, modify, merge, publish, 
-distribute, sublicense, and/or sell copies of the Software, and to 
-permit persons to whom the Software is furnished to do so, subject 
-to the following conditions: 
+### Run all tests
 
-The above copyright notice and this permission notice shall be included 
-in all copies or substantial portions of the Software. 
+```bash
+make test                 # unit tests + integration tests with real firmware
+```
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
-IN THE SOFTWARE. 
+WASM API
+--------
 
-Features
-========
+```js
+import createEmu8051 from './build/emu8051.js';
+const Module = await createEmu8051();
 
-Current features include:
+const init     = Module.cwrap('emu_init',     null,     ['number']);
+const tick     = Module.cwrap('emu_tick',      'number', []);
+const run      = Module.cwrap('emu_run',       'number', ['number']);
+const loadHex  = Module.cwrap('emu_load_hex',  'number', ['string','number']);
+const getSfr   = Module.cwrap('emu_get_sfr',   'number', ['number']);
+const setSfr   = Module.cwrap('emu_set_sfr',   null,     ['number','number']);
+const getPC    = Module.cwrap('emu_get_pc',    'number', []);
+const disasm   = Module.cwrap('emu_disasm',    'string', ['number']);
+const setAdc   = Module.cwrap('emu_set_adc_input', null, ['number','number']);
+const setPort  = Module.cwrap('emu_set_port_input', null, ['number','number']);
 
-- Full 8051 instruction set.
+init(1);                         // 1 = STC12 mode
+loadHex(hexString, hexString.length);
+run(1000000);                    // run 1M oscillator clocks
+console.log('PC:', getPC());
+console.log('P1:', getSfr(0x90).toString(16));
+```
 
-- ncurses-based UI - works fine over SSH for instance.
+Full export list: `emu_init`, `emu_reset`, `emu_tick`, `emu_run`,
+`emu_load_hex`, `emu_get/set_sfr`, `emu_get/set_iram`, `emu_get_code`,
+`emu_get/set_xdata`, `emu_get/set_pc`, `emu_disasm`,
+`emu_set_adc_input`, `emu_set_port_input`, `emu_set_fosc`.
 
-- The main view includes:
-    - Memory view.
-    - Stack view.
-    - Opcode and disassembly view.
-    - History view of SP, P0, P1, P2, P3, IP, IE, TMOD, TCON, TH0, TL0, TH1, TL1, SCON, PCON, A, B, R0, R1, R2, R3, R4, R5, R6, R7 and DPTR, as well as all processor status bits.
-    - Cycle and real-time counter.
+Tests
+-----
 
-- Other views include:
-    - Logic board (leds'n'switches) view, with optional widgets such as 7-seg displays and 44780-style text output
-    - Memory editor, showing all five types of memory at the same time
-    - Options, where user can disable debug exceptions etc.
-- Support for all sorts of 8051 memory combinations - 128 or 256B internal RAM, 0-64k of external RAM and 0-64k of ROM. External RAM and ROM may even point at the same memory, enabling self-modifying code.
-- Loads Intel HEX files.
-- Support for exceptions on invalid instructions, odd stack behavior, and messing up important registers in interrupts. One breakpoint is also supported.
-- The emulator performs callbacks on register area or external memory read/write, which can be used to implement simulation of new special features or whatever is connected to the IO ports.
-- Timer 0 and 1 modes 0, 1, 2 and 3, as well as interrupt priorities.
+| Suite | What it covers |
+|-------|----------------|
+| `test_stc12` | 12 unit tests: Timer 0/1 in 1T and 12T modes, auto-reload overflow, all four port modes, ADC with both ADRJ settings |
+| `test_blink` | Loads `01-blink.hex`, verifies init (AUXR.T0x12=0, TMOD=mode1, P1M0 push-pull), confirms LED toggle after 150 ms |
+| `test_adc` | Loads `02-adc.hex`, verifies P1ASF routing + input mode, ADC conversion with known input, blink at correct rate |
+| `test_wasm.mjs` | 8 smoke tests for the WASM module: init, hex load, execution, SFR access, disassembly |
 
-Install
-=======
+Caveats
+-------
 
-You need to install the ncurses lib development files, which is the only dependency.
+- The **ADC register sequence** is from the datasheet (sections 10.x) and is
+  self-consistent, but has **not been confirmed on silicon**. The `02-adc`
+  test image exists precisely to verify it on a real chip.
+- **PCA PWM output** is computed internally but not yet wired to a visible
+  port pin.
+- **BRT** (independent baud rate timer) is stubbed — the counter runs but
+  has no UART baud rate effect.
+- **SPI, UART2, watchdog** have SFR storage but no logic.
 
-On Debian/Ubuntu it is simply done as
+Licence
+-------
 
-    sudo apt-get install libncurses5 libncurses5-dev
+MIT. Original emulator core copyright 2006/2022 Jari Komppa. STC12
+extensions copyright 2024 CrispStrobe. See [LICENSE](LICENSE) and
+[THIRD-PARTY.md](THIRD-PARTY.md).
 
-
-Code Style
-==========
-
-Arguments to functions are prefixed with "a", such as in
-
-    static int read_mem(struct em8051 *aCPU, int aAddress)
-
-Local variables are using standard [snake case](https://wikipedia.org/wiki/Snake_case).
+No code from copyleft sources (ucsim, QEMU, SimulIDE, circuitjs, Verilator)
+was used. SDCC (GPL-2+) is a build-time dependency for compiling test images
+only and is not linked into the emulator.
