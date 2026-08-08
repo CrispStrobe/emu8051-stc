@@ -276,6 +276,10 @@ struct stc12_state
     uint16_t adc_countdown;     /* osc clocks remaining until conversion done */
     uint16_t adc_input[8];      /* external analog values, 0-1023 (10-bit) */
 
+    /* Watchdog state */
+    uint32_t wdt_counter;       /* counts up, overflows → reset */
+    uint8_t  wdt_prescaler_cnt; /* sub-tick counter for prescaler */
+
     /* PCA state */
     uint8_t pca_prescaler;      /* for FOSC/12 and FOSC/2 sources */
     bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */

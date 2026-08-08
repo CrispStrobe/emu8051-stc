@@ -941,6 +941,7 @@ static void test_sfr_validation(void) {
 static void test_stc15_timer2(void);
 static void test_pca_new_clocks(void);
 static void test_pwm_polarity(void);
+static void test_watchdog(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -975,6 +976,7 @@ int main(int argc, char **argv) {
     test_serial_rx();
     test_pca_new_clocks();
     test_pwm_polarity();
+    test_watchdog();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1175,6 +1177,36 @@ static void test_pwm_polarity(void) {
     run_clocks(246); /* remaining of current period */
     CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0x80,
           "PWM double-buffer: CCAPnL reloaded to 0x80 at next overflow");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 23: Watchdog timer                                             *
+ * ================================================================== */
+static void test_watchdog(void) {
+    printf("\n--- test_watchdog ---\n");
+    setup();
+
+    /* Enable watchdog with PS=0 (prescaler = 2^1 = 2) */
+    cpu.mSFR[STC_REG_WDT_CONTR] = 0x20; /* EN_WDT */
+    cpu.sfrwrite[STC_REG_WDT_CONTR](&cpu, STC_REG_WDT_CONTR + 0x80);
+
+    /* WDT counter should start incrementing */
+    run_clocks(100);
+    CHECK(stc.wdt_counter > 0, "WDT: counter incrementing");
+
+    /* CLR_WDT should reset counter */
+    cpu.mSFR[STC_REG_WDT_CONTR] |= 0x10; /* CLR_WDT */
+    cpu.sfrwrite[STC_REG_WDT_CONTR](&cpu, STC_REG_WDT_CONTR + 0x80);
+    CHECK(stc.wdt_counter == 0, "WDT: CLR_WDT resets counter");
+    CHECK(!(cpu.mSFR[STC_REG_WDT_CONTR] & 0x10), "WDT: CLR_WDT auto-cleared");
+
+    /* WDT should not run when disabled */
+    setup();
+    cpu.mSFR[STC_REG_WDT_CONTR] = 0x00; /* disabled */
+    run_clocks(100);
+    CHECK(stc.wdt_counter == 0, "WDT: disabled → counter stays 0");
 
     teardown();
 }

@@ -648,6 +648,9 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
  * Main tick — called once per oscillator clock in STC12 mode          *
  * ================================================================== */
 
+static void sfr_write_wdt(struct em8051 *aCPU, uint8_t aRegister);
+static void stc12_wdt_tick(struct em8051 *aCPU, struct stc12_state *st);
+
 void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 {
     if (!aState->stc12_mode)
@@ -665,11 +668,63 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
     stc12_adc_tick(aCPU, aState);
     stc12_pca_tick(aCPU, aState);
+    stc12_wdt_tick(aCPU, aState);
 }
 
 /* ================================================================== *
  * Initialization                                                      *
  * ================================================================== */
+
+
+/* ================================================================== *
+ * Watchdog timer                                                      *
+ * ================================================================== */
+
+/* WDT_CONTR bits */
+#define WDT_FLAG    0x80
+#define EN_WDT      0x20
+#define CLR_WDT     0x10
+#define IDLE_WDT    0x08
+#define WDT_PS_MASK 0x07
+
+static void sfr_write_wdt(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    if (!g_stc) return;
+    uint8_t val = aCPU->mSFR[STC_REG_WDT_CONTR];
+
+    /* CLR_WDT: writing 1 clears the watchdog counter */
+    if (val & CLR_WDT) {
+        g_stc->wdt_counter = 0;
+        g_stc->wdt_prescaler_cnt = 0;
+        /* CLR_WDT is auto-cleared by hardware */
+        aCPU->mSFR[STC_REG_WDT_CONTR] &= ~CLR_WDT;
+    }
+}
+
+static void stc12_wdt_tick(struct em8051 *aCPU, struct stc12_state *st)
+{
+    uint8_t wdt = aCPU->mSFR[STC_REG_WDT_CONTR];
+    if (!(wdt & EN_WDT)) return;
+
+    /* Prescaler: divide by 2^(PS+1) where PS = bits 2:0 */
+    uint8_t ps = wdt & WDT_PS_MASK;
+    uint16_t divisor = 2 << ps; /* 2^(ps+1) */
+
+    st->wdt_prescaler_cnt++;
+    if (st->wdt_prescaler_cnt < divisor) return;
+    st->wdt_prescaler_cnt = 0;
+
+    /* Increment watchdog counter. Overflow at 32768 → reset */
+    st->wdt_counter++;
+    if (st->wdt_counter >= 32768) {
+        /* Watchdog overflow → set flag and reset */
+        aCPU->mSFR[STC_REG_WDT_CONTR] |= WDT_FLAG;
+        st->wdt_counter = 0;
+        /* In a real chip this resets the CPU.
+         * For the emulator, we just set the flag. */
+    }
+}
 
 static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister);
 
@@ -747,6 +802,9 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     /* ADC read/write callbacks */
     aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
     aCPU->sfrwrite[STC_REG_ADC_CONTR] = sfr_write_adc_contr;
+
+    /* Watchdog */
+    aCPU->sfrwrite[STC_REG_WDT_CONTR] = sfr_write_wdt;
 
     /* Serial port: intercept SBUF writes for instant TX */
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
@@ -843,6 +901,7 @@ void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
  * ================================================================== */
 
 /* SFR write callback for SBUF — firmware is transmitting a byte */
+
 static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister)
 {
     (void)aRegister;
