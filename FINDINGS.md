@@ -279,3 +279,19 @@ the label "return value" means different things in the two codebases.
 The 269-clock gap is NOT from DJNZ. The BSS loop matches exactly.
 It must come from other instructions in the startup path where the
 two emulators disagree.
+
+---
+
+## 8. Cycle count gap RESOLVED: ucsim had a double-counting bug
+
+ucsim-stc retracted their spec-update 005. Their base instruction
+handlers already called tick(N) for multi-cycle instructions, and
+their tick_tab override added tick(2) ON TOP, giving 3 ticks per
+2-cycle instruction. Our test_cycles.c proof was correct all along.
+
+After ucsim's fix, the timing gap dropped from 25% (269 clocks) to
+0.1% (1 clock). Both emulators now agree on cycle accounting.
+
+This is a worked example of why two independent implementations are
+worth maintaining: the differential comparison detected the bug, and
+the empirical proof (test_cycles.c) identified which side was wrong.

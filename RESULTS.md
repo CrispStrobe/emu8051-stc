@@ -19,8 +19,8 @@ timer overflow flags) on all tested firmware images.
 | `04-multi-when` | Timer 0 ISR, cooperative scheduler, 2 tasks | 5 SFR + 2 TF | 3 ms | **SFR identical; TF missed by ucsim*** |
 | `05-timer-1t` | **AUXR.T0x12=1 (1T mode)**, Timer 0 at FOSC | 16 | 3 ms | **Identical** |
 
-Timestamp agreement: within **0.6%** on init events, **0.1%** on timer
-events. Previous gap was 49% before cycle count corrections.
+Timestamp agreement: within **0.1%** on all events (was 25% before ucsim fixed a
+double-counting bug in their tick handler).
 
 ## Rung 3: instruction-step agreement (DEBUG-CONTROL-MODEL.md §8)
 
