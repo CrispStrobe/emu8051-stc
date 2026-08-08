@@ -1,0 +1,29 @@
+{
+  "scheduler": {
+    "bw_ms": {"space": "iram", "addr": 8, "size": 2},
+    "tasks": [
+      {
+        "name": "bw_task0",
+        "state": {"space": "iram", "addr": 10, "size": 2},
+        "until": {"space": "iram", "addr": 12, "size": 2},
+        "yields": [
+          {"state": 0, "addr": 194},
+          {"state": 1, "addr": 200},
+          {"state": 2, "addr": 225},
+          {"state": 3, "addr": 269}
+        ]
+      },
+      {
+        "name": "bw_task1",
+        "state": {"space": "iram", "addr": 14, "size": 2},
+        "until": {"space": "iram", "addr": 16, "size": 2},
+        "yields": [
+          {"state": 0, "addr": 337},
+          {"state": 1, "addr": 343},
+          {"state": 2, "addr": 369},
+          {"state": 3, "addr": 414}
+        ]
+      }
+    ]
+  }
+}
