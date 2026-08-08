@@ -22,6 +22,7 @@ test_multi_when
 test_suite
 test_bench
 test_debug
+test_cycles
 emu_trace
 
 # WASM build intermediates (but build/*.js and build/*.wasm ARE committed)
