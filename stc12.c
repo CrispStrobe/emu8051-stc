@@ -408,27 +408,44 @@ static void stc12_timer1_tick(struct em8051 *aCPU, struct stc12_state *st)
 
 static void stc12_brt_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
-    /* AUXR.BRTR enables the BRT */
-    if (!(aCPU->mSFR[STC_REG_AUXR] & AUXR_BRTR))
-        return;
-
-    /* AUXR.BRTx12: 1 = 1T, 0 = 12T */
-    bool is_1t = aCPU->mSFR[STC_REG_AUXR] & AUXR_BRTx12;
-    if (!is_1t) {
-        st->brt_prescaler++;
-        if (st->brt_prescaler < 12)
+    if (st->part_id == PART_STC15) {
+        /* STC15: Timer 2 replaces BRT.
+         * AUXR.4 = T2R (run), AUXR.2 = T2x12 (1T/12T)
+         * T2H/T2L (0xD6/0xD7) = 16-bit auto-reload timer */
+        if (!(aCPU->mSFR[STC_REG_AUXR] & 0x10)) /* T2R */
             return;
-        st->brt_prescaler = 0;
-    }
 
-    /* BRT is an 8-bit auto-reload timer (reload from BRT register) */
-    uint16_t v = aCPU->mSFR[STC_REG_BRT];
-    /* Wait — BRT has its own counter that's not directly visible as an SFR.
-     * The SFR at 0x9C is the reload value. We need internal state.
-     * For simplicity, we'll just track overflow timing. The BRT overflow
-     * feeds the UART baud rate generator, which we're not fully implementing
-     * yet. For now, stub it. */
-    (void)v;
+        bool is_1t = aCPU->mSFR[STC_REG_AUXR] & 0x04; /* T2x12 */
+        if (!is_1t) {
+            st->brt_prescaler++;
+            if (st->brt_prescaler < 12)
+                return;
+            st->brt_prescaler = 0;
+        }
+
+        /* 16-bit auto-reload: count in T2L/T2H, reload from same */
+        uint16_t v = aCPU->mSFR[STC_REG_T2L] | (aCPU->mSFR[STC_REG_T2H] << 8);
+        v++;
+        aCPU->mSFR[STC_REG_T2L] = v & 0xFF;
+        aCPU->mSFR[STC_REG_T2H] = (v >> 8) & 0xFF;
+        /* Overflow: auto-reload (T2H/T2L serve as both counter and reload) */
+        /* On real hardware T2 has separate reload registers — simplified here */
+    } else {
+        /* STC12: BRT (8-bit baud rate timer) */
+        if (!(aCPU->mSFR[STC_REG_AUXR] & AUXR_BRTR))
+            return;
+
+        bool is_1t = aCPU->mSFR[STC_REG_AUXR] & AUXR_BRTx12;
+        if (!is_1t) {
+            st->brt_prescaler++;
+            if (st->brt_prescaler < 12)
+                return;
+            st->brt_prescaler = 0;
+        }
+
+        /* BRT stub — counter runs but doesn't feed UART */
+        (void)aCPU;
+    }
 }
 
 /* ================================================================== *

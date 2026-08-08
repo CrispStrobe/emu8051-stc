@@ -938,6 +938,8 @@ static void test_sfr_validation(void) {
     CHECK(!stc12_is_valid_sfr(0xAA), "SFR invalid: 0xAA (WKTCL on STC15)");
 }
 
+static void test_stc15_timer2(void);
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
 
@@ -964,7 +966,55 @@ int main(int argc, char **argv) {
 
     test_stc15_adrj();
     test_sfr_validation();
+    test_stc15_timer2();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
+}
+
+/* ================================================================== *
+ * Test 18: STC15 Timer 2                                              *
+ * ================================================================== */
+static void test_stc15_timer2(void) {
+    printf("\n--- test_stc15_timer2 ---\n");
+    setup();
+    stc12_set_part(&stc, PART_STC15);
+
+    /* Set T2R=1 (AUXR bit 4), T2x12=1 (AUXR bit 2) for 1T mode */
+    cpu.mSFR[STC_REG_AUXR] = 0x14; /* T2R + T2x12 */
+    cpu.mSFR[STC_REG_T2L] = 0xFC;
+    cpu.mSFR[STC_REG_T2H] = 0xFF;
+
+    /* In 1T mode, Timer 2 increments every osc clock.
+     * From 0xFFFC, overflow after 4 ticks. */
+    for (int i = 0; i < 3; i++) stc12_tick(&cpu, &stc);
+    uint16_t t2 = cpu.mSFR[STC_REG_T2L] | (cpu.mSFR[STC_REG_T2H] << 8);
+    CHECK(t2 == 0xFFFF, "STC15 T2: 0xFFFC + 3 = 0xFFFF");
+
+    stc12_tick(&cpu, &stc);
+    t2 = cpu.mSFR[STC_REG_T2L] | (cpu.mSFR[STC_REG_T2H] << 8);
+    CHECK(t2 == 0x0000, "STC15 T2: overflow wraps to 0x0000");
+
+    /* Test 12T mode */
+    cpu.mSFR[STC_REG_AUXR] = 0x10; /* T2R, no T2x12 (12T mode) */
+    cpu.mSFR[STC_REG_T2L] = 0x00;
+    cpu.mSFR[STC_REG_T2H] = 0x00;
+    stc.brt_prescaler = 0;
+
+    for (int i = 0; i < 12; i++) stc12_tick(&cpu, &stc);
+    t2 = cpu.mSFR[STC_REG_T2L] | (cpu.mSFR[STC_REG_T2H] << 8);
+    CHECK(t2 == 1, "STC15 T2: 12T mode, 12 ticks = count 1");
+
+    /* Timer 2 should not run on STC12 */
+    setup(); /* resets to STC12 */
+    cpu.mSFR[STC_REG_AUXR] = 0x14; /* same AUXR value */
+    cpu.mSFR[STC_REG_T2L] = 0x00;
+    cpu.mSFR[STC_REG_T2H] = 0x00;
+    for (int i = 0; i < 20; i++) stc12_tick(&cpu, &stc);
+    t2 = cpu.mSFR[STC_REG_T2L] | (cpu.mSFR[STC_REG_T2H] << 8);
+    /* On STC12, AUXR.4 = BRTR (enables BRT, not Timer 2) */
+    /* T2L/T2H don't exist on STC12 so they shouldn't change */
+    CHECK(t2 == 0, "STC12: Timer 2 registers unchanged (not an STC15)");
+
+    teardown();
 }
