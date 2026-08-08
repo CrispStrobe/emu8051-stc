@@ -33,6 +33,10 @@ instruction at a time from reset with interrupts masked.
 | `06-vars` | 500 | **500/500 identical** |
 | `07-repeat` | 500 | **500/500 identical** |
 | `05-timer-1t` | 500 | **500/500 identical** |
+| `08-procedure` | 500 | **500/500 identical** |
+| `13-nested-if` | 500 | **500/500 identical** |
+| `16-fast-toggle` | 500 | **500/500 identical** |
+| `18-stc15-adc` | 500 | **500/500 identical** |
 
 Reproduced using ucsim-stc's `tests/rung3_step_masked.sh` harness.
 This is the first rung that tests whether the two implementations
