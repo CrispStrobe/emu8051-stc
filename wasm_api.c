@@ -338,6 +338,39 @@ void emu_set_board_callbacks(
 }
 
 /* ------------------------------------------------------------------ *
+ * Serial port                                                         *
+ * ------------------------------------------------------------------ */
+
+/* Set serial TX callback (JS function pointer via addFunction) */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_serial_callback(stc12_serial_tx_callback cb) {
+    stc12_set_serial_callback(&stc, cb, NULL);
+}
+
+/* Write a byte to the serial receive buffer (simulates keyboard input) */
+EMSCRIPTEN_KEEPALIVE
+void emu_serial_write(uint8_t byte) {
+    stc12_serial_rx(&cpu, &stc, byte);
+}
+
+/* Read the serial output buffer (returns pointer, read via HEAPU8) */
+EMSCRIPTEN_KEEPALIVE
+int emu_serial_read_buf(void) {
+    return (int)(uintptr_t)cpu.serial_out;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int emu_serial_read_idx(void) {
+    return cpu.serial_out_idx;
+}
+
+/* Get interrupt state (for interrupt viewer) */
+EMSCRIPTEN_KEEPALIVE
+int emu_get_interrupt_active(void) {
+    return cpu.mInterruptActive;
+}
+
+/* ------------------------------------------------------------------ *
  * Boundary D — debug control (DEBUG-CONTROL-MODEL.md §7)              *
  * ------------------------------------------------------------------ */
 

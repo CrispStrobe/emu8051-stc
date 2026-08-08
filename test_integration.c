@@ -939,6 +939,8 @@ static void test_sfr_validation(void) {
 }
 
 static void test_stc15_timer2(void);
+static void test_serial_tx(void);
+static void test_serial_rx(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -967,6 +969,8 @@ int main(int argc, char **argv) {
     test_stc15_adrj();
     test_sfr_validation();
     test_stc15_timer2();
+    test_serial_tx();
+    test_serial_rx();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1015,6 +1019,54 @@ static void test_stc15_timer2(void) {
     /* On STC12, AUXR.4 = BRTR (enables BRT, not Timer 2) */
     /* T2L/T2H don't exist on STC12 so they shouldn't change */
     CHECK(t2 == 0, "STC12: Timer 2 registers unchanged (not an STC15)");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 19: Serial TX via SBUF write                                   *
+ * ================================================================== */
+static int serial_tx_count = 0;
+static uint8_t serial_tx_last = 0;
+
+static void test_serial_cb(uint8_t byte, void *ud) {
+    (void)ud;
+    serial_tx_count++;
+    serial_tx_last = byte;
+}
+
+static void test_serial_tx(void) {
+    printf("\n--- test_serial_tx ---\n");
+    setup();
+
+    serial_tx_count = 0;
+    stc12_set_serial_callback(&stc, test_serial_cb, NULL);
+
+    /* Program: MOV SBUF,#41h (write 'A' to serial) */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x99; cpu.mCodeMem[2] = 0x41;
+    cpu.mCodeMem[3] = 0x80; cpu.mCodeMem[4] = 0xFE;
+
+    run_clocks(20);
+
+    CHECK(serial_tx_count == 1, "Serial TX: callback fired once");
+    CHECK(serial_tx_last == 0x41, "Serial TX: byte == 'A' (0x41)");
+    CHECK(cpu.mSFR[REG_SCON] & SCONMASK_TI, "Serial TX: TI flag set");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 20: Serial RX                                                  *
+ * ================================================================== */
+static void test_serial_rx(void) {
+    printf("\n--- test_serial_rx ---\n");
+    setup();
+
+    /* Inject a byte */
+    stc12_serial_rx(&cpu, &stc, 0x42); /* 'B' */
+
+    CHECK(cpu.mSFR[REG_SBUF] == 0x42, "Serial RX: SBUF == 'B' (0x42)");
+    CHECK(cpu.mSFR[REG_SCON] & SCONMASK_RI, "Serial RX: RI flag set");
 
     teardown();
 }

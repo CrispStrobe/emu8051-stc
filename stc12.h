@@ -248,6 +248,9 @@ typedef double (*stc12_read_analog_callback)(int port, int bit,
 /* Callback: time has advanced. t_ns = nanoseconds since reset. */
 typedef void (*stc12_advance_callback)(uint64_t t_ns, void *user_data);
 
+/* Callback: a byte was transmitted on the serial port. */
+typedef void (*stc12_serial_tx_callback)(uint8_t byte, void *user_data);
+
 /* ------------------------------------------------------------------ *
  * STC12 peripheral state — extends em8051                             *
  * ------------------------------------------------------------------ */
@@ -291,6 +294,7 @@ struct stc12_state
     stc12_read_pin_callback    on_read_pin;
     stc12_read_analog_callback on_read_analog;
     stc12_advance_callback     on_advance;
+    stc12_serial_tx_callback   on_serial_tx;
     void                      *board_user_data;
 
     /* Time tracking */
@@ -327,6 +331,14 @@ bool stc12_is_valid_sfr(uint8_t addr);
 
 /* Set the part identity. Call before stc12_init or after reset. */
 void stc12_set_part(struct stc12_state *aState, uint8_t part_id);
+
+/* Serial port: write a byte into the receive buffer (simulates RX).
+ * Sets RI in SCON and copies the byte to SBUF for the firmware to read. */
+void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte);
+
+/* Set the serial TX callback. */
+void stc12_set_serial_callback(struct stc12_state *aState,
+                                stc12_serial_tx_callback cb, void *user_data);
 
 /* ------------------------------------------------------------------ *
  * Boundary A API                                                      *

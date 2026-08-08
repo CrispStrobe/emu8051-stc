@@ -633,6 +633,8 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
  * Initialization                                                      *
  * ================================================================== */
 
+static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister);
+
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
     /* Preserve board callbacks across init (they're set before first reset) */
@@ -707,6 +709,9 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     /* ADC read/write callbacks */
     aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
     aCPU->sfrwrite[STC_REG_ADC_CONTR] = sfr_write_adc_contr;
+
+    /* Serial port: intercept SBUF writes for instant TX */
+    aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
 }
 
 /* ================================================================== *
@@ -793,4 +798,64 @@ bool stc12_is_valid_sfr(uint8_t addr)
 void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
 {
     aState->part_id = part_id;
+}
+
+/* ================================================================== *
+ * Serial port (UART1)                                                 *
+ * ================================================================== */
+
+/* SFR write callback for SBUF — firmware is transmitting a byte */
+static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    if (!g_stc) return;
+
+    uint8_t byte = aCPU->mSFR[REG_SBUF];
+
+    /* In mode 1 (8-bit UART, the common case), writing SBUF starts TX.
+     * For simplicity, we complete the transmission immediately rather
+     * than bit-banging through Timer 1 baud rate. This is functionally
+     * correct: the byte appears in the output, TI is set, and the
+     * serial interrupt fires if enabled.
+     *
+     * The upstream serial_tx does bit-by-bit clocking through Timer 1,
+     * which we bypassed with skip_timers. This instant-complete model
+     * is simpler and sufficient for printf-style output. */
+
+    /* Store in the visual buffer (upstream feature) */
+    aCPU->serial_out[aCPU->serial_out_idx] = byte;
+    aCPU->serial_out_idx = (aCPU->serial_out_idx + 1) % sizeof(aCPU->serial_out);
+
+    /* Set TI (transmit interrupt flag) */
+    aCPU->mSFR[REG_SCON] |= SCONMASK_TI;
+
+    /* Trigger serial interrupt if enabled */
+    if (aCPU->mSFR[REG_IE] & IEMASK_ES)
+        aCPU->serial_interrupt_trigger = true;
+
+    /* Call the TX callback */
+    if (g_stc->on_serial_tx)
+        g_stc->on_serial_tx(byte, g_stc->board_user_data);
+}
+
+void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
+{
+    (void)aState;
+    /* Place byte in SBUF for firmware to read */
+    aCPU->mSFR[REG_SBUF] = byte;
+
+    /* Set RI (receive interrupt flag) */
+    aCPU->mSFR[REG_SCON] |= SCONMASK_RI;
+
+    /* Trigger serial interrupt if enabled */
+    if (aCPU->mSFR[REG_IE] & IEMASK_ES)
+        aCPU->serial_interrupt_trigger = true;
+}
+
+void stc12_set_serial_callback(struct stc12_state *aState,
+                                stc12_serial_tx_callback cb, void *user_data)
+{
+    aState->on_serial_tx = cb;
+    /* user_data is shared with board callbacks — fine for single-instance use */
+    (void)user_data;
 }
