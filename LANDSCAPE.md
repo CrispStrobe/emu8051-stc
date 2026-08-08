@@ -28,16 +28,18 @@
 
 ## What we lack
 
-| Feature | Who has it | Priority | Effort |
-|---------|-----------|----------|--------|
-| UART/serial simulation | µCsim, EdSim51, Keil | Medium | ~200 lines |
-| Visual debugging UI | EdSim51, MCU 8051 IDE | Low (front-end job) | N/A |
-| GDB stub | avr8js | Low | ~300 lines |
-| Built-in assembler | EdSim51, MCU 8051 IDE | None (SDCC exists) | N/A |
-| Oscilloscope / logic analyzer | Proteus, PICSimLab | Nice-to-have | Board layer |
-| Interrupt priority visualization | MCU 8051 IDE | Low | UI only |
-| Code coverage / profiling | MCU 8051 IDE, Keil | **Done** (PC histogram) | ✓ |
-| 8052 Timer 2 | µCsim | Low | ~50 lines |
+| Feature | Who has it | Status |
+|---------|-----------|--------|
+| UART/serial simulation | µCsim, EdSim51, Keil | **Done** (TX callback + RX inject) |
+| Code coverage / profiling | MCU 8051 IDE, Keil | **Done** (PC histogram) |
+| GDB stub | avr8js | **Done** (gdb-stub.mjs, ~250 lines) |
+| Watchdog timer | µCsim, Keil | **Done** (WDT_CONTR 0xC1) |
+| Pin history / waveform data | Proteus, PICSimLab | **Done** (ring buffer, WASM exported) |
+| Interrupt state query | MCU 8051 IDE | **Done** (emu_get_interrupt_active) |
+| Visual debugging UI | EdSim51, MCU 8051 IDE | Front-end job (data exported) |
+| Oscilloscope / logic analyzer | Proteus, PICSimLab | Board layer (pin callbacks done) |
+| Built-in assembler | EdSim51, MCU 8051 IDE | Not needed (SDCC exists) |
+| 8052 Timer 2 | µCsim | Not started (~50 lines) |
 
 ## Architecture advantage
 
