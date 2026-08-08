@@ -632,7 +632,19 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
             if (counter == compare) {
                 aCPU->mSFR[STC_REG_CCON] |= ccf_mask;
                 if (ccapm & CCAPM_TOG) {
-                    /* Toggle output — we'd toggle the CCPn pin here */
+                    /* Toggle CCP pin. Default: CCP0=P1.3, CCP1=P1.4.
+                     * With AUXR1.PCA_P4: CCP0=P4.2, CCP1=P4.3. */
+                    static const uint8_t port_regs[] = {
+                        REG_P0, REG_P1, REG_P2, REG_P3,
+                        STC_REG_P4, STC_REG_P5
+                    };
+                    int pin_port = 1, pin_bit = (mod == 0) ? 3 : 4;
+                    if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
+                        pin_port = 4;
+                        pin_bit = (mod == 0) ? 2 : 3;
+                    }
+                    aCPU->mSFR[port_regs[pin_port]] ^= (1 << pin_bit);
+                    emit_pin_changes(aCPU, st, pin_port);
                 }
             }
         }
@@ -730,6 +742,7 @@ static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister);
 static void sfr_write_s2buf(struct em8051 *aCPU, uint8_t aRegister);
 static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister);
 static void sfr_write_spstat(struct em8051 *aCPU, uint8_t aRegister);
+static void sfr_write_auxr1(struct em8051 *aCPU, uint8_t aRegister);
 
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
@@ -814,6 +827,7 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrwrite[STC_REG_S2BUF] = sfr_write_s2buf;
     aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;
     aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;
+    aCPU->sfrwrite[STC_REG_AUXR1] = sfr_write_auxr1;
 }
 
 /* ================================================================== *
@@ -1022,4 +1036,28 @@ static void sfr_write_spstat(struct em8051 *aCPU, uint8_t aRegister)
     /* Writing 1 to SPIF clears it, writing 1 to WCOL clears it */
     if (val & SPSTAT_SPIF) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_SPIF;
     if (val & SPSTAT_WCOL) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_WCOL;
+}
+
+/* ================================================================== *
+ * Dual DPTR — AUXR1.DPS (bit 0) selects DPTR0 or DPTR1               *
+ * ================================================================== */
+
+static void sfr_write_auxr1(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    if (!g_stc) return;
+
+    uint8_t dps = aCPU->mSFR[STC_REG_AUXR1] & AUXR1_DPS;
+    uint8_t old_dps = g_stc->last_dps;
+
+    if (dps != old_dps) {
+        /* DPS changed: swap active DPTR with stored one */
+        uint8_t tmp_l = aCPU->mSFR[REG_DPL];
+        uint8_t tmp_h = aCPU->mSFR[REG_DPH];
+        aCPU->mSFR[REG_DPL] = g_stc->dptr1_l;
+        aCPU->mSFR[REG_DPH] = g_stc->dptr1_h;
+        g_stc->dptr1_l = tmp_l;
+        g_stc->dptr1_h = tmp_h;
+        g_stc->last_dps = dps;
+    }
 }

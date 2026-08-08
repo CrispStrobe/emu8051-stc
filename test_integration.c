@@ -944,6 +944,8 @@ static void test_pwm_polarity(void);
 static void test_watchdog(void);
 static void test_uart2(void);
 static void test_spi(void);
+static void test_dual_dptr(void);
+static void test_pca_toggle(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -981,6 +983,8 @@ int main(int argc, char **argv) {
     test_watchdog();
     test_uart2();
     test_spi();
+    test_dual_dptr();
+    test_pca_toggle();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1278,6 +1282,76 @@ static void test_spi(void) {
     cpu.mSFR[STC_REG_SPDAT] = 0x55;
     cpu.sfrwrite[STC_REG_SPDAT](&cpu, STC_REG_SPDAT + 0x80);
     CHECK(!(cpu.mSFR[STC_REG_SPSTAT] & 0x80), "SPI: SPIF not set when disabled");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 26: Dual DPTR (AUXR1.DPS)                                     *
+ * ================================================================== */
+static void test_dual_dptr(void) {
+    printf("\n--- test_dual_dptr ---\n");
+    setup();
+
+    /* Set DPTR0 = 0x1234 */
+    cpu.mSFR[REG_DPL] = 0x34;
+    cpu.mSFR[REG_DPH] = 0x12;
+
+    /* Switch to DPTR1 (DPS=1) */
+    cpu.mSFR[STC_REG_AUXR1] = AUXR1_DPS;
+    cpu.sfrwrite[STC_REG_AUXR1](&cpu, STC_REG_AUXR1 + 0x80);
+
+    /* DPTR should now show DPTR1 (initially 0x0000) */
+    CHECK(cpu.mSFR[REG_DPL] == 0x00, "Dual DPTR: DPTR1 DPL=00 after switch");
+    CHECK(cpu.mSFR[REG_DPH] == 0x00, "Dual DPTR: DPTR1 DPH=00 after switch");
+
+    /* Set DPTR1 = 0x5678 */
+    cpu.mSFR[REG_DPL] = 0x78;
+    cpu.mSFR[REG_DPH] = 0x56;
+
+    /* Switch back to DPTR0 (DPS=0) */
+    cpu.mSFR[STC_REG_AUXR1] = 0x00;
+    cpu.sfrwrite[STC_REG_AUXR1](&cpu, STC_REG_AUXR1 + 0x80);
+
+    /* Should see DPTR0 = 0x1234 again */
+    CHECK(cpu.mSFR[REG_DPL] == 0x34, "Dual DPTR: DPTR0 DPL=34 restored");
+    CHECK(cpu.mSFR[REG_DPH] == 0x12, "Dual DPTR: DPTR0 DPH=12 restored");
+
+    /* Switch to DPTR1 again — should see 0x5678 */
+    cpu.mSFR[STC_REG_AUXR1] = AUXR1_DPS;
+    cpu.sfrwrite[STC_REG_AUXR1](&cpu, STC_REG_AUXR1 + 0x80);
+    CHECK(cpu.mSFR[REG_DPL] == 0x78, "Dual DPTR: DPTR1 DPL=78 preserved");
+    CHECK(cpu.mSFR[REG_DPH] == 0x56, "Dual DPTR: DPTR1 DPH=56 preserved");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 27: PCA toggle output (buzzer frequency)                       *
+ * ================================================================== */
+static void test_pca_toggle(void) {
+    printf("\n--- test_pca_toggle ---\n");
+    setup();
+
+    /* PCA module 0 in compare+toggle mode, SYSclk clock */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = 0x08; /* CPS=100 (SYSclk) */
+    cpu.mSFR[STC_REG_CCAPM0] = CCAPM_ECOM | CCAPM_MAT | CCAPM_TOG; /* 0x4C */
+    cpu.mSFR[STC_REG_CCAP0L] = 0x10;
+    cpu.mSFR[STC_REG_CCAP0H] = 0x00; /* compare at counter = 0x0010 */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    /* P1.3 should be the CCP0 pin. Record initial state. */
+    uint8_t p1_before = cpu.mSFR[REG_P1] & 0x08;
+
+    /* Run 16 PCA ticks → counter = 0x0010 → match → toggle P1.3 */
+    run_clocks(16);
+    uint8_t p1_after = cpu.mSFR[REG_P1] & 0x08;
+
+    CHECK(p1_before != p1_after, "PCA toggle: P1.3 toggled on compare match");
+    CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF0, "PCA toggle: CCF0 set on match");
 
     teardown();
 }

@@ -276,6 +276,11 @@ struct stc12_state
     uint16_t adc_countdown;     /* osc clocks remaining until conversion done */
     uint16_t adc_input[8];      /* external analog values, 0-1023 (10-bit) */
 
+    /* Dual DPTR: DPTR1 stored here, swapped with DPL/DPH on DPS change */
+    uint8_t dptr1_l;
+    uint8_t dptr1_h;
+    uint8_t last_dps;            /* last DPS value (to detect transitions) */
+
     /* Watchdog state */
     uint32_t wdt_counter;       /* counts up, overflows → reset */
     uint8_t  wdt_prescaler_cnt; /* sub-tick counter for prescaler */
