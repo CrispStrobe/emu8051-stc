@@ -69,6 +69,15 @@ EXPORTS := \
 	_emu_dbg_set_bw_ms_addr \
 	_emu_dbg_set_task \
 	_emu_dbg_set_on_halt \
+	_emu_dbg_profile_start \
+	_emu_dbg_profile_stop \
+	_emu_dbg_profile_get \
+	_emu_dbg_profile_total \
+	_emu_pin_history_enable \
+	_emu_pin_history_count \
+	_emu_pin_history_head \
+	_emu_pin_history_get \
+	_emu_pin_event_size \
 	_malloc \
 	_free
 

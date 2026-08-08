@@ -288,6 +288,18 @@ struct stc12_state
     uint32_t fosc;              /* oscillator frequency in Hz */
     double   vcc;               /* supply voltage, default 5.0 */
 
+    /* Pin history ring buffer for waveform rendering */
+    #define PIN_HISTORY_SIZE 4096
+    struct stc12_pin_event {
+        uint64_t t_ns;
+        uint8_t port;
+        uint8_t bit;
+        uint8_t mode;
+        uint8_t drive;
+    } *pin_history;              /* allocated on first use */
+    uint32_t pin_history_head;   /* next write position */
+    uint32_t pin_history_count;  /* total events written */
+
     /* Stage 0: part identity.
      * 0 = STC12C5A60S2, 1 = STC15F2K60S2. */
     #define PART_STC12  0

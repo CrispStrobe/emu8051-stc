@@ -2,11 +2,13 @@
 
 | File | Size | SHA-256 |
 |------|------|---------|
-| `emu8051.js` | 17 KB | `5a008a67644f1b1bb45716c4fa67ff12bbd9d9e369e6a23cac2b0b88f3582faf` |
-| `emu8051.wasm` | 55 KB | `f6bf6b3e214918537fce006514e3dfc64830a17515ad5993b19e9f8574f0bce9` |
+| `emu8051.js` | 18 KB | `5c70f2a0e3075ef28a998c13f1f3cb5e19a669cc5919db9735c35d3845b1cf25` |
+| `emu8051.wasm` | 57 KB | `44a8b855aeaa7f7ada2e43a47be22d67535030fc57c0d028cf082d692a06abe0` |
 
 **Emscripten:** emcc 6.0.6
-**Source commit:** `41ef8e8`
+**Source commit:** `9791323`
 **Build:** `make -f Makefile.wasm`
-**Licence:** MIT (emu8051 + STC12) + MIT/UIUC (Emscripten runtime). No GPL.
-See [THIRD-PARTY.md](../THIRD-PARTY.md).
+**Licence:** MIT (emu8051 + STC12) + MIT/UIUC (Emscripten). No GPL.
+
+Includes: UART TX/RX, profiling, pin history, PCA 8 clock sources,
+STC15 delta, boundary A/D, 36+ debug exports.

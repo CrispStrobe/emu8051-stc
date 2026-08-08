@@ -74,7 +74,20 @@ static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int po
             enum stc12_pin_mode mode = (enum stc12_pin_mode)
                 (((m1 >> bit) & 1) << 1 | ((m0 >> bit) & 1));
             bool drive = (latch >> bit) & 1;
-            st->on_pin_change(port, bit, mode, drive, st->board_user_data);
+            if (st->on_pin_change)
+                st->on_pin_change(port, bit, mode, drive, st->board_user_data);
+
+            /* Record in pin history ring buffer */
+            if (st->pin_history) {
+                uint32_t idx = st->pin_history_head % PIN_HISTORY_SIZE;
+                st->pin_history[idx].t_ns = stc12_get_time_ns(st);
+                st->pin_history[idx].port = port;
+                st->pin_history[idx].bit = bit;
+                st->pin_history[idx].mode = mode;
+                st->pin_history[idx].drive = drive;
+                st->pin_history_head++;
+                st->pin_history_count++;
+            }
         }
     }
     st->pin_drive_shadow[port] = latch;

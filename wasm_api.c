@@ -517,3 +517,48 @@ void emu_dbg_set_on_halt(dbg_on_halt_fn fn) {
     wasm_halt_cb = fn;
     dbg_set_on_halt(&dbg, fn, NULL);
 }
+
+/* ------------------------------------------------------------------ *
+ * Profiling (PC histogram)                                            *
+ * ------------------------------------------------------------------ */
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_profile_start(void) { dbg_profile_start(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+void emu_dbg_profile_stop(void) { dbg_profile_stop(&dbg); }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_dbg_profile_get(uint16_t addr) { return dbg_profile_get(&dbg, addr); }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_dbg_profile_total(void) { return dbg_profile_total(&dbg); }
+
+/* ------------------------------------------------------------------ *
+ * Pin history ring buffer                                             *
+ * ------------------------------------------------------------------ */
+
+EMSCRIPTEN_KEEPALIVE
+void emu_pin_history_enable(void) {
+    if (!stc.pin_history)
+        stc.pin_history = calloc(PIN_HISTORY_SIZE, sizeof(struct stc12_pin_event));
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_pin_history_count(void) { return stc.pin_history_count; }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_pin_history_head(void) { return stc.pin_history_head; }
+
+/* Returns pointer to event struct at index. Caller reads via HEAPU8/DataView. */
+EMSCRIPTEN_KEEPALIVE
+int emu_pin_history_get(uint32_t index) {
+    if (!stc.pin_history) return 0;
+    return (int)(uintptr_t)&stc.pin_history[index % PIN_HISTORY_SIZE];
+}
+
+/* Size of one pin_event struct (for JS to compute offsets) */
+EMSCRIPTEN_KEEPALIVE
+int emu_pin_event_size(void) {
+    return (int)sizeof(struct stc12_pin_event);
+}
