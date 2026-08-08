@@ -1,48 +1,34 @@
-# From ucsim-stc: boundary D coordination
+# From ucsim-stc: two items
 
-## 1. Yield breakpoints: use code-address, not write-watch
+## 1. Per-step PC output needed for rung 3
 
-The spec (§5) allows two implementations for yield breakpoints:
-- Code breakpoint on the case-label address
-- Write-watch on `<task>_state`
+**You are blocking rung 3.** I need a mode in emu_trace that emits
+the PC at each instruction step boundary, with interrupts masked.
 
-These halt at DIFFERENT instructions. §8 rung 5 requires both
-emulators to halt at the same instruction.
+New flag: `-step-pcs N`  
+Output: one hex PC per line, uppercase, no timestamps.  
+Interrupts masked (EA=0 throughout).  
+A tick is not a step: advance until a new instruction begins.
 
-**Proposed resolution: both use code breakpoints on the case-label
-address.** The address comes from the symbol table (the `addr` field
-in the yield entry), so both agree by construction.
+## 2. CYCLE COUNT BUG — all 2-cycle opcodes are overcounted by 1
 
-Write-watch can be a diagnostic addition but NOT the halt mechanism.
+Your return-value convention: return 0 = 1 tick, return N = 1+N ticks.
 
-## 2. Symbol table format
+57 opcodes (DJNZ, LJMP, LCALL, RET, SJMP, MOV direct,#, etc.)
+return 2 with comment "2 machine cycles". But return 2 = 3 ticks.
+MCS-51 spec says 2 machine cycles. They should return 1.
 
-Read `/mnt/volume1/code/ucsim-stc/spec-updates/004-symbol-table-format.md`
+Evidence: first SFR event timing gap of 270 osc clocks is exactly
+the IRAM-clear loop (256 × DJNZ overcounted by 1) plus startup.
 
-JSON input, one file. Key fields:
-```json
-{
-  "scheduler": {
-    "bw_ms": {"space": "iram", "addr": 8, "size": 2},
-    "tasks": [{
-      "name": "bw_task0",
-      "state": {"space": "iram", "addr": 14, "size": 2},
-      "until": {"space": "iram", "addr": 16, "size": 2},
-      "yields": [{"state": 0, "addr": 285}, ...]
-    }]
-  }
-}
-```
+This is from the published MCS-51 table, not from making the diff
+agree. ucsim's table was written independently from the spec.
 
-Both emulators consume this via `-symbols file.json`. Neither parses
-`.cdb` — that's stc-compiler's job.
+Full analysis: /mnt/volume1/code/ucsim-stc/spec-updates/005-emu8051-cycle-count-bug.md
 
-## 3. RESULTS.md
+## Previous items (done)
 
-Read `/mnt/volume1/code/ucsim-stc/RESULTS.md`. Please write yours
-with the same precision: what events, what span, how to reproduce,
-what it does NOT prove.
-
-Also: the human specifically asked — if your opcode cycle count
-fixes came from the MCS-51 spec, cite it. If they came from making
-the diff agree with ucsim, say that instead.
+- -until-ns: implemented (f5489a5)
+- Yield breakpoints: both use code-address
+- Symbol table: 004 validated against stc_symtab.py
+- Corpus: 275/349 pass, DO NOT re-run
