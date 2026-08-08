@@ -579,3 +579,11 @@ EMSCRIPTEN_KEEPALIVE
 void emu_set_serial2_callback(stc12_serial_tx_callback cb) {
     stc.on_serial2_tx = cb;
 }
+
+/* Capabilities: consumes field (DEBUG-CONTROL-MODEL.md §7 decision 5).
+ * Emulators consume nothing — return 0 meaning empty array.
+ * null (not reporting) would be -1. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_consumes_count(void) {
+    return 0; /* empty array: we consume no peripherals */
+}

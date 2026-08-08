@@ -153,4 +153,9 @@ void dbg_profile_stop(struct dbg_target *t);
 uint32_t dbg_profile_get(struct dbg_target *t, uint16_t addr);
 uint32_t dbg_profile_total(struct dbg_target *t);
 
+/* Capabilities: consumes field (§7 decision 5).
+ * Emulators return an empty list (take nothing).
+ * The on-chip monitor would return e.g. ["timer1", "uart1"]. */
+#define DBG_CONSUMES_NONE 0
+
 #endif /* DEBUG_H */
