@@ -175,21 +175,28 @@
 
 /* ------------------------------------------------------------------ *
  * CMOD bit masks (0xD9) — PCA mode                                    *
- * Bit layout (STC12C5A60S2, datasheet §11.2):                         *
- *   Bit 7: CIDL, Bits 6-3: unused, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF *
- * The STC12C5A60S2 has 2 CPS bits (not 3).                            *
+ * Bit layout (STC12-PERIPHERAL-MODEL.md §5.1, confirmed against        *
+ * datasheet §10):                                                      *
+ *   Bit 7: CIDL, Bits 6-4: unused, Bit 3: CPS2, Bit 2: CPS1,         *
+ *   Bit 1: CPS0, Bit 0: ECF                                           *
+ * Three CPS bits → 8 clock sources (§5.2).                             *
  * ------------------------------------------------------------------ */
 #define CMOD_CIDL        0x80
+#define CMOD_CPS2_BIT    0x08  /* bit 3 */
 #define CMOD_CPS1_BIT    0x04  /* bit 2 */
 #define CMOD_CPS0_BIT    0x02  /* bit 1 */
-#define CMOD_CPS_MASK   (CMOD_CPS1_BIT | CMOD_CPS0_BIT)  /* bits 2:1 */
+#define CMOD_CPS_MASK   (CMOD_CPS2_BIT | CMOD_CPS1_BIT | CMOD_CPS0_BIT)
 #define CMOD_ECF         0x01  /* bit 0 — PCA counter overflow interrupt enable */
 
-/* PCA counter clock sources (CPS1:0 in bits 2:1, extract with >> 1):
- * 0 = FOSC/12
- * 1 = FOSC/2
+/* PCA counter clock sources (CPS2:1:0 in bits 3:1, extract with >> 1):
+ * 0 = SYSclk/12
+ * 1 = SYSclk/2
  * 2 = Timer 0 overflow
- * 3 = ECI pin (P1.2 / P3.4 depending on PCA_P4) */
+ * 3 = ECI pin (P1.2 / P3.4 depending on PCA_P4)
+ * 4 = SYSclk
+ * 5 = SYSclk/4
+ * 6 = SYSclk/6
+ * 7 = SYSclk/8 */
 
 /* ------------------------------------------------------------------ *
  * CCAPMn bit masks — PCA module mode (0xDA, 0xDB)                     *

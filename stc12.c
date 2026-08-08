@@ -514,19 +514,19 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
     /* CIDL: if set, PCA stops in idle mode */
     /* (not checking idle mode for now) */
 
-    /* Determine clock source */
+    /* Determine clock source (CPS2:1:0, §5.2) */
     uint8_t cps = (aCPU->mSFR[STC_REG_CMOD] & CMOD_CPS_MASK) >> 1;
     bool do_tick = false;
 
     switch (cps) {
-    case 0: /* FOSC/12 */
+    case 0: /* SYSclk/12 */
         st->pca_prescaler++;
         if (st->pca_prescaler >= 12) {
             st->pca_prescaler = 0;
             do_tick = true;
         }
         break;
-    case 1: /* FOSC/2 */
+    case 1: /* SYSclk/2 */
         st->pca_prescaler++;
         if (st->pca_prescaler >= 2) {
             st->pca_prescaler = 0;
@@ -539,7 +539,31 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
             st->pca_t0_overflow_pending = false;
         }
         break;
-    case 3: /* ECI pin — not implemented, would need external clock */
+    case 3: /* ECI pin — not implemented */
+        break;
+    case 4: /* SYSclk (every osc clock) */
+        do_tick = true;
+        break;
+    case 5: /* SYSclk/4 */
+        st->pca_prescaler++;
+        if (st->pca_prescaler >= 4) {
+            st->pca_prescaler = 0;
+            do_tick = true;
+        }
+        break;
+    case 6: /* SYSclk/6 */
+        st->pca_prescaler++;
+        if (st->pca_prescaler >= 6) {
+            st->pca_prescaler = 0;
+            do_tick = true;
+        }
+        break;
+    case 7: /* SYSclk/8 */
+        st->pca_prescaler++;
+        if (st->pca_prescaler >= 8) {
+            st->pca_prescaler = 0;
+            do_tick = true;
+        }
         break;
     }
 
@@ -566,25 +590,26 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
         uint8_t ccf_mask  = mod == 0 ? CCON_CCF0 : CCON_CCF1;
 
         if (ccapm & CCAPM_PWM) {
-            /* 8-bit PWM mode */
-            /* Compare CL against CCAP0L. When CL < CCAP0L, output high;
-             * when CL >= CCAP0L, output low. (Or the inverse — datasheet
-             * §11.5 says output is low when CL < CCAPnL, high when >=)
-             * Actually: the PWM output goes low when CL rolls over from
-             * 0xFF to 0x00 (and CCAPnL is reloaded from CCAPnH), and goes
-             * high when CL matches CCAPnL.
+            /* 8-bit PWM mode (§5.3):
+             * Comparator: {EPCnL, CCAPnL} vs (0, CL)
+             *   (0,CL) <  {EPCnL,CCAPnL}  → output LOW
+             *   (0,CL) >= {EPCnL,CCAPnL}  → output HIGH
              *
-             * For now we just track the comparison; the actual pin output
-             * will be visible through port reads. */
+             * ⚠ LARGER compare value = LONGER low time.
+             * Duty-as-fraction-HIGH = (256 - {EPCnL,CCAPnL}) / 256
+             *
+             * Double buffering: on CL overflow (0xFF→0x00),
+             * {EPCnH, CCAPnH} reloads into {EPCnL, CCAPnL}.
+             * Software writes the NEXT duty to CCAPnH/EPCnH. */
 
-            /* Reload CCAPnL from CCAPnH on CL overflow */
+            /* Reload on CL overflow */
             if (aCPU->mSFR[STC_REG_CL] == 0x00) {
                 aCPU->mSFR[ccapl_reg] = aCPU->mSFR[ccaph_reg];
+                /* Also reload EPCnL from EPCnH (9-bit extension) */
+                uint8_t pwm = aCPU->mSFR[pwm_reg];
+                pwm = (pwm & ~0x01) | ((pwm >> 1) & 0x01); /* EPCnH → EPCnL */
+                aCPU->mSFR[pwm_reg] = pwm;
             }
-
-            /* The PWM output is: CL < CCAPnL ? 0 : 1
-             * (active low — matches STC12 convention) */
-            (void)pwm_reg; /* EPCnL/EPCnH bits for 9-bit — future */
         }
 
         if ((ccapm & CCAPM_ECOM) && (ccapm & CCAPM_MAT)) {
