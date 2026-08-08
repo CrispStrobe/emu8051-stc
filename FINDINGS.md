@@ -222,3 +222,42 @@ timestamps. The 49% startup timing difference is explained by accumulated
 
 **Status:** root cause determined. Cycle count corrections are tracked
 separately — they are an upstream accuracy improvement, not a STC12 issue.
+
+---
+
+## 6. Boundary D (DEBUG-CONTROL-MODEL.md) — review notes
+
+Read the spec on 2026-08-08. Three observations from the implementer's side.
+
+### 6.1 The tick convention matters for step('insn')
+
+§8 rung 3 requires both emulators to produce the same PC sequence under
+`step('insn')`. On emu8051, `tick()` may or may not advance PC depending
+on `mTickDelay`. A "step one instruction" must call `tick()` repeatedly
+until `mTickDelay` reaches 0 and a new instruction executes — not just
+call `tick()` once. The upstream `opt_step_instruction` flag does this
+correctly in the TUI. The WASM API must do the same.
+
+### 6.2 yield breakpoint implementation choice
+
+§5 says yield breakpoints can be implemented as either:
+- A code breakpoint on the `case` label's address, or
+- A write-watch on `<task>_state`.
+
+For emu8051-stc, write-watch is simpler: install an `sfrwrite` callback
+(for state stored in IRAM, use a memory-write hook) that checks the new
+value against the breakpoint's `state`. This halts at the *instruction
+that writes the state*, which is the `MOV <task>_state, #N` just before
+the `case` label, not at the `case` label itself.
+
+The code-breakpoint approach halts at the `case` label address, which is
+1-2 instructions later. **These are different PCs.** §8 rung 5 requires
+both emulators to agree. Recommending write-watch for both, since it
+does not require knowing the `case` label addresses (which are compiler-
+dependent and not in the `.cdb`).
+
+### 6.3 No issues found
+
+The spec is implementable as written. The capability matrix is accurate
+for our target. The `HaltReason` type is clean. `skewNs: 0n` is trivial
+for us. No changes recommended.

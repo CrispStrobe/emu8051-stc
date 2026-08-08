@@ -21,6 +21,7 @@ test_integration
 test_multi_when
 test_suite
 test_bench
+test_debug
 emu_trace
 
 # WASM build output
