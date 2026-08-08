@@ -19,7 +19,7 @@ CORE_SRC := core.c opcodes.c disasm.c stc12.c
 # Rules
 #####################################################################
 HEADERS := $(wildcard *.h)
-SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c, $(wildcard *.c))
+SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c trace.c, $(wildcard *.c))
 OBJ := $(SRC:.c=.o)
 
 %.o: %.c $(HEADERS)
@@ -49,6 +49,9 @@ test_adc: test_adc.c $(CORE_SRC) $(HEADERS)
 test_integration: test_integration.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_integration.c $(CORE_SRC)
 
+emu_trace: trace.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
+
 test: test_stc12 test_blink test_adc test_integration test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
@@ -66,7 +69,7 @@ test-wasm: build/emu8051.js
 	node test_wasm.mjs
 
 clean:
-	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration
+	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration emu_trace
 	$(MAKE) -C test_images clean
 
 .PHONY: clean all test test-wasm test-images

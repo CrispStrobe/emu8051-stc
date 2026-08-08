@@ -91,6 +91,40 @@ Full export list: `emu_init`, `emu_reset`, `emu_tick`, `emu_run`,
 `emu_get/set_xdata`, `emu_get/set_pc`, `emu_disasm`,
 `emu_set_adc_input`, `emu_set_port_input`, `emu_set_fosc`.
 
+### Boundary A (pin bus)
+
+For integration with the board layer (`CrispStrobe/bw-board`), use the push
+API instead of polling:
+
+```js
+// These replace polling emu_get_sfr(P1) every cycle:
+const getPinMode  = Module.cwrap('emu_get_pin_mode',  'number', ['number','number']);
+const getPinDrive = Module.cwrap('emu_get_pin_drive',  'number', ['number','number']);
+const setPinInput = Module.cwrap('emu_set_pin_input',  null,     ['number','number','number']);
+const setAdcVolt  = Module.cwrap('emu_set_adc_voltage', null,    ['number','number']); // volts, not counts
+const advanceTo   = Module.cwrap('emu_advance_to_ns',  'number', ['number','number']);
+const setVcc      = Module.cwrap('emu_set_vcc',         null,    ['number']);
+```
+
+In native C, register a `stc12_pin_callback` via `stc12_set_board_callbacks()`
+to receive `(port, bit, mode, driveHigh)` on every pin change — including mode
+register writes, not just port data writes. The board never calls the MCU; it
+only answers `readPin` and `readAnalog` when asked. See
+[simulation-contract.md](https://github.com/CrispStrobe/sb3-creator/blob/main/reference/simulation-contract.md).
+
+Differential trace
+------------------
+
+For cross-checking against the ucsim-stc fork:
+
+```bash
+make emu_trace
+./emu_trace -fosc 11059200 -cycles 1000000 firmware.hex > trace.tsv
+```
+
+Emits one tab-separated event per line: `PC`, `SFR`, `PIN`, `TF` (timer
+overflow), `ADC`. Format spec in `spec-updates/001-differential-trace-format.md`.
+
 Tests
 -----
 
@@ -99,7 +133,8 @@ Tests
 | `test_stc12` | 12 unit tests: Timer 0/1 in 1T and 12T modes, auto-reload overflow, all four port modes, ADC with both ADRJ settings |
 | `test_blink` | Loads `01-blink.hex`, verifies init (AUXR.T0x12=0, TMOD=mode1, P1M0 push-pull), confirms LED toggle after 150 ms |
 | `test_adc` | Loads `02-adc.hex`, verifies P1ASF routing + input mode, ADC conversion with known input, blink at correct rate |
-| `test_wasm.mjs` | 8 smoke tests for the WASM module: init, hex load, execution, SFR access, disassembly |
+| `test_integration` | 52 tests: button input with debounce, potentiometer ADC, 1T/12T synthetic, PCA (counter, compare, PWM, T0 clock), open-drain, ADC edge cases, 13-bit timer, hex loader |
+| `test_wasm.mjs` | 14 tests: init, hex load, execution, SFR access, disassembly, boundary A (pin mode/drive, advanceTo, ADC voltage) |
 
 Caveats
 -------
@@ -112,6 +147,21 @@ Caveats
 - **BRT** (independent baud rate timer) is stubbed — the counter runs but
   has no UART baud rate effect.
 - **SPI, UART2, watchdog** have SFR storage but no logic.
+- **ADC conversion times** (420/280/140/70 clocks) are single-source (datasheet
+  §10.5). No independent corroboration found. See `FINDINGS.md` §2.
+
+Spec updates
+------------
+
+Changes proposed to the shared peripheral spec live in `spec-updates/` as
+standalone documents (not edits to the read-only mirror at
+`/mnt/volume1/code/stc/docs/`). Current patches:
+
+- `001-differential-trace-format.md` — trace format for cross-checking
+  against ucsim-stc.
+
+See also `FINDINGS.md` for bugs found during implementation that the ucsim
+fork should check for.
 
 Licence
 -------
