@@ -459,10 +459,16 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
         }
         if (result > 1023) result = 1023;
 
-        /* AUXR1.ADRJ controls justification:
-         * ADRJ=0: ADC_RES = high 8 bits, ADC_RESL = low 2 bits (bits 1:0)
-         * ADRJ=1: ADC_RES = high 2 bits (bits 1:0), ADC_RESL = low 8 bits */
-        if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_ADRJ) {
+        /* ADRJ controls justification. Its location depends on the part:
+         * STC12: AUXR1 (0xA2) bit 2
+         * STC15: CLK_DIV (0x97) bit 5  (STC15-PERIPHERAL-MODEL.md §2.1) */
+        bool adrj;
+        if (st->part_id == PART_STC15)
+            adrj = aCPU->mSFR[STC_REG_CLK_DIV] & STC15_CLK_DIV_ADRJ;
+        else
+            adrj = aCPU->mSFR[STC_REG_AUXR1] & AUXR1_ADRJ;
+
+        if (adrj) {
             /* Left-justified (ADRJ=1): result right-aligned in 10 bits */
             aCPU->mSFR[STC_REG_ADC_RESL] = result & 0xFF;
             aCPU->mSFR[STC_REG_ADC_RES]  = (result >> 8) & 0x03;
@@ -765,4 +771,9 @@ bool stc12_is_valid_sfr(uint8_t addr)
         if (stc12_valid_sfr_set[i] == addr) return true;
     }
     return false;
+}
+
+void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
+{
+    aState->part_id = part_id;
 }

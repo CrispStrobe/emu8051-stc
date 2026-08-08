@@ -128,6 +128,17 @@
 #define AUXR1_ADRJ      0x04
 #define AUXR1_DPS       0x01
 
+/* STC15 delta: ADRJ moves from AUXR1 bit 2 to CLK_DIV (0x97) bit 5.
+ * STC15-PERIPHERAL-MODEL.md §2.1 */
+#define STC15_CLK_DIV_ADRJ  0x20  /* bit 5 of CLK_DIV (0x97) */
+
+/* STC15 Timer 2 registers */
+#define STC_REG_T2H      (0xD6 - 0x80)
+#define STC_REG_T2L      (0xD7 - 0x80)
+
+/* STC15 INT_CLKO (was WAKE_CLKO on STC12) */
+#define STC_REG_INT_CLKO (0x8F - 0x80)
+
 /* ------------------------------------------------------------------ *
  * ADC_CONTR bit masks (0xBC)                                          *
  * Bit layout: ADC_POWER SPEED1 SPEED0 ADC_FLAG ADC_START CHS2 CHS1 CHS0 *
@@ -268,7 +279,9 @@ struct stc12_state
     double   vcc;               /* supply voltage, default 5.0 */
 
     /* Stage 0: part identity.
-     * 0 = STC12C5A60S2 (default), 1 = STC15F2K60S2 (future). */
+     * 0 = STC12C5A60S2, 1 = STC15F2K60S2. */
+    #define PART_STC12  0
+    #define PART_STC15  1
     uint8_t  part_id;
     /* Count of accesses to SFRs not modelled for this part */
     uint32_t unmodelled_sfr_accesses;
@@ -311,6 +324,9 @@ void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);
 
 /* Stage 0: check if an SFR address is valid for the declared part. */
 bool stc12_is_valid_sfr(uint8_t addr);
+
+/* Set the part identity. Call before stc12_init or after reset. */
+void stc12_set_part(struct stc12_state *aState, uint8_t part_id);
 
 /* ------------------------------------------------------------------ *
  * Boundary A API                                                      *
