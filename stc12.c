@@ -41,23 +41,6 @@ static struct stc12_state *g_stc = NULL;
  * Boundary A — pin change detection and board callbacks                *
  * ================================================================== */
 
-/* Get the pin mode for a single bit of a port */
-static enum stc12_pin_mode get_pin_mode(struct em8051 *aCPU, int port, int bit)
-{
-    uint8_t m1, m0;
-    static const uint8_t m1_regs[] = {
-        STC_REG_P0M1, STC_REG_P1M1, STC_REG_P2M1,
-        STC_REG_P3M1, STC_REG_P4M1, STC_REG_P5M1
-    };
-    static const uint8_t m0_regs[] = {
-        STC_REG_P0M0, STC_REG_P1M0, STC_REG_P2M0,
-        STC_REG_P3M0, STC_REG_P4M0, STC_REG_P5M0
-    };
-    m1 = aCPU->mSFR[m1_regs[port]];
-    m0 = aCPU->mSFR[m0_regs[port]];
-    return (enum stc12_pin_mode)(((m1 >> bit) & 1) << 1 | ((m0 >> bit) & 1));
-}
-
 /* Emit setPin callbacks for any pins whose mode or drive changed */
 static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int port)
 {
@@ -66,30 +49,37 @@ static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int po
     static const uint8_t port_regs[] = {
         REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5
     };
+    static const uint8_t m1_regs[] = {
+        STC_REG_P0M1, STC_REG_P1M1, STC_REG_P2M1,
+        STC_REG_P3M1, STC_REG_P4M1, STC_REG_P5M1
+    };
+    static const uint8_t m0_regs[] = {
+        STC_REG_P0M0, STC_REG_P1M0, STC_REG_P2M0,
+        STC_REG_P3M0, STC_REG_P4M0, STC_REG_P5M0
+    };
     uint8_t latch = aCPU->mSFR[port_regs[port]];
+    uint8_t m1 = aCPU->mSFR[m1_regs[port]];
+    uint8_t m0 = aCPU->mSFR[m0_regs[port]];
+
+    /* Check each pin for mode or drive changes */
+    uint8_t drive_changed = latch ^ st->pin_drive_shadow[port];
+    uint8_t m1_changed = m1 ^ st->pin_m1_shadow[port];
+    uint8_t m0_changed = m0 ^ st->pin_m0_shadow[port];
+    uint8_t any_changed = drive_changed | m1_changed | m0_changed;
+
+    if (!any_changed) return;
 
     for (int bit = 0; bit < 8; bit++) {
-        enum stc12_pin_mode mode = get_pin_mode(aCPU, port, bit);
-        bool drive = (latch >> bit) & 1;
-
-        /* Compare to shadow */
-        enum stc12_pin_mode old_mode = (enum stc12_pin_mode)
-            ((st->pin_mode_shadow[port] >> (bit * 2)) & 0x03);
-        /* pin_mode_shadow packs 2 bits per pin — but 8 pins * 2 bits = 16,
-         * doesn't fit in uint8_t. Use a different encoding. */
-        /* Actually let's just track mode and drive separately. */
-        bool old_drive = (st->pin_drive_shadow[port] >> bit) & 1;
-
-        /* We stored mode in pin_mode_shadow as a flat byte per port,
-         * which can't hold per-pin 2-bit values for 8 pins. Fix: compare
-         * against the full M1/M0 registers directly. */
-        (void)old_mode;
-
-        if (drive != old_drive || st->osc_clocks == 0) {
+        if (any_changed & (1 << bit)) {
+            enum stc12_pin_mode mode = (enum stc12_pin_mode)
+                (((m1 >> bit) & 1) << 1 | ((m0 >> bit) & 1));
+            bool drive = (latch >> bit) & 1;
             st->on_pin_change(port, bit, mode, drive, st->board_user_data);
         }
     }
     st->pin_drive_shadow[port] = latch;
+    st->pin_m1_shadow[port] = m1;
+    st->pin_m0_shadow[port] = m0;
 }
 
 /* SFR write callbacks for port data and mode registers */
@@ -110,8 +100,7 @@ static void sfr_write_port(struct em8051 *aCPU, uint8_t aRegister)
 
 static void sfr_write_port_mode(struct em8051 *aCPU, uint8_t aRegister)
 {
-    if (!g_stc || !g_stc->on_pin_change) return;
-    /* Mode register changed — emit changes for the affected port */
+    if (!g_stc) return;
     int port = -1;
     switch (aRegister) {
     case STC_REG_P0M0: case STC_REG_P0M1: port = 0; break;
@@ -121,17 +110,7 @@ static void sfr_write_port_mode(struct em8051 *aCPU, uint8_t aRegister)
     case STC_REG_P4M0: case STC_REG_P4M1: port = 4; break;
     case STC_REG_P5M0: case STC_REG_P5M1: port = 5; break;
     }
-    if (port >= 0) {
-        /* Mode changed = all pins on this port need re-emission */
-        for (int bit = 0; bit < 8; bit++) {
-            static const uint8_t port_regs[] = {
-                REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5
-            };
-            enum stc12_pin_mode mode = get_pin_mode(aCPU, port, bit);
-            bool drive = (aCPU->mSFR[port_regs[port]] >> bit) & 1;
-            g_stc->on_pin_change(port, bit, mode, drive, g_stc->board_user_data);
-        }
-    }
+    if (port >= 0) emit_pin_changes(aCPU, g_stc, port);
 }
 
 /* ================================================================== *

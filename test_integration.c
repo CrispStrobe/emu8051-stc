@@ -557,6 +557,106 @@ static void test_hex_loader(void) {
     teardown();
 }
 
+/* ================================================================== *
+ * Test 10: Boundary A pin-change callback                             *
+ * ================================================================== */
+static int cb_count = 0;
+static int cb_last_port, cb_last_bit;
+static enum stc12_pin_mode cb_last_mode;
+static bool cb_last_drive;
+
+static void test_pin_callback(int port, int bit,
+                              enum stc12_pin_mode mode,
+                              bool drive_high, void *ud)
+{
+    (void)ud;
+    cb_count++;
+    cb_last_port = port;
+    cb_last_bit = bit;
+    cb_last_mode = mode;
+    cb_last_drive = drive_high;
+}
+
+static void test_boundary_a_callbacks(void) {
+    printf("\n--- test_boundary_a_callbacks ---\n");
+    setup();
+
+    /* Register pin-change callback */
+    stc12_set_board_callbacks(&stc, test_pin_callback, NULL, NULL, NULL, NULL);
+    cb_count = 0;
+
+    /* Write P1 = 0xFE (bit 0 low, bits 1-7 unchanged at 0xFF).
+     * Should fire callback for bit 0 only (the one that changed). */
+    cpu.mSFR[REG_P1] = 0xFE;
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+
+    CHECK(cb_count == 1, "Boundary A: exactly 1 callback on 1-bit change");
+    CHECK(cb_last_port == 1, "Boundary A: callback port == 1");
+    CHECK(cb_last_bit == 0, "Boundary A: callback bit == 0 (changed pin)");
+    CHECK(cb_last_mode == PIN_QUASI, "Boundary A: mode == quasi (default)");
+    CHECK(cb_last_drive == false, "Boundary A: drive == false (bit 0 = 0)");
+
+    /* Now change mode to push-pull for P1.0 */
+    cb_count = 0;
+    cpu.mSFR[STC_REG_P1M0] = 0x01;
+    cpu.sfrwrite[STC_REG_P1M0](&cpu, STC_REG_P1M0);
+
+    CHECK(cb_count == 1, "Boundary A: 1 callback on 1-bit mode change");
+    CHECK(cb_last_bit == 0, "Boundary A: mode change on bit 0");
+    CHECK(cb_last_mode == PIN_PUSHPULL,
+          "Boundary A: mode == pushpull after P1M0 change");
+
+    /* Write P1 = 0xFF (all high) — should fire for bit 0 only (changed) */
+    cb_count = 0;
+    cpu.mSFR[REG_P1] = 0xFF;
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+
+    CHECK(cb_count == 1, "Boundary A: only changed pin fires callback");
+    CHECK(cb_last_drive == true, "Boundary A: drive == true after setting high");
+
+    /* No-change write should not fire */
+    cb_count = 0;
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+    CHECK(cb_count == 0, "Boundary A: no callback on no-change write");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 11: advanceTo nanosecond timing                                *
+ * ================================================================== */
+static void test_advance_to(void) {
+    printf("\n--- test_advance_to ---\n");
+    setup();
+    stc.fosc = 11059200;
+    stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / stc.fosc + 0.5);
+
+    /* Put a NOP loop at 0 */
+    cpu.mCodeMem[0] = 0x00; /* NOP */
+    cpu.mCodeMem[1] = 0x80; /* SJMP */
+    cpu.mCodeMem[2] = 0xFD; /* back to 0 */
+
+    /* Advance to 1 ms */
+    uint64_t target = 1000000; /* 1 ms in ns */
+    int executed = stc12_advance_to(&cpu, &stc, target);
+    uint64_t actual = stc12_get_time_ns(&stc);
+
+    CHECK(actual >= target, "advanceTo: reached target time");
+    CHECK(actual < target + 1000, "advanceTo: within 1 us of target");
+    CHECK(executed > 0, "advanceTo: executed instructions");
+    printf("  target=%llu actual=%llu instructions=%d\n",
+           (unsigned long long)target, (unsigned long long)actual, executed);
+
+    /* Advance to 10 ms */
+    target = 10000000;
+    executed = stc12_advance_to(&cpu, &stc, target);
+    actual = stc12_get_time_ns(&stc);
+    CHECK(actual >= target, "advanceTo: reached 10ms target");
+    CHECK(executed > 0, "advanceTo: more instructions executed");
+
+    teardown();
+}
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
 
@@ -573,6 +673,8 @@ int main(int argc, char **argv) {
     test_adc_edges();
     test_timer0_mode0();
     test_hex_loader();
+    test_boundary_a_callbacks();
+    test_advance_to();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;

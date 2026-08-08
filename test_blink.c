@@ -47,21 +47,6 @@ static void run_osc_clocks(int n) {
     }
 }
 
-/* Run until TF0 is set (timer 0 overflow), or give up after max_clocks. */
-static int run_until_tf0(int max_clocks) {
-    int clocks = 0;
-    /* Clear TF0 first */
-    cpu.mSFR[REG_TCON] &= ~TCONMASK_TF0;
-    while (clocks < max_clocks) {
-        tick(&cpu);
-        stc12_tick(&cpu, &stc);
-        clocks++;
-        /* The program polls TF0 in its delay loop, then clears it.
-         * We can't just check TF0 because the program clears it.
-         * Instead, let's just run for a known number of clocks. */
-    }
-    return clocks;
-}
 
 int main(int argc, char **argv) {
     if (argc < 2) {

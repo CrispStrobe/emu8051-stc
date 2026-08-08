@@ -296,7 +296,8 @@ struct stc12_state
     uint64_t ns_per_clock_x16;  /* (1e9 / fosc) * 16, fixed-point */
 
     /* Shadow of last-emitted pin state, for change detection */
-    uint8_t pin_mode_shadow[6];  /* per-pin mode nibble: 2 bits per pin packed */
+    uint8_t pin_m1_shadow[6];    /* last PxM1 value emitted per port */
+    uint8_t pin_m0_shadow[6];    /* last PxM0 value emitted per port */
     uint8_t pin_drive_shadow[6]; /* last latch value emitted per port */
 };
 
