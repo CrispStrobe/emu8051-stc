@@ -122,8 +122,9 @@ int main(int argc, char **argv) {
         stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / fosc + 0.5);
     cpu.skip_timers = true;
 
-    /* Install pin change callback for trace */
-    stc12_set_board_callbacks(&stc, trace_pin_change, NULL, NULL, NULL, NULL);
+    /* Install pin change callback for trace (not in step-pcs mode) */
+    if (step_pcs == 0)
+        stc12_set_board_callbacks(&stc, trace_pin_change, NULL, NULL, NULL, NULL);
 
     if (load_obj(&cpu, hexfile) != 0) {
         fprintf(stderr, "Failed to load %s\n", hexfile);
