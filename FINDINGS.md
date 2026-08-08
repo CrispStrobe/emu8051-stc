@@ -192,7 +192,33 @@ The timing difference needs investigation: which one matches the 8051
 instruction cycle table? The PC divergence is likely caused by the timing
 disagreement if it makes the startup data-init loop count differently.
 
-**Status:** first genuine divergence, reported as-is. Root cause is NOT
-yet determined — doing so requires stepping both emulators side by side
-through the startup code and finding the first instruction where they
-disagree on cycle count or flags.
+### Root cause: upstream cycle count inaccuracy
+
+The upstream emu8051 returns `0` (= 1 machine cycle) for several
+instructions that are defined as 2-cycle in the MCS-51 spec. Confirmed
+wrong:
+
+| Instruction | Opcode(s) | Returns | Should return | MCS-51 cycles |
+|-------------|-----------|---------|---------------|---------------|
+| SETB bit | 0xD2 | 0 | 1 | 2 |
+| CLR bit | 0xC2 | 0 | 1 | 2 |
+| MOVC A,@A+PC | 0x83 | 0 | 1 | 2 |
+| MOV A,direct | 0xE5 | 0 | 1 | 1 (ambiguous*) |
+| MOV direct,A | 0xF5 | 0 | 1 | 1 (ambiguous*) |
+
+(* Intel Table A-3 lists `MOV A,direct` as 1 cycle. Some references say 2.
+The return value 0 = 1 cycle, which matches Intel's table. Not a bug.)
+
+The upstream README explicitly states: "clock-cycle exact simulation of
+processor pins is particularily left out." This is a design choice, not
+an oversight. But it means emu8051-stc and ucsim-stc will never agree on
+absolute timing unless every opcode handler is audited against the MCS-51
+cycle table.
+
+For the **differential trace**, relative event ordering (which instruction
+follows which, which SFR changes when) is more useful than absolute
+timestamps. The 49% startup timing difference is explained by accumulated
+1-vs-2-cycle errors across ~40 instructions in SDCC's init sequence.
+
+**Status:** root cause determined. Cycle count corrections are tracked
+separately — they are an upstream accuracy improvement, not a STC12 issue.

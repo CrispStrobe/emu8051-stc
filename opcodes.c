@@ -805,7 +805,7 @@ static uint8_t movc_a_indir_a_pc(struct em8051 *aCPU)
     uint16_t address = PC + 1 + ACC;
     ACC = CODEMEM(address);
     PC++;
-    return 0;
+    return 1; /* MOVC = 2 machine cycles (MCS-51 spec) */
 }
 
 static uint8_t div_ab(struct em8051 *aCPU)
@@ -1202,7 +1202,7 @@ static uint8_t clr_bitaddr(struct em8051 *aCPU)
         aCPU->mLowerData[address] &= ~bitmask;
     }
     PC += 2;
-    return 0;
+    return 1; /* CLR bit = 2 machine cycles (MCS-51 spec) */
 }
 
 static uint8_t clr_c(struct em8051 *aCPU)
@@ -1226,7 +1226,7 @@ static uint8_t xch_a_mem(struct em8051 *aCPU)
     write_mem(aCPU, address, ACC);
     ACC = value;
     PC += 2;
-    return 0;
+    return 1; /* XCH A,direct = 2 machine cycles */
 }
 
 static uint8_t xch_a_indir_rx(struct em8051 *aCPU)
@@ -1259,7 +1259,7 @@ static uint8_t setb_bitaddr(struct em8051 *aCPU)
         // -- MCS(r) 51 Microcontroller Family User's Manual
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
-        address &= 0xf8;        
+        address &= 0xf8;
         aCPU->mSFR[address - 0x80] |= bitmask;
         if (aCPU->sfrwrite[address - 0x80])
             aCPU->sfrwrite[address - 0x80](aCPU, address);
@@ -1273,7 +1273,7 @@ static uint8_t setb_bitaddr(struct em8051 *aCPU)
         aCPU->mLowerData[address] |= bitmask;
     }
     PC += 2;
-    return 0;
+    return 1; /* SETB bit = 2 machine cycles (MCS-51 spec) */
 }
 
 static uint8_t setb_c(struct em8051 *aCPU)
