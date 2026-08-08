@@ -939,6 +939,7 @@ static void test_sfr_validation(void) {
 }
 
 static void test_stc15_timer2(void);
+static void test_pca_new_clocks(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -971,6 +972,7 @@ int main(int argc, char **argv) {
     test_stc15_timer2();
     test_serial_tx();
     test_serial_rx();
+    test_pca_new_clocks();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1067,6 +1069,53 @@ static void test_serial_rx(void) {
 
     CHECK(cpu.mSFR[REG_SBUF] == 0x42, "Serial RX: SBUF == 'B' (0x42)");
     CHECK(cpu.mSFR[REG_SCON] & SCONMASK_RI, "Serial RX: RI flag set");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 21: PCA new clock sources (SYSclk, /4, /6, /8)                *
+ * ================================================================== */
+static void test_pca_new_clocks(void) {
+    printf("\n--- test_pca_new_clocks ---\n");
+    setup();
+
+    /* CPS=100 (SYSclk) — PCA ticks every osc clock */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = 0x08; /* CPS2=1,CPS1=0,CPS0=0 → bits 3:1 = 100 */
+    cpu.mSFR[STC_REG_CL] = 0; cpu.mSFR[STC_REG_CH] = 0;
+    stc.pca_prescaler = 0;
+
+    run_clocks(10);
+    uint16_t pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 10, "PCA SYSclk: 10 clocks = 10 ticks");
+
+    /* CPS=101 (SYSclk/4) */
+    cpu.mSFR[STC_REG_CMOD] = 0x0A; /* bits 3:1 = 101 */
+    cpu.mSFR[STC_REG_CL] = 0; cpu.mSFR[STC_REG_CH] = 0;
+    stc.pca_prescaler = 0;
+
+    run_clocks(8);
+    pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 2, "PCA SYSclk/4: 8 clocks = 2 ticks");
+
+    /* CPS=110 (SYSclk/6) */
+    cpu.mSFR[STC_REG_CMOD] = 0x0C; /* bits 3:1 = 110 */
+    cpu.mSFR[STC_REG_CL] = 0; cpu.mSFR[STC_REG_CH] = 0;
+    stc.pca_prescaler = 0;
+
+    run_clocks(12);
+    pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 2, "PCA SYSclk/6: 12 clocks = 2 ticks");
+
+    /* CPS=111 (SYSclk/8) */
+    cpu.mSFR[STC_REG_CMOD] = 0x0E; /* bits 3:1 = 111 */
+    cpu.mSFR[STC_REG_CL] = 0; cpu.mSFR[STC_REG_CH] = 0;
+    stc.pca_prescaler = 0;
+
+    run_clocks(16);
+    pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 2, "PCA SYSclk/8: 16 clocks = 2 ticks");
 
     teardown();
 }
