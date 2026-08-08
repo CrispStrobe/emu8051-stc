@@ -35,3 +35,6 @@ build/
 
 # CLAUDE.md is gitignored by convention
 CLAUDE.md
+
+# Third-party firmware corpus (unlicensed, never commit)
+stc-research/
