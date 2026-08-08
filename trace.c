@@ -141,6 +141,9 @@ int main(int argc, char **argv) {
         bool ticked = tick(&cpu);
         stc12_tick(&cpu, &stc);
 
+        /* Snapshot ADC_CONTR before SFR shadow update (for ADC event detection) */
+        uint8_t old_adc_contr = sfr_shadow[STC_REG_ADC_CONTR];
+
         /* Detect SFR changes */
         for (unsigned i = 0; i < N_SFR_WATCH; i++) {
             uint8_t idx = sfr_watch[i] - 0x80;
@@ -164,9 +167,9 @@ int main(int argc, char **argv) {
         }
         last_tcon = new_tcon;
 
-        /* Detect ADC completion */
+        /* Detect ADC completion (use pre-update shadow) */
         if ((cpu.mSFR[STC_REG_ADC_CONTR] & ADC_FLAG) &&
-            !(sfr_shadow[STC_REG_ADC_CONTR] & ADC_FLAG)) {
+            !(old_adc_contr & ADC_FLAG)) {
             int ch = cpu.mSFR[STC_REG_ADC_CONTR] & ADC_CHS_MASK;
             uint16_t result;
             if (cpu.mSFR[STC_REG_AUXR1] & AUXR1_ADRJ) {
@@ -178,8 +181,6 @@ int main(int argc, char **argv) {
             }
             fprintf(trace_out, "%llu\tADC\t%d %d\n",
                     (unsigned long long)get_ns(), ch, result);
-            /* Update shadow so we don't re-emit */
-            sfr_shadow[STC_REG_ADC_CONTR] = cpu.mSFR[STC_REG_ADC_CONTR];
         }
 
         (void)ticked;

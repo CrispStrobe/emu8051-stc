@@ -589,7 +589,7 @@ static void test_boundary_a_callbacks(void) {
     /* Write P1 = 0xFE (bit 0 low, bits 1-7 unchanged at 0xFF).
      * Should fire callback for bit 0 only (the one that changed). */
     cpu.mSFR[REG_P1] = 0xFE;
-    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1 + 0x80);
 
     CHECK(cb_count == 1, "Boundary A: exactly 1 callback on 1-bit change");
     CHECK(cb_last_port == 1, "Boundary A: callback port == 1");
@@ -600,7 +600,7 @@ static void test_boundary_a_callbacks(void) {
     /* Now change mode to push-pull for P1.0 */
     cb_count = 0;
     cpu.mSFR[STC_REG_P1M0] = 0x01;
-    cpu.sfrwrite[STC_REG_P1M0](&cpu, STC_REG_P1M0);
+    cpu.sfrwrite[STC_REG_P1M0](&cpu, STC_REG_P1M0 + 0x80);
 
     CHECK(cb_count == 1, "Boundary A: 1 callback on 1-bit mode change");
     CHECK(cb_last_bit == 0, "Boundary A: mode change on bit 0");
@@ -610,14 +610,14 @@ static void test_boundary_a_callbacks(void) {
     /* Write P1 = 0xFF (all high) — should fire for bit 0 only (changed) */
     cb_count = 0;
     cpu.mSFR[REG_P1] = 0xFF;
-    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1 + 0x80);
 
     CHECK(cb_count == 1, "Boundary A: only changed pin fires callback");
     CHECK(cb_last_drive == true, "Boundary A: drive == true after setting high");
 
     /* No-change write should not fire */
     cb_count = 0;
-    cpu.sfrwrite[REG_P1](&cpu, REG_P1);
+    cpu.sfrwrite[REG_P1](&cpu, REG_P1 + 0x80);
     CHECK(cb_count == 0, "Boundary A: no callback on no-change write");
 
     teardown();

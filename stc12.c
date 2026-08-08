@@ -82,18 +82,19 @@ static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int po
     st->pin_m0_shadow[port] = m0;
 }
 
-/* SFR write callbacks for port data and mode registers */
+/* SFR write callbacks for port data and mode registers.
+ * aRegister is the full SFR address (0x80..0xFF), not the index. */
 static void sfr_write_port(struct em8051 *aCPU, uint8_t aRegister)
 {
     if (!g_stc) return;
     int port = -1;
     switch (aRegister) {
-    case REG_P0:      port = 0; break;
-    case REG_P1:      port = 1; break;
-    case REG_P2:      port = 2; break;
-    case REG_P3:      port = 3; break;
-    case STC_REG_P4:  port = 4; break;
-    case STC_REG_P5:  port = 5; break;
+    case 0x80:  port = 0; break;  /* P0 */
+    case 0x90:  port = 1; break;  /* P1 */
+    case 0xA0:  port = 2; break;  /* P2 */
+    case 0xB0:  port = 3; break;  /* P3 */
+    case 0xC0:  port = 4; break;  /* P4 */
+    case 0xC8:  port = 5; break;  /* P5 */
     }
     if (port >= 0) emit_pin_changes(aCPU, g_stc, port);
 }
@@ -103,12 +104,12 @@ static void sfr_write_port_mode(struct em8051 *aCPU, uint8_t aRegister)
     if (!g_stc) return;
     int port = -1;
     switch (aRegister) {
-    case STC_REG_P0M0: case STC_REG_P0M1: port = 0; break;
-    case STC_REG_P1M0: case STC_REG_P1M1: port = 1; break;
-    case STC_REG_P2M0: case STC_REG_P2M1: port = 2; break;
-    case STC_REG_P3M0: case STC_REG_P3M1: port = 3; break;
-    case STC_REG_P4M0: case STC_REG_P4M1: port = 4; break;
-    case STC_REG_P5M0: case STC_REG_P5M1: port = 5; break;
+    case 0x94: case 0x93: port = 0; break;  /* P0M0, P0M1 */
+    case 0x92: case 0x91: port = 1; break;  /* P1M0, P1M1 */
+    case 0x96: case 0x95: port = 2; break;  /* P2M0, P2M1 */
+    case 0xB2: case 0xB1: port = 3; break;  /* P3M0, P3M1 */
+    case 0xB4: case 0xB3: port = 4; break;  /* P4M0, P4M1 */
+    case 0xCA: case 0xC9: port = 5; break;  /* P5M0, P5M1 */
     }
     if (port >= 0) emit_pin_changes(aCPU, g_stc, port);
 }
