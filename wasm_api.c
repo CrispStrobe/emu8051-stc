@@ -568,3 +568,14 @@ EMSCRIPTEN_KEEPALIVE
 int emu_pin_event_size(void) {
     return (int)sizeof(struct stc12_pin_event);
 }
+
+/* UART2 */
+EMSCRIPTEN_KEEPALIVE
+void emu_serial2_write(uint8_t byte) {
+    stc12_serial2_rx(&cpu, &stc, byte);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void emu_set_serial2_callback(stc12_serial_tx_callback cb) {
+    stc.on_serial2_tx = cb;
+}

@@ -318,6 +318,7 @@ struct stc12_state
     stc12_read_analog_callback on_read_analog;
     stc12_advance_callback     on_advance;
     stc12_serial_tx_callback   on_serial_tx;
+    stc12_serial_tx_callback   on_serial2_tx;
     void                      *board_user_data;
 
     /* Time tracking */
@@ -362,6 +363,9 @@ void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t by
 /* Set the serial TX callback. */
 void stc12_set_serial_callback(struct stc12_state *aState,
                                 stc12_serial_tx_callback cb, void *user_data);
+
+/* UART2: same interface as UART1, different registers (S2CON/S2BUF). */
+void stc12_serial2_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte);
 
 /* ------------------------------------------------------------------ *
  * Boundary A API                                                      *

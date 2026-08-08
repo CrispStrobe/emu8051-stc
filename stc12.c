@@ -727,6 +727,9 @@ static void stc12_wdt_tick(struct em8051 *aCPU, struct stc12_state *st)
 }
 
 static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister);
+static void sfr_write_s2buf(struct em8051 *aCPU, uint8_t aRegister);
+static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister);
+static void sfr_write_spstat(struct em8051 *aCPU, uint8_t aRegister);
 
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
@@ -808,6 +811,9 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 
     /* Serial port: intercept SBUF writes for instant TX */
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
+    aCPU->sfrwrite[STC_REG_S2BUF] = sfr_write_s2buf;
+    aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;
+    aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;
 }
 
 /* ================================================================== *
@@ -955,4 +961,65 @@ void stc12_set_serial_callback(struct stc12_state *aState,
     aState->on_serial_tx = cb;
     /* user_data is shared with board callbacks — fine for single-instance use */
     (void)user_data;
+}
+
+/* ================================================================== *
+ * Serial port 2 (UART2) — S2CON (0x9A), S2BUF (0x9B)                 *
+ * ================================================================== */
+
+/* S2CON bit masks */
+#define S2CON_S2RI  0x01
+#define S2CON_S2TI  0x02
+
+static void sfr_write_s2buf(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    if (!g_stc) return;
+
+    uint8_t byte = aCPU->mSFR[STC_REG_S2BUF];
+
+    /* Set S2TI (transmit complete) */
+    aCPU->mSFR[STC_REG_S2CON] |= S2CON_S2TI;
+
+    /* Call the UART2 TX callback */
+    if (g_stc->on_serial2_tx)
+        g_stc->on_serial2_tx(byte, g_stc->board_user_data);
+}
+
+void stc12_serial2_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
+{
+    (void)aState;
+    aCPU->mSFR[STC_REG_S2BUF] = byte;
+    aCPU->mSFR[STC_REG_S2CON] |= S2CON_S2RI;
+}
+
+/* ================================================================== *
+ * SPI (minimal — flag dance only, no shift register)                  *
+ * ================================================================== */
+
+#define SPSTAT_SPIF  0x80
+#define SPSTAT_WCOL  0x40
+#define SPCTL_SPEN   0x40
+
+static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    if (!g_stc) return;
+
+    /* If SPI is enabled, complete the transfer immediately and set SPIF */
+    if (aCPU->mSFR[STC_REG_SPCTL] & SPCTL_SPEN) {
+        aCPU->mSFR[STC_REG_SPSTAT] |= SPSTAT_SPIF;
+        /* In a real chip, SPDAT would contain the received byte.
+         * Without an external device, it stays as written. */
+    }
+}
+
+/* SPSTAT write: writing 1 to SPIF or WCOL clears them */
+static void sfr_write_spstat(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;
+    uint8_t val = aCPU->mSFR[STC_REG_SPSTAT];
+    /* Writing 1 to SPIF clears it, writing 1 to WCOL clears it */
+    if (val & SPSTAT_SPIF) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_SPIF;
+    if (val & SPSTAT_WCOL) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_WCOL;
 }

@@ -942,6 +942,8 @@ static void test_stc15_timer2(void);
 static void test_pca_new_clocks(void);
 static void test_pwm_polarity(void);
 static void test_watchdog(void);
+static void test_uart2(void);
+static void test_spi(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -977,6 +979,8 @@ int main(int argc, char **argv) {
     test_pca_new_clocks();
     test_pwm_polarity();
     test_watchdog();
+    test_uart2();
+    test_spi();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1207,6 +1211,73 @@ static void test_watchdog(void) {
     cpu.mSFR[STC_REG_WDT_CONTR] = 0x00; /* disabled */
     run_clocks(100);
     CHECK(stc.wdt_counter == 0, "WDT: disabled → counter stays 0");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 24: UART2 TX/RX (S2CON/S2BUF)                                 *
+ * ================================================================== */
+static int serial2_tx_count = 0;
+static uint8_t serial2_tx_last = 0;
+
+static void test_serial2_cb(uint8_t byte, void *ud) {
+    (void)ud;
+    serial2_tx_count++;
+    serial2_tx_last = byte;
+}
+
+static void test_uart2(void) {
+    printf("\n--- test_uart2 ---\n");
+    setup();
+
+    serial2_tx_count = 0;
+    stc.on_serial2_tx = test_serial2_cb;
+
+    /* Program: MOV S2BUF,#43h (write 'C' to UART2) */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x9B; cpu.mCodeMem[2] = 0x43;
+    cpu.mCodeMem[3] = 0x80; cpu.mCodeMem[4] = 0xFE;
+
+    run_clocks(20);
+
+    CHECK(serial2_tx_count == 1, "UART2 TX: callback fired");
+    CHECK(serial2_tx_last == 0x43, "UART2 TX: byte == 'C' (0x43)");
+    CHECK(cpu.mSFR[STC_REG_S2CON] & 0x02, "UART2 TX: S2TI flag set");
+
+    /* UART2 RX */
+    stc12_serial2_rx(&cpu, &stc, 0x44); /* 'D' */
+    CHECK(cpu.mSFR[STC_REG_S2BUF] == 0x44, "UART2 RX: S2BUF == 'D'");
+    CHECK(cpu.mSFR[STC_REG_S2CON] & 0x01, "UART2 RX: S2RI flag set");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 25: SPI flag dance                                             *
+ * ================================================================== */
+static void test_spi(void) {
+    printf("\n--- test_spi ---\n");
+    setup();
+
+    /* Enable SPI master mode */
+    cpu.mSFR[STC_REG_SPCTL] = 0x50; /* SPEN + MSTR */
+
+    /* Write to SPDAT → SPIF should be set */
+    cpu.mSFR[STC_REG_SPDAT] = 0xAA;
+    cpu.sfrwrite[STC_REG_SPDAT](&cpu, STC_REG_SPDAT + 0x80);
+
+    CHECK(cpu.mSFR[STC_REG_SPSTAT] & 0x80, "SPI: SPIF set after write");
+
+    /* Clear SPIF by writing 1 to it */
+    cpu.mSFR[STC_REG_SPSTAT] = 0x80; /* write 1 to SPIF */
+    cpu.sfrwrite[STC_REG_SPSTAT](&cpu, STC_REG_SPSTAT + 0x80);
+    CHECK(!(cpu.mSFR[STC_REG_SPSTAT] & 0x80), "SPI: SPIF cleared");
+
+    /* SPI disabled → SPIF should NOT be set */
+    cpu.mSFR[STC_REG_SPCTL] = 0x00; /* disabled */
+    cpu.mSFR[STC_REG_SPDAT] = 0x55;
+    cpu.sfrwrite[STC_REG_SPDAT](&cpu, STC_REG_SPDAT + 0x80);
+    CHECK(!(cpu.mSFR[STC_REG_SPSTAT] & 0x80), "SPI: SPIF not set when disabled");
 
     teardown();
 }
