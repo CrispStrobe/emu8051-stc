@@ -81,12 +81,15 @@ static void trace_exception(struct em8051 *aCPU, int aCode) {
 
 int main(int argc, char **argv) {
     uint32_t fosc = 11059200;
-    int max_cycles = 1000000;
+    int max_cycles = 0;           /* 0 = use until_ns instead */
+    uint64_t until_ns = 2000000;  /* default 2 ms */
     char *hexfile = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-fosc") == 0 && i + 1 < argc) {
             fosc = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-until-ns") == 0 && i + 1 < argc) {
+            until_ns = strtoull(argv[++i], NULL, 0);
         } else if (strcmp(argv[i], "-cycles") == 0 && i + 1 < argc) {
             max_cycles = atoi(argv[++i]);
         } else if (argv[i][0] != '-') {
@@ -95,7 +98,7 @@ int main(int argc, char **argv) {
     }
 
     if (!hexfile) {
-        fprintf(stderr, "Usage: %s [-fosc Hz] [-cycles N] firmware.hex\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-fosc Hz] [-until-ns N] [-cycles N] firmware.hex\n", argv[0]);
         return 1;
     }
 
@@ -130,7 +133,10 @@ int main(int argc, char **argv) {
     uint16_t last_pc = 0xFFFF;
     uint8_t last_tcon = 0;
 
-    for (int cycle = 0; cycle < max_cycles; cycle++) {
+    for (int cycle = 0; ; cycle++) {
+        /* Stop on time bound or cycle bound */
+        if (max_cycles > 0 && cycle >= max_cycles) break;
+        if (max_cycles == 0 && get_ns() > until_ns) break;
         /* Emit PC event on new instruction */
         if (cpu.mPC != last_pc && cpu.mTickDelay == 0) {
             fprintf(trace_out, "%llu\tPC\t%04X\n",
