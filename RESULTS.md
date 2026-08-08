@@ -22,6 +22,31 @@ timer overflow flags) on all tested firmware images.
 Timestamp agreement: within **0.6%** on init events, **0.1%** on timer
 events. Previous gap was 49% before cycle count corrections.
 
+## Rung 3: instruction-step agreement (DEBUG-CONTROL-MODEL.md §8)
+
+Both emulators produce the **same PC sequence** when stepping one
+instruction at a time from reset with interrupts masked.
+
+| Image | Steps | Result |
+|-------|-------|--------|
+| `01-blink` | 1000 | **1000/1000 identical** |
+| `06-vars` | 500 | **500/500 identical** |
+| `07-repeat` | 500 | **500/500 identical** |
+| `05-timer-1t` | 500 | **500/500 identical** |
+
+Reproduced using ucsim-stc's `tests/rung3_step_masked.sh` harness.
+This is the first rung that tests whether the two implementations
+agree about what `step('insn')` **means**, not just about peripheral
+events.
+
+## Third-party corpus
+
+346/347 real firmware images from `/mnt/volume1/code/stc-research/hex/`
+run without crash. The one silent image is an ATmega328 (AVR, not 8051).
+Corpus results published as counts and names only (corpus is unlicensed).
+
+---
+
 *04-multi-when: ucsim's Python-based trace sampler steps one instruction
 at a time and samples SFRs after each step. When the Timer 0 ISR fires,
 TF0 is set AND cleared within a single interrupt dispatch — the sampler
