@@ -25,9 +25,15 @@ OBJ := $(SRC:.c=.o)
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-clean:
-	-rm -f $(BIN) $(OBJ)
+test_stc12: test_stc12.c core.c opcodes.c disasm.c stc12.c $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_stc12.c core.c opcodes.c disasm.c stc12.c
 
-.PHONY: clean all
+test: test_stc12
+	./test_stc12
+
+clean:
+	-rm -f $(BIN) $(OBJ) test_stc12
+
+.PHONY: clean all test
 
 all: $(BIN)
