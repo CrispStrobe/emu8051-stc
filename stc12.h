@@ -267,6 +267,12 @@ struct stc12_state
     uint32_t fosc;              /* oscillator frequency in Hz */
     double   vcc;               /* supply voltage, default 5.0 */
 
+    /* Stage 0: part identity.
+     * 0 = STC12C5A60S2 (default), 1 = STC15F2K60S2 (future). */
+    uint8_t  part_id;
+    /* Count of accesses to SFRs not modelled for this part */
+    uint32_t unmodelled_sfr_accesses;
+
     /* Boundary A callbacks (all optional — NULL = legacy mode) */
     stc12_pin_callback         on_pin_change;
     stc12_read_pin_callback    on_read_pin;
@@ -302,6 +308,9 @@ void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value
 /* Set external pin input for a port (0-5 = P0-P5).
  * Legacy API — use boundary A callbacks for new integrations. */
 void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);
+
+/* Stage 0: check if an SFR address is valid for the declared part. */
+bool stc12_is_valid_sfr(uint8_t addr);
 
 /* ------------------------------------------------------------------ *
  * Boundary A API                                                      *

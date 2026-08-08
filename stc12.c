@@ -738,3 +738,31 @@ int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
         aState->on_advance(stc12_get_time_ns(aState), aState->board_user_data);
     return count;
 }
+
+/* ================================================================== *
+ * Stage 0: part identity and SFR validation                           *
+ * ================================================================== */
+
+/* Valid SFR addresses for STC12C5A60S2.
+ * Source: stc_disasm.py SFR table, cross-checked against SDCC's stc12.h.
+ * Also includes standard 8051 SFRs (SP, DPL, DPH, PCON, SCON, SBUF,
+ * IE, IP, PSW, ACC, B) and STC12-specific registers not in the
+ * disassembler map (SPCTL 0x85, SPDAT 0x86, WDT_CONTR 0xC1,
+ * SPSTAT 0xCE, CCAP0L 0xEA, CCAP1L 0xEB). */
+static const uint8_t stc12_valid_sfr_set[] = {
+    0x80, 0x81, 0x82, 0x83, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A,
+    0x8B, 0x8C, 0x8D, 0x8E, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95,
+    0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0xA0, 0xA2,
+    0xA8, 0xA9, 0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB6, 0xB7, 0xB8,
+    0xB9, 0xBB, 0xBC, 0xBD, 0xBE, 0xC0, 0xC1, 0xC8, 0xC9, 0xCA,
+    0xCE, 0xD0, 0xD8, 0xD9, 0xDA, 0xDB, 0xE0, 0xE9, 0xEA, 0xEB,
+    0xF0, 0xF2, 0xF3, 0xF9, 0xFA, 0xFB,
+};
+
+bool stc12_is_valid_sfr(uint8_t addr)
+{
+    for (unsigned i = 0; i < sizeof(stc12_valid_sfr_set); i++) {
+        if (stc12_valid_sfr_set[i] == addr) return true;
+    }
+    return false;
+}
