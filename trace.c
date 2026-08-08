@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
     uint32_t fosc = 11059200;
     int max_cycles = 0;           /* 0 = use until_ns instead */
     uint64_t until_ns = 2000000;  /* default 2 ms */
+    int step_pcs = 0;             /* -step-pcs N: emit N PCs, one per line */
     char *hexfile = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -92,13 +93,15 @@ int main(int argc, char **argv) {
             until_ns = strtoull(argv[++i], NULL, 0);
         } else if (strcmp(argv[i], "-cycles") == 0 && i + 1 < argc) {
             max_cycles = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-step-pcs") == 0 && i + 1 < argc) {
+            step_pcs = atoi(argv[++i]);
         } else if (argv[i][0] != '-') {
             hexfile = argv[i];
         }
     }
 
     if (!hexfile) {
-        fprintf(stderr, "Usage: %s [-fosc Hz] [-until-ns N] [-cycles N] firmware.hex\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-fosc Hz] [-until-ns N] [-step-pcs N] firmware.hex\n", argv[0]);
         return 1;
     }
 
@@ -125,6 +128,34 @@ int main(int argc, char **argv) {
     if (load_obj(&cpu, hexfile) != 0) {
         fprintf(stderr, "Failed to load %s\n", hexfile);
         return 1;
+    }
+
+    /* -step-pcs mode: emit N PCs, one per line, interrupts masked.
+     * Per DEBUG-CONTROL-MODEL.md §4: a tick is not a step — advance
+     * until a new instruction begins executing. */
+    if (step_pcs > 0) {
+        /* Mask interrupts: clear EA (IE bit 7) */
+        cpu.mSFR[REG_IE] &= ~0x80;
+
+        int emitted = 0;
+        /* Emit the initial PC (reset vector) */
+        fprintf(trace_out, "%04X\n", cpu.mPC);
+        emitted++;
+
+        while (emitted < step_pcs) {
+            bool executed = tick(&cpu);
+            stc12_tick(&cpu, &stc);
+            /* Keep interrupts masked (firmware might enable them) */
+            cpu.mSFR[REG_IE] &= ~0x80;
+
+            if (executed) {
+                /* An instruction just completed. PC is now at the NEXT
+                 * instruction. Emit it. */
+                fprintf(trace_out, "%04X\n", cpu.mPC);
+                emitted++;
+            }
+        }
+        return 0;
     }
 
     /* Snapshot initial SFR state */
