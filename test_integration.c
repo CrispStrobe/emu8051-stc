@@ -33,6 +33,7 @@ static void test_exception(struct em8051 *aCPU, int aCode) {
 
 static void setup(void) {
     memset(&cpu, 0, sizeof(cpu));
+    memset(&stc, 0, sizeof(stc)); /* clear ALL state including preserved callbacks */
     cpu.mCodeMemMaxIdx = 65535;
     cpu.mCodeMem = calloc(65536, 1);
     cpu.mExtDataMaxIdx = 65535;
@@ -657,6 +658,206 @@ static void test_advance_to(void) {
     teardown();
 }
 
+/* ================================================================== *
+ * Test 12: Timer 0 mode 3 (two 8-bit timers)                         *
+ * ================================================================== */
+static void test_timer0_mode3(void) {
+    printf("\n--- test_timer0_mode3 ---\n");
+    setup();
+
+    /* Mode 3: TL0 is an 8-bit timer controlled by TR0/TF0.
+     *          TH0 is a separate 8-bit timer controlled by TR1/TF1.
+     *          Timer 1 loses its control bits in this mode. */
+    cpu.mSFR[STC_REG_AUXR] |= AUXR_T0x12; /* 1T for clear counting */
+    cpu.mSFR[REG_TMOD] = TMODMASK_M0_0 | TMODMASK_M1_0; /* mode 3 */
+    cpu.mSFR[REG_TCON] |= TCONMASK_TR0; /* start TL0 */
+    cpu.mSFR[REG_TCON] |= TCONMASK_TR1; /* start TH0 (as second timer) */
+    cpu.mSFR[REG_TL0] = 0xFD;
+    cpu.mSFR[REG_TH0] = 0xFC;
+
+    /* TL0: 3 ticks to overflow (FD -> FE -> FF -> overflow) */
+    run_clocks(2);
+    CHECK(cpu.mSFR[REG_TL0] == 0xFF, "Mode 3: TL0 = 0xFF after 2 ticks");
+    CHECK(!(cpu.mSFR[REG_TCON] & TCONMASK_TF0), "Mode 3: TF0 not yet set");
+
+    run_clocks(1);
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TF0) != 0,
+          "Mode 3: TF0 set on TL0 overflow");
+
+    /* TH0: started at 0xFC, runs using TR1. After 3 TL0 ticks it should be at 0xFF.
+     * TH0 increments at the same rate when TR1 is set. */
+    CHECK(cpu.mSFR[REG_TH0] == 0xFF,
+          "Mode 3: TH0 = 0xFF after 3 ticks (TR1-controlled)");
+
+    /* One more tick -> TH0 overflows, sets TF1 */
+    cpu.mSFR[REG_TCON] &= ~TCONMASK_TF1;
+    run_clocks(1);
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TF1) != 0,
+          "Mode 3: TF1 set on TH0 overflow");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 13: Boundary A read callbacks (on_read_pin, on_read_analog)    *
+ * ================================================================== */
+static int read_pin_port, read_pin_bit;
+static int read_pin_value;
+static int read_pin_called;
+
+static int test_read_pin(int port, int bit, void *ud) {
+    (void)ud;
+    read_pin_called++;
+    read_pin_port = port;
+    read_pin_bit = bit;
+    return read_pin_value;
+}
+
+static int read_analog_called;
+static double read_analog_volts;
+
+static double test_read_analog(int port, int bit, void *ud) {
+    (void)ud; (void)port; (void)bit;
+    read_analog_called++;
+    return read_analog_volts;
+}
+
+static void test_boundary_a_read_callbacks(void) {
+    printf("\n--- test_boundary_a_read_callbacks ---\n");
+    setup();
+
+    /* Register read callbacks */
+    stc12_set_board_callbacks(&stc, NULL, test_read_pin, test_read_analog,
+                              NULL, NULL);
+
+    /* Test readPin: set P1 latch to 0xFF, make callback return 0 for bit 3 */
+    cpu.mSFR[REG_P1] = 0xFF;
+    cpu.mSFR[STC_REG_P1M1] = 0x00;
+    cpu.mSFR[STC_REG_P1M0] = 0x00; /* quasi-bidi: read = latch AND external */
+    read_pin_value = 0; /* callback returns 0 for all pins */
+    read_pin_called = 0;
+
+    uint8_t val = cpu.sfrread[REG_P1](&cpu, REG_P1 + 0x80);
+    CHECK(read_pin_called == 8, "readPin: callback called 8 times (once per bit)");
+    CHECK(val == 0x00, "readPin: quasi-bidi latch=FF, ext=all-0 -> read=00");
+
+    /* Now return 1 for all pins */
+    read_pin_value = 1;
+    val = cpu.sfrread[REG_P1](&cpu, REG_P1 + 0x80);
+    CHECK(val == 0xFF, "readPin: quasi-bidi latch=FF, ext=all-1 -> read=FF");
+
+    /* Push-pull mode: should return latch regardless of callback */
+    cpu.mSFR[STC_REG_P1M0] = 0xFF;
+    cpu.mSFR[STC_REG_P1M1] = 0x00;
+    read_pin_value = 0;
+    val = cpu.sfrread[REG_P1](&cpu, REG_P1 + 0x80);
+    CHECK(val == 0xFF, "readPin: push-pull latch=FF -> read=FF (ignores external)");
+
+    /* Test readAnalog: set up ADC, callback returns 2.5V on a 5V VCC */
+    read_analog_called = 0;
+    read_analog_volts = 2.5;
+    stc.vcc = 5.0;
+
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 3;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+
+    /* Run conversion (70 clocks at fastest speed) */
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+
+    CHECK(read_analog_called > 0, "readAnalog: callback was called");
+    CHECK((cpu.mSFR[STC_REG_ADC_CONTR] & ADC_FLAG) != 0,
+          "readAnalog: ADC_FLAG set");
+
+    /* 2.5V / 5.0V * 1023 = 511.5, rounds to 512 = 0x200
+     * ADRJ=0: RES = 0x80, RESL = 0x00 */
+    uint16_t result = ((uint16_t)cpu.mSFR[STC_REG_ADC_RES] << 2) |
+                      (cpu.mSFR[STC_REG_ADC_RESL] & 0x03);
+    printf("  readAnalog: 2.5V -> %d counts (expect ~512)\n", result);
+    CHECK(result >= 511 && result <= 513,
+          "readAnalog: 2.5V/5V -> ~512 counts");
+
+    /* Test with 3.3V VCC, 1.65V input -> still ~512 */
+    stc.vcc = 3.3;
+    read_analog_volts = 1.65;
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 3;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+    result = ((uint16_t)cpu.mSFR[STC_REG_ADC_RES] << 2) |
+             (cpu.mSFR[STC_REG_ADC_RESL] & 0x03);
+    printf("  readAnalog: 1.65V/3.3V -> %d counts (expect ~512)\n", result);
+    CHECK(result >= 510 && result <= 514,
+          "readAnalog: 1.65V/3.3V -> ~512 counts");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 14: PCA with ECF=1 (verify ECF doesn't corrupt CPS decode)    *
+ * ================================================================== */
+static void test_pca_ecf_isolation(void) {
+    printf("\n--- test_pca_ecf_isolation ---\n");
+    setup();
+
+    /* CPS=00 (FOSC/12) with ECF=1. The concern: ECF is bit 0, CPS is bits 2:1.
+     * If the mask or shift is wrong, ECF=1 looks like CPS=01 (FOSC/2). */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = CMOD_ECF; /* ECF=1, CPS=00 */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    /* At FOSC/12, 12 osc clocks = 1 PCA tick */
+    run_clocks(12);
+    uint16_t pca = cpu.mSFR[STC_REG_CL] | (cpu.mSFR[STC_REG_CH] << 8);
+    CHECK(pca == 1, "PCA ECF: CPS=00+ECF=1 -> FOSC/12 (counter=1 after 12 clocks)");
+
+    /* If ECF leaked into CPS, we'd get FOSC/2 and counter=6 */
+    CHECK(pca != 6, "PCA ECF: ECF does not leak into CPS (counter != 6)");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 15: ADC mid-conversion restart                                 *
+ * ================================================================== */
+static void test_adc_restart(void) {
+    printf("\n--- test_adc_restart ---\n");
+    setup();
+
+    /* Start a slow conversion (420 clocks) */
+    stc12_set_adc_input(&stc, 0, 100);
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | 0; /* ch 0, speed 00 */
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+
+    /* Run 200 clocks (mid-conversion) — use stc12_tick only, not run_clocks,
+     * to avoid CPU execution side effects */
+    for (int i = 0; i < 200; i++) stc12_tick(&cpu, &stc);
+    printf("  After 200 ticks: countdown=%d, CONTR=%02X\n",
+           stc.adc_countdown, cpu.mSFR[STC_REG_ADC_CONTR]);
+    CHECK(!(cpu.mSFR[STC_REG_ADC_CONTR] & ADC_FLAG),
+          "ADC restart: flag not set mid-conversion");
+
+    /* Restart on a different channel with different input */
+    stc12_set_adc_input(&stc, 5, 900);
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 5;
+    cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+
+    /* Run 70 clocks (fastest speed) */
+    for (int i = 0; i < 70; i++) stc12_tick(&cpu, &stc);
+    CHECK((cpu.mSFR[STC_REG_ADC_CONTR] & ADC_FLAG) != 0,
+          "ADC restart: flag set after restart completes");
+
+    /* Result should be from channel 5 (900), not channel 0 (100) */
+    uint16_t result = ((uint16_t)cpu.mSFR[STC_REG_ADC_RES] << 2) |
+                      (cpu.mSFR[STC_REG_ADC_RESL] & 0x03);
+    printf("  ADC result = %d, ch = %d, RES=%02X RESL=%02X\n",
+           result, cpu.mSFR[STC_REG_ADC_CONTR] & 7,
+           cpu.mSFR[STC_REG_ADC_RES], cpu.mSFR[STC_REG_ADC_RESL]);
+    CHECK(result == 900, "ADC restart: result from restarted channel (900, not 100)");
+
+    teardown();
+}
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
 
@@ -675,6 +876,10 @@ int main(int argc, char **argv) {
     test_hex_loader();
     test_boundary_a_callbacks();
     test_advance_to();
+    test_timer0_mode3();
+    test_boundary_a_read_callbacks();
+    test_pca_ecf_isolation();
+    test_adc_restart();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;

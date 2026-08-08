@@ -164,38 +164,21 @@
 
 /* ------------------------------------------------------------------ *
  * CMOD bit masks (0xD9) — PCA mode                                    *
- * Bit layout: CIDL - - - CPS2 CPS1 CPS0 ECF                         *
+ * Bit layout (STC12C5A60S2, datasheet §11.2):                         *
+ *   Bit 7: CIDL, Bits 6-3: unused, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF *
+ * The STC12C5A60S2 has 2 CPS bits (not 3).                            *
  * ------------------------------------------------------------------ */
 #define CMOD_CIDL        0x80
-#define CMOD_CPS2        0x04
-#define CMOD_CPS1        0x02
-#define CMOD_CPS0        0x01  /* note: datasheet has 3 CPS bits */
-#define CMOD_CPS_MASK   (CMOD_CPS2 | CMOD_CPS1 | CMOD_CPS0)
-#define CMOD_ECF         0x01  /* actually bit 0 is ECF, CPS is bits 3:1 */
+#define CMOD_CPS1_BIT    0x04  /* bit 2 */
+#define CMOD_CPS0_BIT    0x02  /* bit 1 */
+#define CMOD_CPS_MASK   (CMOD_CPS1_BIT | CMOD_CPS0_BIT)  /* bits 2:1 */
+#define CMOD_ECF         0x01  /* bit 0 — PCA counter overflow interrupt enable */
 
-/* Corrected: CMOD bit layout from datasheet §11.2:
- * Bit 7: CIDL, Bits 6-4: unused, Bit 3: CPS2, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF
- * Wait — let me re-check. The STC12 datasheet §11.2 says:
- * Bit 7: CIDL, Bits 6-4: -, Bit 3: -, Bit 2: CPS1, Bit 1: CPS0, Bit 0: ECF
- * But the STC12C5A60S2 specifically has only 2 CPS bits (CPS1:0).
- */
-#undef CMOD_CPS2
-#undef CMOD_CPS_MASK
-#undef CMOD_ECF
-#define CMOD_CPS1_BIT    0x04
-#define CMOD_CPS0_BIT    0x02
-#define CMOD_CPS_MASK   (CMOD_CPS1_BIT | CMOD_CPS0_BIT)
-#define CMOD_ECF         0x01
-
-/* PCA counter clock sources (CPS1:0):
- * 00 = FOSC/12
- * 01 = FOSC/2
- * 10 = Timer 0 overflow
- * 11 = ECI pin (P1.2 / P3.4 depending on PCA_P4) */
-#define PCA_CLK_FOSC12   0x00
-#define PCA_CLK_FOSC2    0x02
-#define PCA_CLK_T0OVF    0x04
-#define PCA_CLK_ECI      0x06
+/* PCA counter clock sources (CPS1:0 in bits 2:1, extract with >> 1):
+ * 0 = FOSC/12
+ * 1 = FOSC/2
+ * 2 = Timer 0 overflow
+ * 3 = ECI pin (P1.2 / P3.4 depending on PCA_P4) */
 
 /* ------------------------------------------------------------------ *
  * CCAPMn bit masks — PCA module mode (0xDA, 0xDB)                     *
