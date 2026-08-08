@@ -1,0 +1,64 @@
+#####################################################################
+# WASM build for emu8051-stc
+# Requires: emcc (Emscripten)
+# Usage:  source ~/emsdk/emsdk_env.sh && make -f Makefile.wasm
+# Output: build/emu8051.js + build/emu8051.wasm
+#####################################################################
+
+EMCC := emcc
+
+CFLAGS := -O2 -Wall -Wextra -Wno-unused-parameter
+
+# Core source files (no curses, no TUI)
+SRC := core.c opcodes.c disasm.c stc12.c wasm_api.c
+
+OUTDIR := build
+OUT := $(OUTDIR)/emu8051.js
+
+# Exported functions (without leading underscore — emcc adds it)
+EXPORTS := \
+	_emu_init \
+	_emu_reset \
+	_emu_tick \
+	_emu_run \
+	_emu_load_hex \
+	_emu_get_sfr \
+	_emu_set_sfr \
+	_emu_get_iram \
+	_emu_set_iram \
+	_emu_get_code \
+	_emu_get_xdata \
+	_emu_set_xdata \
+	_emu_get_pc \
+	_emu_set_pc \
+	_emu_disasm \
+	_emu_set_adc_input \
+	_emu_set_port_input \
+	_emu_set_fosc \
+	_malloc \
+	_free
+
+EXPORT_LIST := $(shell echo '$(EXPORTS)' | tr ' ' ',')
+
+EMFLAGS := \
+	-s EXPORTED_FUNCTIONS="[$(EXPORT_LIST)]" \
+	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8']" \
+	-s MODULARIZE=1 \
+	-s EXPORT_NAME="createEmu8051" \
+	-s ALLOW_MEMORY_GROWTH=1 \
+	-s TOTAL_MEMORY=2097152 \
+	-s NO_EXIT_RUNTIME=1 \
+	-s ENVIRONMENT='web,worker,node'
+
+all: $(OUT)
+
+$(OUTDIR):
+	mkdir -p $(OUTDIR)
+
+$(OUT): $(SRC) $(wildcard *.h) | $(OUTDIR)
+	$(EMCC) $(CFLAGS) $(EMFLAGS) -o $@ $(SRC)
+
+clean:
+	rm -rf $(OUTDIR)
+
+.PHONY: all clean

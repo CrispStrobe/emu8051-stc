@@ -31,9 +31,12 @@ test_stc12: test_stc12.c core.c opcodes.c disasm.c stc12.c $(HEADERS)
 test: test_stc12
 	./test_stc12
 
+test-wasm: build/emu8051.js
+	node test_wasm.mjs
+
 clean:
 	-rm -f $(BIN) $(OBJ) test_stc12
 
-.PHONY: clean all test
+.PHONY: clean all test test-wasm
 
 all: $(BIN)
