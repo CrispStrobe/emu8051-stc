@@ -2,13 +2,14 @@
 
 | File | Size | SHA-256 |
 |------|------|---------|
-| `emu8051.js` | 18 KB | `5c70f2a0e3075ef28a998c13f1f3cb5e19a669cc5919db9735c35d3845b1cf25` |
-| `emu8051.wasm` | 57 KB | `c6b3d6e42f7f7f9f67fbc7b9b14ac44cf2e1839eee265a5a7fb6f00c5abfdc41` |
+| `emu8051.js` | 19 KB | `5c70f2a0e3075ef28a998c13f1f3cb5e19a669cc5919db9735c35d3845b1cf25` |
+| `emu8051.wasm` | 56 KB | `6546370bf643cd0e78012e96926bfe6d7a83ca34d10d73ea3612779e9bc0b85e` |
 
 **Emscripten:** emcc 6.0.6
-**Source commit:** `b81e8ea`
+**Source commit:** `0455a54`
 **Build:** `make -f Makefile.wasm`
-**Licence:** MIT (emu8051 + STC12) + MIT/UIUC (Emscripten). No GPL.
+**Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.
 
-40+ exported functions: CPU, debug, serial TX/RX, profiling, pin history,
-boundary A push callbacks, boundary D debug control.
+40+ exported functions: CPU core, boundary A (pin bus), boundary D
+(debug control), UART TX/RX, PC histogram profiling, pin history
+ring buffer, watchdog, STC15 delta.
