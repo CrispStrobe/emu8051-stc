@@ -91,7 +91,7 @@ jobs:
           # -I/usr/include: system boost headers (header-only).
           # i686: little-endian 32-bit, matching wasm32.
           emconfigure ./configure \
-            CC=emcc CXX=em++ \
+            CC=emcc "CXX=em++ -std=c++17" \
             CFLAGS="-sUSE_ZLIB" \
             CXXFLAGS="-sUSE_ZLIB -I/usr/include" \
             LDFLAGS="-sUSE_ZLIB" \
