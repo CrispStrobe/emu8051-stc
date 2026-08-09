@@ -10,14 +10,14 @@ STC-specific hardware support. See [LANDSCAPE.md](LANDSCAPE.md) for the
 competitive analysis.
 
 **Peripherals:** Timer 0/1 (1T/12T), port modes, 10-bit ADC, PCA/PWM
-(8 clock sources, 9-bit compare, double-buffered pin output, toggle),
-UART1/2, SPI, watchdog, dual DPTR, STC15 Timer 2.
+(8 clock sources, 9-bit compare, double-buffered pin output, toggle,
+capture), UART1/2, SPI, watchdog, dual DPTR, STC15 Timer 2.
 
 **Debug:** run/halt/step (5 kinds), breakpoints (code + yield),
 memory access (5 address spaces), registers, PC histogram profiling,
 pin history ring buffer, Level 1 position for cooperative scheduler.
 
-**Verified:** 460+ test assertions (native + WASM + GDB), 30 firmware
+**Verified:** 470 test assertions (native + WASM + GDB), 30 firmware
 images. Third-party corpus: 220/349 produce byte-identical event
 streams; a further 86 differ only in how far each model advances in a
 2 ms window (zero instruction-level disagreements).
