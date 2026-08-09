@@ -223,11 +223,14 @@ The differential execution exposed or motivated fixes to:
    instructions returned 1 (= 1 cycle in emu8051's tick convention).
    The differential timing gap was the detection method; the MCS-51
    spec was the correction source.
+6. **MOVX @Ri missing P2 high byte** (upstream bug): used only 8-bit
+   Ri value instead of `(P2 << 8) | Ri`. Found by coverage analysis.
 
 See [FINDINGS.md](FINDINGS.md) for details and test cases.
 
 ## Upstream contribution
 
-The two opcode logic bugs (items 1-2) are packaged as a minimal patch
-against upstream jarikomppa/emu8051 in
-[upstream-patches/001](upstream-patches/001-fix-xchd-and-mov-direct-indir.patch).
+The three opcode logic bugs (items 1-2, 6) are packaged as patches
+against upstream jarikomppa/emu8051 in `upstream-patches/`:
+- [001](upstream-patches/001-fix-xchd-and-mov-direct-indir.patch) — XCHD + MOV direct,@Ri
+- [002](upstream-patches/002-fix-movx-ri-p2-high-byte.patch) — MOVX @Ri P2 high byte

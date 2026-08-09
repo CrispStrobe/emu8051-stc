@@ -359,3 +359,26 @@ at the window boundary.
 Effective agreement: 220 strict + 54 prefix + 32 timing-content =
 **306/349 (87.7%)** where both models agree on behaviour, with the
 remaining 43 being wrong-target (12), empty (29), or error (2).
+
+---
+
+## 12. MOVX @Ri missing P2 high byte (upstream bug)
+
+**What:** `MOVX @R0,A` and `MOVX A,@R0` used only the 8-bit value
+from R0/R1 as the external memory address. Per the MCS-51 spec, the
+P2 port register provides the high byte, forming a 16-bit address
+`(P2 << 8) | Ri`.
+
+**Impact:** Any firmware that sets P2 to select an external memory
+bank before doing `MOVX @Ri` would access the wrong address. This is
+the standard technique for accessing more than 256 bytes of XDATA when
+the full 16-bit DPTR is not needed.
+
+**Fix:** Both `movx_a_indir_rx` and `movx_indir_rx_a` now compute
+`address = (aCPU->mSFR[REG_P2] << 8) | INDIR_RX_ADDRESS`.
+
+**Test:** `test_movx_ri_p2` in test_integration.c sets P2=0x12,
+R0=0x34, writes via MOVX @R0, and verifies XDATA[0x1234] was written.
+
+This is the third upstream opcode bug found (after XCHD and MOV
+direct,@Ri).

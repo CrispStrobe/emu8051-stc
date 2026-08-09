@@ -1,0 +1,39 @@
+From: CrispStrobe <cze+github@mailbox.org>
+Subject: Fix MOVX @Ri to use P2 as high byte of external address
+
+MOVX @R0,A and MOVX A,@R0 (opcodes 0xF2/0xF3 and 0xE2/0xE3) used only
+the 8-bit value from R0/R1 as the external memory address. Per the
+MCS-51 spec, the P2 port register provides the high byte, forming a
+16-bit address: (P2 << 8) | Ri.
+
+This matters for any firmware that sets P2 to select an external memory
+bank before doing MOVX @Ri — the standard technique for accessing more
+than 256 bytes of XDATA without using the full 16-bit DPTR.
+
+Test: set P2=0x12, R0=0x34, ACC=0x42, execute MOVX @R0,A.
+Expected: XDATA[0x1234]=0x42. Before fix: XDATA[0x0034]=0x42.
+
+---
+ opcodes.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/opcodes.c b/opcodes.c
+index abc1234..def5678 100644
+--- a/opcodes.c
++++ b/opcodes.c
+@@ -1363,7 +1363,7 @@ static uint8_t movx_a_indir_dptr(struct em8051 *aCPU)
+ static uint8_t movx_a_indir_rx(struct em8051 *aCPU)
+ {
+-    uint16_t address = INDIR_RX_ADDRESS;
++    uint16_t address = (aCPU->mSFR[REG_P2] << 8) | INDIR_RX_ADDRESS;
+     if (aCPU->xread)
+     {
+         ACC = aCPU->xread(aCPU, address);
+@@ -1427,7 +1427,7 @@ static uint8_t cpl_a(struct em8051 *aCPU)
+ static uint8_t movx_indir_rx_a(struct em8051 *aCPU)
+ {
+-    uint16_t address = INDIR_RX_ADDRESS;
++    uint16_t address = (aCPU->mSFR[REG_P2] << 8) | INDIR_RX_ADDRESS;
+
+     if (aCPU->xwrite)
+     {
