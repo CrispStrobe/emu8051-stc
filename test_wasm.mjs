@@ -361,6 +361,28 @@ emu_init(1);
     assert(xval === 0xCD, `Debug mem write: XDATA[100h]=0x${xval.toString(16)} (expected 0xCD)`);
 }
 
+// --- Load-symbols integration test ---
+
+// Test 28: loadSymbols with 05-scheduler
+{
+    const symPath = '/mnt/volume1/code/stc/examples/05-scheduler/symbols.json';
+    const hexPath = join(__dirname, 'test_images', '05-scheduler.hex');
+    let symJson;
+    try { symJson = JSON.parse(readFileSync(symPath, 'utf-8')); } catch { symJson = null; }
+    const schedHex = readFileSync(hexPath, 'utf-8');
+
+    if (symJson) {
+        emu_init(1);
+        emu_load_hex(schedHex, schedHex.length);
+
+        const result = loadSymbols(Module, symJson);
+        assert(result.tasks > 0, `loadSymbols: ${result.tasks} tasks loaded`);
+        assert(result.bwMsAddr > 0, `loadSymbols: bw_ms addr=${result.bwMsAddr}`);
+    } else {
+        assert(true, 'loadSymbols: skipped (symbols.json not found)');
+    }
+}
+
 
 console.log(`
 ${passed} passed, ${failed} failed`);
