@@ -72,9 +72,16 @@ export function createGdbStub(Module, opts = {}) {
   }
 
   /** Read a byte from a memory space */
+  const getCode = Module.cwrap('emu_get_code', 'number', ['number']);
+  const getIram = Module.cwrap('emu_get_iram', 'number', ['number']);
+
   function readByte(space, addr) {
-    const ptr = readMem(space, addr, 1);
-    return Module.HEAPU8[ptr];
+    switch (space) {
+      case 0: return getCode(addr);   // code
+      case 1: return getIram(addr);   // iram
+      case 2: return getSfr(addr);    // sfr
+      default: return getCode(addr);
+    }
   }
 
   /** Handle a GDB command */
