@@ -81,6 +81,11 @@ EXPORTS := \
 	_emu_capabilities \
 	_emu_version \
 	_emu_dbg_consumes_count \
+	_emu_serial_write \
+	_emu_set_serial_callback \
+	_emu_serial_read_buf \
+	_emu_serial_read_idx \
+	_emu_get_interrupt_active \
 	_emu_serial2_write \
 	_emu_set_serial2_callback \
 	_malloc \
