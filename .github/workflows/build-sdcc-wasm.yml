@@ -95,10 +95,15 @@ jobs:
           mkdir -p /tmp/boost-headers
           cp -r /usr/include/boost /tmp/boost-headers/
 
+          # Short-circuit autoconf's C++11 probe — it misfires under
+          # emconfigure (exit-status check fails for unrelated reasons).
+          # Force -std=c++11 to match the native build exactly.
+          export ac_cv_prog_cxx_cxx11=yes
+
           emconfigure ./configure \
             CC=emcc CXX=em++ \
             CFLAGS="-sUSE_ZLIB" \
-            CXXFLAGS="-sUSE_ZLIB" \
+            CXXFLAGS="-sUSE_ZLIB -std=c++11" \
             CPPFLAGS="-isystem /tmp/boost-headers" \
             LDFLAGS="-sUSE_ZLIB" \
             --host=i686-unknown-linux-gnu \
