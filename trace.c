@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include "emu8051.h"
 #include "stc12.h"
+#include "debug.h"
 
 static struct em8051 cpu;
 static struct stc12_state stc;
@@ -86,6 +87,9 @@ int main(int argc, char **argv) {
     int step_pcs = 0;             /* -step-pcs N: emit N PCs, one per line */
     int adc_ch[8] = {0};          /* ADC channel inputs (0-1023) */
     int adc_set = 0;              /* bitmask of channels set */
+    int bp_addr = -1;             /* -bp ADDR: code breakpoint */
+    int write_space = -1, write_addr = -1, write_val = -1;
+    int read_space = -1, read_addr = -1, read_len = 0;
     char *hexfile = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -104,6 +108,14 @@ int main(int argc, char **argv) {
                 adc_ch[ch] = val;
                 adc_set |= (1 << ch);
             }
+        } else if (strcmp(argv[i], "-bp") == 0 && i + 1 < argc) {
+            bp_addr = (int)strtol(argv[++i], NULL, 0);
+        } else if (strcmp(argv[i], "-write") == 0 && i + 1 < argc) {
+            /* -write SPACE,ADDR,VAL (e.g. -write 1,0x30,0x42) */
+            sscanf(argv[++i], "%d,%i,%i", &write_space, &write_addr, &write_val);
+        } else if (strcmp(argv[i], "-read") == 0 && i + 1 < argc) {
+            /* -read SPACE,ADDR,LEN (e.g. -read 1,0x08,2) */
+            sscanf(argv[++i], "%d,%i,%d", &read_space, &read_addr, &read_len);
         } else if (argv[i][0] != '-') {
             hexfile = argv[i];
         }
@@ -131,8 +143,8 @@ int main(int argc, char **argv) {
         stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / fosc + 0.5);
     cpu.skip_timers = true;
 
-    /* Install pin change callback for trace (not in step-pcs mode) */
-    if (step_pcs == 0)
+    /* Install pin change callback for trace (not in step-pcs or bp mode) */
+    if (step_pcs == 0 && bp_addr < 0)
         stc12_set_board_callbacks(&stc, trace_pin_change, NULL, NULL, NULL, NULL);
 
     if (load_obj(&cpu, hexfile) != 0) {
@@ -171,6 +183,70 @@ int main(int argc, char **argv) {
                 emitted++;
             }
         }
+        return 0;
+    }
+
+    /* -bp mode: set breakpoint, run to it, dump registers, optionally
+     * write and resume. Used for rungs 4-6 of the acceptance ladder. */
+    if (bp_addr >= 0) {
+        struct dbg_target dbg;
+        dbg_init(&dbg, &cpu, &stc);
+
+        struct dbg_breakpoint bp = { .kind = BP_CODE, .addr = (uint16_t)bp_addr };
+        int bpid = dbg_set_breakpoint(&dbg, &bp);
+        (void)bpid;
+
+        /* Run until breakpoint or timeout */
+        dbg_run(&dbg);
+        uint64_t limit = until_ns;
+        while (dbg_get_state(&dbg) == DBG_RUNNING && get_ns() < limit)
+            dbg_tick(&dbg);
+
+        if (dbg_get_state(&dbg) == DBG_HALTED) {
+            fprintf(trace_out, "HALT\tPC=%04X\n", dbg_get_pc(&dbg));
+            fprintf(trace_out, "REGS\tA=%02X B=%02X DPTR=%04X SP=%02X PSW=%02X\n",
+                    dbg_get_acc(&dbg), dbg_get_b(&dbg), dbg_get_dptr(&dbg),
+                    dbg_get_sp(&dbg), dbg_get_psw(&dbg));
+
+            /* Optional read */
+            if (read_space >= 0 && read_len > 0) {
+                uint8_t buf[256];
+                int n = read_len > 256 ? 256 : read_len;
+                dbg_read_mem(&dbg, (enum dbg_space)read_space, (uint16_t)read_addr, buf, n);
+                fprintf(trace_out, "READ\t");
+                for (int i = 0; i < n; i++)
+                    fprintf(trace_out, "%02X", buf[i]);
+                fprintf(trace_out, "\n");
+            }
+
+            /* Optional write-while-halted, then resume and dump again */
+            if (write_space >= 0) {
+                uint8_t v = (uint8_t)write_val;
+                dbg_write_mem(&dbg, (enum dbg_space)write_space,
+                              (uint16_t)write_addr, &v, 1);
+                fprintf(trace_out, "WRITE\t%d 0x%04X = 0x%02X\n",
+                        write_space, write_addr, write_val);
+
+                /* Resume, run a bit, then dump state */
+                dbg_run(&dbg);
+                for (int i = 0; i < 11059 * 10 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+                    dbg_tick(&dbg);
+
+                fprintf(trace_out, "RESUME\tPC=%04X A=%02X\n",
+                        dbg_get_pc(&dbg), dbg_get_acc(&dbg));
+
+                /* Read back the written location */
+                if (read_space < 0) { read_space = write_space; read_addr = write_addr; read_len = 1; }
+                uint8_t rb;
+                dbg_read_mem(&dbg, (enum dbg_space)write_space,
+                             (uint16_t)write_addr, &rb, 1);
+                fprintf(trace_out, "READBACK\t0x%02X\n", rb);
+            }
+        } else {
+            fprintf(trace_out, "TIMEOUT\n");
+        }
+
+        free(cpu.mCodeMem); free(cpu.mExtData); free(cpu.mUpperData);
         return 0;
     }
 
