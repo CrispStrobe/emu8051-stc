@@ -739,9 +739,47 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
     aState->osc_clocks++;
 
     /* STC89: 12T timing is handled by mMachineCycleScale in core.c tick().
-     * No STC-specific peripheral ticking needed. */
-    if (aState->part_id == PART_STC89)
+     * Timer 0/1 are handled by upstream timer_tick (skip_timers=false).
+     * But upstream does NOT implement 8052 Timer 2 — we handle it here.
+     * Timer 2 ticks once per machine cycle (already scaled by 12T). */
+    if (aState->part_id == PART_STC89) {
+        /* 8052 Timer 2: T2CON at 0xC8, T2MOD at 0xC9.
+         * Counter: TL2 (0xCC), TH2 (0xCD). Reload: RCAP2L (0xCA), RCAP2H (0xCB).
+         *
+         * Only count when TR2 (T2CON bit 2) is set. Timer 2 ticks once
+         * per machine cycle (12 osc clocks on STC89, already prescaled
+         * by mMachineCycleScale). We piggyback on the osc_clocks counter
+         * and tick Timer 2 once per 12 osc clocks. */
+        #define T2CON_TR2  0x04
+        #define T2CON_TF2  0x80  /* overflow flag */
+        #define T2CON_RCLK 0x20  /* receive clock */
+        #define T2CON_TCLK 0x10  /* transmit clock */
+        #define T2CON_CP   0x01  /* capture/reload select */
+
+        uint8_t t2con = aCPU->mSFR[0xC8 - 0x80]; /* T2CON */
+        if (t2con & T2CON_TR2) {
+            /* Only tick once per 12 osc clocks (one machine cycle) */
+            if ((aState->osc_clocks % 12) == 0) {
+                uint16_t t2 = aCPU->mSFR[0xCC - 0x80] |
+                             (aCPU->mSFR[0xCD - 0x80] << 8);
+                t2++;
+                if (t2 == 0) {
+                    /* Overflow */
+                    if (!(t2con & T2CON_CP)) {
+                        /* Auto-reload mode: reload from RCAP2H:RCAP2L */
+                        t2 = aCPU->mSFR[0xCA - 0x80] |
+                             (aCPU->mSFR[0xCB - 0x80] << 8);
+                    }
+                    /* Set TF2 (not set if RCLK or TCLK is set) */
+                    if (!(t2con & (T2CON_RCLK | T2CON_TCLK)))
+                        aCPU->mSFR[0xC8 - 0x80] |= T2CON_TF2;
+                }
+                aCPU->mSFR[0xCC - 0x80] = t2 & 0xFF;
+                aCPU->mSFR[0xCD - 0x80] = (t2 >> 8) & 0xFF;
+            }
+        }
         return;
+    }
 
     bool t0_overflowed = stc12_timer0_tick(aCPU, aState);
     stc12_timer1_tick(aCPU, aState);
