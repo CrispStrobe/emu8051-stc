@@ -4,10 +4,12 @@
 
 | Name | Lang | Browser | Licence | Peripherals | STC? |
 |------|------|---------|---------|-------------|------|
+| **SimulIDE** | C++ | No | **AGPLv3** | 8051 core + SPICE analog+digital, circuit editor, breakpoints, watch | No (generic) |
 | **EdSim51** | Java | No | Free | ADC, DAC, 7-seg, LCD, UART, motor | No |
 | **MCU 8051 IDE** | Tcl/C++ | No | GPL-2 | LEDs, LCD, 7-seg, keypad, UART, coverage | No |
 | **µCsim (SDCC)** | C++ | No | GPL-2 | Timers, UART, interrupts, profiling | No |
 | **PICSimLab** | C++ | No | GPL-2 | Oscilloscope, logic analyzer (uses ucsim) | No |
+| **Wokwi** | TS | **Yes** | Commercial | AVR, ESP32, RP2040 — **no 8051** | No |
 | **js51** | JS | Yes | Open | Core only (minimal) | No |
 | **i8051emu** | Python | Yes | Open | Core registers, memory | No |
 | **Keil µVision** | — | No | Commercial | Full peripherals, profiler, logic analyzer | SiLabs only |
@@ -16,11 +18,17 @@
 
 ## What we uniquely offer
 
-1. **Only MIT-licensed 8051 emulator that runs in the browser.** js51 and
-   i8051emu are browser-capable but have no peripheral simulation.
-2. **Only emulator modelling STC12/STC15-specific features.** 1T timer
-   mode (AUXR.T0x12), PCA with PWM, port mode registers (PxM0/PxM1),
-   10-bit ADC with ADRJ, the STC15 ADRJ-moved trap.
+1. **Only MIT-licensed 8051 emulator that runs in the browser.** SimulIDE
+   is the closest open-source comparable — it has an 8051 core with a
+   SPICE-style circuit simulator, breakpoints, and watch registers — but
+   it is **AGPLv3** and desktop-only. AGPL is precisely why
+   `brickwright-lite` (a fully-permissive browser bundle) can learn from
+   it but never link it. js51 and i8051emu are browser-capable but have
+   no peripheral simulation.
+2. **Only emulator modelling STC12/STC15-specific features.** SimulIDE's
+   8051 is generic (no 1T timer, no PCA, no port modes). Wokwi has no
+   8051 at all — its Custom Chips API models peripherals, not cores,
+   which is why this fork has to exist.
 3. **Boundary A push-mode pin bus** — no other 8051 emulator exposes
    pin state as (mode, driveHigh) callbacks.
 4. **Differential-verified peripheral model** — 220/349 corpus images
