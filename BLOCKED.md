@@ -1,11 +1,11 @@
 # BLOCKED — items waiting on external action
 
-## SDCC-to-WASM build — needs a different machine
+## SDCC-to-WASM build — workflow ready, needs first run
 
-**Blocked on:** VPS memory. cc1plus needs ~600 MB per process; -j4
-OOM-killed bw-blocks. The box has 7.7 GB total, ~5.5 GB used by
-agents. Building SDCC natively (prerequisite for WASM cross-compile)
-is not safe here.
+**Status:** `.github/workflows/build-sdcc-wasm.yml` is pushed and
+runnable via `workflow_dispatch`. Not yet triggered — the Emscripten
+cross-compilation of SDCC may need patches (the `--host` flag and
+`emconfigure` interaction is untested).
 
 **Recommendation:** GitHub Actions runner. A workflow that downloads
 SDCC source, configures for mcs51 only, cross-compiles with Emscripten,
