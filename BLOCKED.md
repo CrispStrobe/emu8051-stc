@@ -1,44 +1,27 @@
 # BLOCKED — items waiting on external action
 
-## SDCC-to-WASM build — workflow ready, needs first run
+## SDCC-to-WASM — OUT OF SCOPE for this agent
 
-**Status:** `.github/workflows/build-sdcc-wasm.yml` is pushed and
-runnable via `workflow_dispatch`. Not yet triggered — the Emscripten
-cross-compilation of SDCC may need patches (the `--host` flag and
-`emconfigure` interaction is untested).
+**Decision:** Declared out of scope after 10 CI runs and 8 commits.
 
-**Recommendation:** GitHub Actions runner. A workflow that downloads
-SDCC source, configures for mcs51 only, cross-compiles with Emscripten,
-runs byte-identity test, and uploads artifacts. This is reproducible,
-doesn't compete for VPS memory, and produces a checked artifact.
+**What was tried:** GitHub Actions workflow for SDCC 4.5.0 mcs51 → WASM.
+Configure obstacles resolved: directory collision, config.sub triplet
+(i686-unknown-linux-gnu), zlib (-sUSE_ZLIB), C++11 probe
+(ac_cv_prog_cxx_cxx11=yes). Boost graph headers remain unfound by
+emconfigure despite isolated `-isystem` and correct C++11 — the
+autotools/Emscripten interaction is the blocker, not a missing dependency.
 
-**Version: SDCC 4.5.0** (confirmed by coordinator). The local sdcc that
-built every reference .hex is 4.5.0. The hosted API runs 4.0.0 (forced
-by Vercel's glibc 2.34 — 4.5.0 needs GLIBC_2.36). This means the web
-page has been producing different firmware than `make` (996 vs 888 bytes
-for 01-blink). WASM has no glibc, so building 4.5.0 ends this
-divergence and makes the page agree with the repo for the first time.
+**The workflow is in `.github/workflows/build-sdcc-wasm.yml`** and can be
+resumed by anyone who wants to finish the configure fight. The config.log
+diagnostic is wired in.
 
-**Acceptance:** byte-identical against native SDCC 4.5.0 for all 9
-examples. A match against 4.0.0 would be a failure, not a curiosity.
-
-**Handover note for bw-bundle:** swapping in the WASM compiler changes
-the .hex the page produces. This is the intended fix (ending the
-4.0.0/4.5.0 divergence), not a regression.
-
-**Cleanup done:** /tmp/sdcc-4.5.0 and tarball removed. No processes
-left running. Build moves to a GitHub Actions workflow.
-
-## SDCC-WASM workflow dispatched
-
-Run `31336965443` dispatched with the working-directory fix. Monitoring
-in background. The Emscripten cross-compile is the real test — previous
-failure was just a path issue.
+**What this means:** The hosted compiler stays at SDCC 4.0.0 on Vercel
+for now, producing 888-byte .hex vs the repo's 996-byte reference from
+4.5.0. The divergence is documented but not resolved.
 
 ## AVR conformance — blocked on bw-board accepting `input-pullup`
 
-bw-board's `conformance.js` line 170 rejects `input-pullup` as a valid
-PinMode. spec-update 005 was adjudicated and `input-pullup` is now in
-`simulation-contract.md` (sb3-creator 6255de3). Until bw-board updates
-its conformance checker, the AVR adapter cannot pass the setPin shape
-test because AVR ports default to `input-pullup` when PORT=1, DDR=0.
+bw-board's `conformance.js` rejects `input-pullup` as a valid PinMode.
+spec-update 005 was adjudicated (sb3-creator 6255de3). Until bw-board
+updates its conformance checker, the AVR adapter cannot pass the full
+suite.

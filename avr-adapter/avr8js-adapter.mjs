@@ -57,8 +57,19 @@ const PORT_CONFIGS = [portBConfig, portCConfig, portDConfig];
  * @param {number} [opts.clockHz=16000000] - clock frequency
  * @returns {object} adapter with run/halt/setPin/readPin/readAnalog/advanceTo
  */
+/**
+ * AVR part definitions.
+ * Same adapter, different flash sizes and names.
+ */
+export const AVR_PARTS = {
+    'atmega328p': { flashWords: 16384, sramBytes: 2048, name: 'ATmega328P' },
+    'atmega168p': { flashWords: 8192,  sramBytes: 1024, name: 'ATmega168P' },
+    'attiny85':   { flashWords: 4096,  sramBytes: 512,  name: 'ATtiny85' },
+};
+
 export function createAvrAdapter(opts) {
-    const { flash, clockHz = 16_000_000 } = opts;
+    const { flash, clockHz = 16_000_000, part = 'atmega328p' } = opts;
+    const partDef = AVR_PARTS[part] || AVR_PARTS['atmega328p'];
 
     const cpu = new CPU(flash);
     const ports = PORT_CONFIGS.map(cfg => new AVRIOPort(cpu, cfg));
@@ -141,6 +152,9 @@ export function createAvrAdapter(opts) {
                 for (let i = 0; i < len; i++) {
                     const byte = parseInt(line.slice(9 + i * 2, 11 + i * 2), 16);
                     const wordAddr = (addr + i) >> 1;
+                    if (wordAddr >= partDef.flashWords) {
+                        return -4; // image too large for this part
+                    }
                     if ((addr + i) & 1) {
                         flash[wordAddr] = (flash[wordAddr] & 0xFF) | (byte << 8);
                     } else {
@@ -195,7 +209,7 @@ export function createAvrAdapter(opts) {
                 haltPolicy: 'freeze-timers',
                 timeFreezes: true,
                 consumes: [],
-                part: 'atmega328p',
+                part: part,
                 peripherals: ['timer0', 'timer1', 'timer2', 'adc', 'uart0'],
                 // Honest: no boundary-D debugger for AVR yet
                 debugTarget: false,
@@ -203,6 +217,10 @@ export function createAvrAdapter(opts) {
         },
 
         clockHz,
+        part,
+        partDef,
+        flashSize: () => partDef.flashWords * 2,  // bytes
+        sramSize: () => partDef.sramBytes,
         totalCycles: () => totalCycles,
     };
 }
