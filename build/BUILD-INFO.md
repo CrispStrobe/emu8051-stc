@@ -6,5 +6,5 @@
 | emu8051.wasm | 65K | `d07d9216d391d30846909db79705378329ec0391a52cfdfed9b8d0ee3000160d` |
 
 **Emscripten:** emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.6 (ce75e06884093bcefb86a6b8fd56a5d62a4cc245)
-**Source:** `6cc7a1c`
+**Source:** `7a4d5e7`
 **Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.
