@@ -1,8 +1,27 @@
 /**
- * gdb-stub.mjs — GDB Remote Serial Protocol stub for emu8051-stc.
+ * gdb-stub.mjs — GDB Remote Serial Protocol server for emu8051-stc.
  *
- * Bridges the GDB RSP wire protocol to our WASM debug API.
- * Enables connecting VS Code, GDB, or any GDB-compatible debugger.
+ * A TRANSPORT BELOW BOUNDARY D (DEBUG-CONTROL-MODEL.md §0), not an
+ * alternative to it. The authoritative run-control semantics — step
+ * kinds, breakpoint types, consumes, skewNs — live in boundary D.
+ * This file maps the GDB RSP wire protocol to our WASM debug API.
+ *
+ * IMPORTANT: there is no upstream GDB target for mcs51. Stock GDB
+ * will connect via `target remote` but cannot interpret registers
+ * or disassemble without architecture support. This is why SDCC
+ * ships sdcdb (its own protocol) rather than a GDB stub.
+ *
+ * This server is useful today for:
+ * - Run control and memory access from any RSP client
+ * - Raw register read/write (client must interpret the layout)
+ * - Integration testing (see test_gdb.mjs)
+ *
+ * It would become fully useful with a GDB that knows mcs51, or
+ * with a client that only needs run control (step/continue/halt)
+ * without architecture-specific display.
+ *
+ * Tested against: test_gdb.mjs (simulated RSP client). Not yet
+ * tested with a real GDB or VS Code.
  *
  * Usage:
  *   import { createGdbStub } from './gdb-stub.mjs';
@@ -10,7 +29,6 @@
  *   const stub = createGdbStub(Module, { port: 3333 });
  *   stub.loadHex(hexString);
  *   stub.start();
- *   // Connect GDB: target remote :3333
  *
  * @module
  */
