@@ -2,14 +2,26 @@ emu8051-stc
 ===========
 
 Fork of [jarikomppa/emu8051](https://github.com/jarikomppa/emu8051) (MIT)
-with an **STC12C5A60S2** peripheral model and a **WASM build** for use in
-the browser.
+with **STC12C5A60S2 / STC15F2K60S2** peripheral models, a **debug control
+interface**, and a **WASM build** (19K + 62K) for use in the browser.
 
-The upstream emulator is a clean, ~7 k-line 8051/8052 simulator with a
-curses TUI. This fork adds the STC12-specific SFR set, 1T/12T timer
-prescaling, port mode logic, a 10-bit ADC, and PCA/PWM — enough to run
-real STC12 firmware images in simulation and, via Emscripten, inside a web
-app.
+The only MIT-licensed 8051 emulator that runs in a browser with
+STC-specific hardware support. See [LANDSCAPE.md](LANDSCAPE.md) for the
+competitive analysis.
+
+**Peripherals:** Timer 0/1 (1T/12T), port modes, 10-bit ADC, PCA/PWM
+(8 clock sources, 9-bit compare, double-buffered pin output, toggle),
+UART1/2, SPI, watchdog, dual DPTR, STC15 Timer 2.
+
+**Debug:** run/halt/step (5 kinds), breakpoints (code + yield),
+memory access (5 address spaces), registers, PC histogram profiling,
+pin history ring buffer, Level 1 position for cooperative scheduler.
+
+**Verified:** 442 test assertions, 28 firmware images, 306/349
+third-party corpus images agree with an independent implementation
+(zero instruction-level disagreements). See [RESULTS.md](RESULTS.md).
+
+**API:** 57 WASM exports. See [API.md](API.md).
 
 What changed from upstream
 --------------------------
