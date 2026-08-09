@@ -148,8 +148,15 @@
 #define STC_REG_T2H      (0xD6 - 0x80)
 #define STC_REG_T2L      (0xD7 - 0x80)
 
-/* STC15 INT_CLKO (was WAKE_CLKO on STC12) */
+/* STC15 INT_CLKO/AUXR2 (was WAKE_CLKO on STC12)
+ * Bit layout: EX4 EX3 EX2 – T2CLKO T1CLKO T0CLKO –
+ * T0CLKO: toggle P3.5 on Timer 0 overflow
+ * T1CLKO: toggle P3.4 on Timer 1 overflow
+ * T2CLKO: toggle P3.0 on Timer 2 overflow */
 #define STC_REG_INT_CLKO (0x8F - 0x80)
+#define INT_CLKO_T0CLKO  0x01
+#define INT_CLKO_T1CLKO  0x02
+#define INT_CLKO_T2CLKO  0x04
 
 /* ------------------------------------------------------------------ *
  * ADC_CONTR bit masks (0xBC)                                          *
@@ -306,6 +313,7 @@ struct stc12_state
     uint8_t pca_prescaler;      /* for FOSC/12 and FOSC/2 sources */
     bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */
     uint8_t pca_cex_last[3];    /* last CEX0/CEX1/CEX2 pin level for capture edge detect */
+    uint8_t last_tf1;           /* for INT_CLKO.T1CLKO edge detection */
 
     /* Port external input state (active-low: 0xFF = all high) */
     uint8_t port_ext[6];        /* P0..P5 external pin state */

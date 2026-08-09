@@ -737,8 +737,27 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
     stc12_brt_tick(aCPU, aState);
 
     /* T0 overflow drives the PCA when CPS=10 */
-    if (t0_overflowed)
+    if (t0_overflowed) {
         aState->pca_t0_overflow_pending = true;
+
+        /* STC15 INT_CLKO.T0CLKO: toggle P3.5 on Timer 0 overflow */
+        if (aState->part_id == PART_STC15 &&
+            (aCPU->mSFR[STC_REG_INT_CLKO] & INT_CLKO_T0CLKO)) {
+            aCPU->mSFR[REG_P3] ^= (1 << 5); /* toggle P3.5 */
+            emit_pin_changes(aCPU, aState, 3);
+        }
+    }
+
+    /* STC15 INT_CLKO.T1CLKO: detect TF1 rising edge, toggle P3.4 */
+    if (aState->part_id == PART_STC15 &&
+        (aCPU->mSFR[STC_REG_INT_CLKO] & INT_CLKO_T1CLKO)) {
+        uint8_t tf1 = aCPU->mSFR[REG_TCON] & TCONMASK_TF1;
+        if (tf1 && !aState->last_tf1) {
+            aCPU->mSFR[REG_P3] ^= (1 << 4); /* toggle P3.4 */
+            emit_pin_changes(aCPU, aState, 3);
+        }
+        aState->last_tf1 = tf1;
+    }
 
     stc12_adc_tick(aCPU, aState);
     stc12_pca_tick(aCPU, aState);
