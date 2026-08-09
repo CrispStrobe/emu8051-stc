@@ -17,6 +17,7 @@
 #include <assert.h>
 #include "emu8051.h"
 #include "stc12.h"
+#include "debug.h"
 
 static struct em8051 cpu;
 static struct stc12_state stc;
@@ -949,6 +950,9 @@ static void test_pca_toggle(void);
 static void test_pin_history(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
+static void test_wdt_overflow(void);
+static void test_debug_profiling(void);
+static void test_movx_ri_p2(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -987,6 +991,9 @@ int main(int argc, char **argv) {
     test_dual_dptr();
     test_pca_toggle();
     test_pin_history();
+    test_wdt_overflow();
+    test_debug_profiling();
+    test_movx_ri_p2();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1382,10 +1389,107 @@ static void test_pin_history(void) {
     if (stc.pin_history_count > 0) {
         /* Check the first event */
         CHECK(stc.pin_history[0].port == 1, "Pin history: first event port=1");
-        CHECK(stc.pin_history[0].t_ns >= 0, "Pin history: timestamp valid");
+        CHECK(stc.pin_history[0].t_ns < 1000000, "Pin history: timestamp valid (< 1ms)");
     }
 
     free(stc.pin_history);
     stc.pin_history = NULL;
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 29: WDT overflow and prescaler                                 *
+ * ================================================================== */
+static void test_wdt_overflow(void) {
+    printf("\n--- test_wdt_overflow ---\n");
+    setup();
+
+    /* Enable WDT with PS=7 (divisor = 2^8 = 256) to speed up overflow.
+     * Need 32768 counter increments × 256 prescaler = 8,388,608 clocks.
+     * That's too many. Instead, directly set the counter close to overflow. */
+    cpu.mSFR[STC_REG_WDT_CONTR] = 0x20; /* EN_WDT, PS=0 (divisor=2) */
+    cpu.sfrwrite[STC_REG_WDT_CONTR](&cpu, STC_REG_WDT_CONTR + 0x80);
+
+    /* Set counter to 32766 — 2 more increments to overflow.
+     * PS=0 → divisor=2, so 4 clocks = 2 increments. */
+    stc.wdt_counter = 32766;
+    stc.wdt_prescaler_cnt = 0;
+
+    run_clocks(4);
+    CHECK(cpu.mSFR[STC_REG_WDT_CONTR] & 0x80, "WDT overflow: WDT_FLAG set");
+    CHECK(stc.wdt_counter == 0, "WDT overflow: counter reset to 0");
+
+    /* Test PS=3 (divisor = 2^4 = 16): need 16 clocks per counter tick */
+    setup();
+    cpu.mSFR[STC_REG_WDT_CONTR] = 0x23; /* EN_WDT | PS=3 */
+    cpu.sfrwrite[STC_REG_WDT_CONTR](&cpu, STC_REG_WDT_CONTR + 0x80);
+    run_clocks(16);
+    CHECK(stc.wdt_counter == 1, "WDT PS=3: 16 clocks = 1 counter tick");
+    run_clocks(16);
+    CHECK(stc.wdt_counter == 2, "WDT PS=3: 32 clocks = 2 counter ticks");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 30: Debug profiling (native C)                                 *
+ * ================================================================== */
+static void test_debug_profiling(void) {
+    printf("\n--- test_debug_profiling ---\n");
+    setup();
+
+    /* Simple program: NOP; NOP; SJMP 0 */
+    cpu.mCodeMem[0] = 0x00; /* NOP */
+    cpu.mCodeMem[1] = 0x00; /* NOP */
+    cpu.mCodeMem[2] = 0x80; cpu.mCodeMem[3] = 0xFC; /* SJMP 0 */
+
+    struct dbg_target dbg;
+    dbg_init(&dbg, &cpu, &stc);
+
+    dbg_profile_start(&dbg);
+    dbg_run(&dbg); /* must be RUNNING for dbg_tick to execute */
+    for (int i = 0; i < 100; i++) {
+        dbg_tick(&dbg);
+    }
+    dbg_profile_stop(&dbg);
+
+    uint32_t total = dbg_profile_total(&dbg);
+    CHECK(total > 0, "Profile: total > 0 after execution");
+
+    uint32_t nop_hits = dbg_profile_get(&dbg, 0x0000);
+    CHECK(nop_hits > 0, "Profile: NOP at 0x0000 was hit");
+
+    uint32_t sjmp_hits = dbg_profile_get(&dbg, 0x0002);
+    CHECK(sjmp_hits > 0, "Profile: SJMP at 0x0002 was hit");
+
+    /* Unused address should have 0 hits */
+    uint32_t empty = dbg_profile_get(&dbg, 0x1000);
+    CHECK(empty == 0, "Profile: unused address has 0 hits");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 31: MOVX @Ri with P2 high byte                                *
+ * ================================================================== */
+static void test_movx_ri_p2(void) {
+    printf("\n--- test_movx_ri_p2 ---\n");
+    setup();
+
+    /* Program: MOV P2,#12h; MOV R0,#34h; MOVX @R0,A; SJMP $ */
+    cpu.mSFR[REG_ACC] = 0x42;
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0xA0; cpu.mCodeMem[2] = 0x12; /* MOV P2,#12h */
+    cpu.mCodeMem[3] = 0x78; cpu.mCodeMem[4] = 0x34;                         /* MOV R0,#34h */
+    cpu.mCodeMem[5] = 0xF2;                                                 /* MOVX @R0,A */
+    cpu.mCodeMem[6] = 0x80; cpu.mCodeMem[7] = 0xFE;                         /* SJMP $ */
+
+    run_clocks(30);
+
+    /* MOVX @R0 should use P2 as high byte: address = 0x1234 */
+    CHECK(cpu.mExtData[0x1234] == 0x42, "MOVX @R0: P2=12h, R0=34h → xdata[1234]=42h");
+
+    /* Verify address 0xFF34 (default P2) was NOT written */
+    CHECK(cpu.mExtData[0xFF34] != 0x42, "MOVX @R0: did not write to default P2 page");
+
     teardown();
 }

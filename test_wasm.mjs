@@ -273,7 +273,93 @@ assert(caps.includes('uart1'), `Capabilities: has uart1`);
 const ver = Module.cwrap('emu_version', 'string', [])();
 assert(ver.includes('emu8051-stc'), `Version: ${ver}`);
 
+// --- WASM Debug API tests ---
 
+const dbgState = Module.cwrap('emu_dbg_state', 'number', []);
+const dbgRun = Module.cwrap('emu_dbg_run', null, []);
+const dbgHalt = Module.cwrap('emu_dbg_halt', null, []);
+const dbgStep = Module.cwrap('emu_dbg_step', null, ['number', 'number']);
+const dbgTick = Module.cwrap('emu_dbg_tick', 'number', []);
+const dbgSetBp = Module.cwrap('emu_dbg_set_bp_code', 'number', ['number']);
+const dbgClearBp = Module.cwrap('emu_dbg_clear_bp', null, ['number']);
+const dbgReadMem = Module.cwrap('emu_dbg_read_mem', 'number', ['number', 'number']);
+const dbgWriteMem = Module.cwrap('emu_dbg_write_mem', null, ['number', 'number', 'number']);
+const dbgPc = Module.cwrap('emu_dbg_pc', 'number', []);
+const dbgAcc = Module.cwrap('emu_dbg_acc', 'number', []);
+const dbgSp = Module.cwrap('emu_dbg_sp', 'number', []);
+const dbgPsw = Module.cwrap('emu_dbg_psw', 'number', []);
+
+// Test 24: Debug state machine
+emu_init(1);
+emu_load_hex(hex, hex.length);
+{
+    const state0 = dbgState();
+    assert(state0 === 0, `Debug initial state: ${state0} (0=halted)`);
+
+    dbgRun();
+    const state1 = dbgState();
+    assert(state1 === 1, `Debug after run: ${state1} (1=running)`);
+
+    // Tick until instruction executes
+    for (let i = 0; i < 20; i++) dbgTick();
+
+    dbgHalt();
+    const state2 = dbgState();
+    assert(state2 === 0, `Debug after halt: ${state2} (0=halted)`);
+}
+
+// Test 25: Step and register access
+emu_init(1);
+emu_load_hex(hex, hex.length);
+{
+    dbgStep(0, 1); // STEP_INSN=0, count=1: sets state=RUNNING with step
+    // Drive execution until the step completes (auto-halts)
+    for (let i = 0; i < 20; i++) dbgTick();
+    const a = dbgAcc();
+    assert(a === 0x42, `Debug step: ACC=0x${a.toString(16)} (expected 0x42)`);
+
+    const pc = dbgPc();
+    assert(pc === 2, `Debug step: PC=${pc} (expected 2)`);
+
+    const sp = dbgSp();
+    assert(sp === 7, `Debug step: SP=${sp} (expected 7)`);
+}
+
+// Test 26: Breakpoints
+emu_init(1);
+emu_load_hex(hex, hex.length);
+{
+    const bpId = dbgSetBp(2); // BP at address 2 (SJMP)
+    assert(bpId > 0, `Debug BP set: id=${bpId} (expected > 0)`);
+
+    dbgRun();
+    for (let i = 0; i < 50; i++) dbgTick();
+
+    const pc = dbgPc();
+    assert(pc === 2, `Debug BP hit: PC=${pc} (expected 2)`);
+
+    const state = dbgState();
+    assert(state === 0, `Debug BP halted: state=${state} (expected 0)`);
+
+    dbgClearBp(bpId);
+}
+
+// Test 27: Memory write + read via existing accessors
+const getIram = Module.cwrap('emu_get_iram', 'number', ['number']);
+const getXdata = Module.cwrap('emu_get_xdata', 'number', ['number']);
+emu_init(1);
+{
+    // Write via debug API, read via direct accessor
+    // SPACE_IRAM=1
+    dbgWriteMem(1, 0x30, 0xAB);
+    const val = getIram(0x30);
+    assert(val === 0xAB, `Debug mem write: IRAM[30h]=0x${val.toString(16)} (expected 0xAB)`);
+
+    // SPACE_XDATA=3
+    dbgWriteMem(3, 0x100, 0xCD);
+    const xval = getXdata(0x100);
+    assert(xval === 0xCD, `Debug mem write: XDATA[100h]=0x${xval.toString(16)} (expected 0xCD)`);
+}
 
 
 console.log(`

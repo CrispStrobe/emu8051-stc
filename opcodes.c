@@ -1362,7 +1362,8 @@ static uint8_t movx_a_indir_dptr(struct em8051 *aCPU)
 
 static uint8_t movx_a_indir_rx(struct em8051 *aCPU)
 {
-    uint16_t address = INDIR_RX_ADDRESS;
+    /* MCS-51: P2 provides the high byte for MOVX @Ri */
+    uint16_t address = (aCPU->mSFR[REG_P2] << 8) | INDIR_RX_ADDRESS;
     if (aCPU->xread)
     {
         ACC = aCPU->xread(aCPU, address);
@@ -1426,7 +1427,8 @@ static uint8_t movx_indir_dptr_a(struct em8051 *aCPU)
 
 static uint8_t movx_indir_rx_a(struct em8051 *aCPU)
 {
-    uint16_t address = INDIR_RX_ADDRESS;
+    /* MCS-51: P2 provides the high byte for MOVX @Ri */
+    uint16_t address = (aCPU->mSFR[REG_P2] << 8) | INDIR_RX_ADDRESS;
 
     if (aCPU->xwrite)
     {
