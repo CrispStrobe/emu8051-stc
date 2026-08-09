@@ -107,11 +107,25 @@ $(OUTDIR):
 
 $(OUT): $(SRC) $(wildcard *.h) | $(OUTDIR)
 	$(EMCC) $(CFLAGS) $(EMFLAGS) -o $@ $(SRC)
-	@# Regenerate BUILD-INFO.md so provenance matches artifacts
-	@JS=$$(sha256sum $(OUTDIR)/emu8051.js | cut -d" " -f1); \
-	 WASM=$$(sha256sum $(OUTDIR)/emu8051.wasm | cut -d" " -f1); \
+	@# Regenerate BUILD-INFO.md so provenance always matches artifacts
+	@JS=$$(sha256sum $(OUTDIR)/emu8051.js | cut -d' ' -f1); \
+	 WASM=$$(sha256sum $(OUTDIR)/emu8051.wasm | cut -d' ' -f1); \
+	 JS_SZ=$$(ls -lh $(OUTDIR)/emu8051.js | awk '{print $$5}'); \
+	 WASM_SZ=$$(ls -lh $(OUTDIR)/emu8051.wasm | awk '{print $$5}'); \
+	 VER=$$($(EMCC) --version 2>/dev/null | head -1); \
 	 REV=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown); \
-	 printf "# Build provenance\n\n| File | SHA-256 |\n|------|--------|\n| emu8051.js | \`%s\` |\n| emu8051.wasm | \`%s\` |\n\n**source:** \`%s\`\n" "$$JS" "$$WASM" "$$REV" > $(OUTDIR)/BUILD-INFO.md
+	 DIRTY=$$(git diff --quiet HEAD -- '*.c' '*.h' 2>/dev/null || echo ' +local-changes'); \
+	 { echo '# Build provenance for emu8051.js + emu8051.wasm'; \
+	   echo ''; \
+	   echo '| File | Size | SHA-256 |'; \
+	   echo '|------|------|---------|'; \
+	   printf '| emu8051.js | %s | `%s` |\n' "$$JS_SZ" "$$JS"; \
+	   printf '| emu8051.wasm | %s | `%s` |\n' "$$WASM_SZ" "$$WASM"; \
+	   echo ''; \
+	   printf '**Emscripten:** %s\n' "$$VER"; \
+	   printf '**Source:** `%s%s`\n' "$$REV" "$$DIRTY"; \
+	   echo '**Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.'; \
+	 } > $(OUTDIR)/BUILD-INFO.md
 
 clean:
 	rm -f $(OUTDIR)/emu8051.js $(OUTDIR)/emu8051.wasm
