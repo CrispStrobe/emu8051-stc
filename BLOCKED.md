@@ -1,31 +1,31 @@
 # BLOCKED — items waiting on external action
 
-## SDCC-to-WASM — configure passes, build fails in sdbinutils
+## SDCC-to-WASM — configure passes, build fails in sdcc-libs
 
-**Status:** Configure now passes (run `31339842453`). `emmake make`
-fails in the sdbinutils sub-build (the assembler/linker component).
+**Status:** Configure green (run `31339842453`). sdbinutils skipped
+(psignal conflict). Build now fails in `sdcc-libs` with
+`em++: error: no input files` in `all-gcc` (run `31340277027`).
 
-**What was resolved (11 runs):**
-1. Directory collision: `sdcc-wasm/` existed in repo → `sdcc-emcc`
-2. config.sub: `wasm32-unknown-emscripten` not recognized → `i686-unknown-linux-gnu`
-3. Endianness: `ppc` is big-endian → `i686` (little-endian = wasm32)
-4. zlib: Emscripten sysroot → `-sUSE_ZLIB` in CFLAGS
-5. boost headers: isolated copy → `CPPFLAGS="-isystem /tmp/boost-headers"`
-6. C++11 probe: `ac_cv_prog_cxx_cxx11=yes` injected literal `yes` into CXX →
-   deleted, CXXFLAGS already has `-std=c++11`
+**What was resolved (12 runs):**
+1. Directory collision: `sdcc-wasm/` in repo → renamed to `sdcc-emcc`
+2. config.sub triplet: → `--host=i686-unknown-linux-gnu` (LE 32-bit)
+3. zlib: → `-sUSE_ZLIB` in CFLAGS only (not CXXFLAGS, avoids shadow)
+4. boost headers: → `CPPFLAGS="-isystem /tmp/boost-headers"` (isolated)
+5. C++11 probe: `ac_cv_prog_cxx_cxx11=yes` injected literal `yes`
+   into CXX → deleted, CXXFLAGS has `-std=c++11`
+6. sdbinutils psignal: → `--disable-sdbinutils`
 
-**What blocks now:** `emmake make` fails in `sdcc-sdbinutils` (Error 2).
-The sdbinutils sub-tree is a binutils fork with its own build system.
-This is the first real Emscripten compilation failure (all prior were
-configure environment issues).
+**What blocks now:** `sdcc-libs` target tries to build `all-gcc`
+(GCC support library sub-build). Likely fix: also disable sdcc-libs
+or build only the `sdcc-cc` make target.
 
-**The workflow is at `.github/workflows/build-sdcc-wasm.yml`** and
-configure is now green. The next person needs to diagnose the sdbinutils
-compilation error.
+**Route 2 (recommended):** Build only `sdcc-cc` (compiler + preprocessor)
+and `sdas` (assembler + linker) with Emscripten. Take device libraries
+from the native build (they are target artifacts, host-independent).
+
+**Workflow:** `.github/workflows/build-sdcc-wasm.yml` — configure green.
 
 ## AVR conformance — blocked on bw-board accepting `input-pullup`
 
 bw-board's `conformance.js` rejects `input-pullup` as a valid PinMode.
-spec-update 005 was adjudicated (sb3-creator 6255de3). Until bw-board
-updates its conformance checker, the AVR adapter cannot pass the full
-suite.
+spec-update 005 was adjudicated (sb3-creator 6255de3).
