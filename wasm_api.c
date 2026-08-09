@@ -51,6 +51,13 @@ static void wasm_exception(struct em8051 *aCPU, int aCode) {
 
 EMSCRIPTEN_KEEPALIVE
 void emu_init(int stc12_mode) {
+    /* Free previous allocations if re-initializing */
+    if (cpu.mCodeMem) free(cpu.mCodeMem);
+    if (cpu.mExtData) free(cpu.mExtData);
+    if (cpu.mUpperData) free(cpu.mUpperData);
+    if (stc.pin_history) { free(stc.pin_history); stc.pin_history = NULL; }
+    if (dbg.pc_histogram) { free(dbg.pc_histogram); dbg.pc_histogram = NULL; }
+
     memset(&cpu, 0, sizeof(cpu));
     cpu.mCodeMemMaxIdx = 65535;
     cpu.mCodeMem = calloc(65536, 1);

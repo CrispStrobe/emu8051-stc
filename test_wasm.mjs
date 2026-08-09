@@ -14,6 +14,7 @@
 
 import { createRequire } from 'module';
 import { readFileSync } from 'fs';
+import { loadSymbols } from './load-symbols.mjs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -273,5 +274,8 @@ const ver = Module.cwrap('emu_version', 'string', [])();
 assert(ver.includes('emu8051-stc'), `Version: ${ver}`);
 
 
-console.log(`\n${passed} passed, ${failed} failed`);
+
+
+console.log(`
+${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
