@@ -43,6 +43,21 @@ This is the first rung that tests whether the two implementations
 agree about what `step('insn')` **means**, not just about peripheral
 events.
 
+
+## Example bundles (stc/examples/)
+
+All 9 official example bundles pass differential comparison:
+
+```
+./tests/examples_diff.sh
+```
+
+| Example | Result |
+|---------|--------|
+| 01-blink through 09-shift-register | 9/9 PASS |
+
+06-dimmer requires `-adc 2,512` for PWM comparison.
+
 ## Third-party corpus (349 images)
 
 Full corpus analysis (ucsim-stc `tests/corpus_diff.sh`, 2 ms span):
