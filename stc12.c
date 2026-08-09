@@ -965,10 +965,56 @@ static const uint8_t stc12_valid_sfr_set[] = {
     0xF0, 0xF2, 0xF3, 0xF9, 0xFA, 0xFB,
 };
 
-bool stc12_is_valid_sfr(uint8_t addr)
+/* STC15 adds these SFRs (STC15-PERIPHERAL-MODEL.md §3) */
+static const uint8_t stc15_extra_sfr_set[] = {
+    0x8F, /* INT_CLKO/AUXR2 */
+    0xA1, /* BUS_SPEED */
+    0xAA, /* WKTCL */
+    0xAB, /* WKTCH */
+    0xBA, /* P_SW2 */
+    0xC2, /* IAP_DATA */
+    0xC3, /* IAP_ADDRH */
+    0xC4, /* IAP_ADDRL */
+    0xC5, /* IAP_CMD */
+    0xC6, /* IAP_TRIG */
+    0xC7, /* IAP_CONTR */
+    0xCD, /* SPSTAT (STC15 address) */
+    0xCF, /* SPDAT (STC15 address) */
+    0xD6, /* T2H */
+    0xD7, /* T2L */
+    0xDC, /* CCAPM2 */
+    0xEC, /* CCAP2L */
+    0xF4, /* PCA_PWM2 */
+    0xFC, /* CCAP2H */
+};
+
+/* STC12 has SPI at 0x85/0x86/0xCE; STC15 moves to 0xCD/0xCE/0xCF.
+ * P4SW (0xBB) is STC12-only. */
+static const uint8_t stc12_only_sfr_set[] = {
+    0x85, /* SPCTL (STC12 address) */
+    0x86, /* SPDAT (STC12 address) */
+    0xBB, /* P4SW */
+};
+
+bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr)
 {
+    /* Check common set (valid on both STC12 and STC15) */
     for (unsigned i = 0; i < sizeof(stc12_valid_sfr_set); i++) {
-        if (stc12_valid_sfr_set[i] == addr) return true;
+        if (stc12_valid_sfr_set[i] == addr) {
+            /* Some addresses are STC12-only — check exclusions for STC15 */
+            if (aState && aState->part_id == PART_STC15) {
+                for (unsigned j = 0; j < sizeof(stc12_only_sfr_set); j++) {
+                    if (stc12_only_sfr_set[j] == addr) return false;
+                }
+            }
+            return true;
+        }
+    }
+    /* Check STC15 extras */
+    if (aState && aState->part_id == PART_STC15) {
+        for (unsigned i = 0; i < sizeof(stc15_extra_sfr_set); i++) {
+            if (stc15_extra_sfr_set[i] == addr) return true;
+        }
     }
     return false;
 }

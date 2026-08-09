@@ -925,18 +925,32 @@ static void test_stc15_adrj(void) {
  * ================================================================== */
 static void test_sfr_validation(void) {
     printf("\n--- test_sfr_validation ---\n");
+    setup(); /* ensure part_id = STC12 */
 
     /* STC12 valid SFRs */
-    CHECK(stc12_is_valid_sfr(0x80), "SFR valid: P0 (0x80)");
-    CHECK(stc12_is_valid_sfr(0x90), "SFR valid: P1 (0x90)");
-    CHECK(stc12_is_valid_sfr(0x8E), "SFR valid: AUXR (0x8E)");
-    CHECK(stc12_is_valid_sfr(0xBC), "SFR valid: ADC_CONTR (0xBC)");
-    CHECK(stc12_is_valid_sfr(0xD8), "SFR valid: CCON (0xD8)");
+    CHECK(stc12_is_valid_sfr(&stc,0x80), "SFR valid: P0 (0x80)");
+    CHECK(stc12_is_valid_sfr(&stc,0x90), "SFR valid: P1 (0x90)");
+    CHECK(stc12_is_valid_sfr(&stc,0x8E), "SFR valid: AUXR (0x8E)");
+    CHECK(stc12_is_valid_sfr(&stc,0xBC), "SFR valid: ADC_CONTR (0xBC)");
+    CHECK(stc12_is_valid_sfr(&stc,0xD8), "SFR valid: CCON (0xD8)");
 
     /* Not on STC12 */
-    CHECK(!stc12_is_valid_sfr(0x84), "SFR invalid: 0x84 (S4CON on STC15)");
-    CHECK(!stc12_is_valid_sfr(0xD6), "SFR invalid: 0xD6 (T2H on STC15)");
-    CHECK(!stc12_is_valid_sfr(0xAA), "SFR invalid: 0xAA (WKTCL on STC15)");
+    CHECK(!stc12_is_valid_sfr(&stc,0x84), "SFR invalid: 0x84 (S4CON on STC15)");
+    CHECK(!stc12_is_valid_sfr(&stc,0xD6), "SFR invalid: 0xD6 (T2H on STC15)");
+    CHECK(!stc12_is_valid_sfr(&stc,0xAA), "SFR invalid: 0xAA (WKTCL on STC15)");
+
+    /* STC15 mode: STC15-specific SFRs should be valid */
+    stc12_set_part(&stc, PART_STC15);
+    CHECK(stc12_is_valid_sfr(&stc,0xD6), "STC15 SFR valid: T2H (0xD6)");
+    CHECK(stc12_is_valid_sfr(&stc,0xD7), "STC15 SFR valid: T2L (0xD7)");
+    CHECK(stc12_is_valid_sfr(&stc,0xDC), "STC15 SFR valid: CCAPM2 (0xDC)");
+    CHECK(stc12_is_valid_sfr(&stc,0xAA), "STC15 SFR valid: WKTCL (0xAA)");
+    /* P4SW (0xBB) is STC12-only */
+    CHECK(!stc12_is_valid_sfr(&stc,0xBB), "STC15 SFR invalid: P4SW (0xBB)");
+    /* S4CON still not on STC15F2K60S2 */
+    CHECK(!stc12_is_valid_sfr(&stc,0x84), "STC15 SFR invalid: S4CON (0x84)");
+    stc12_set_part(&stc, PART_STC12); /* restore */
+    teardown();
 }
 
 static void test_stc15_timer2(void);

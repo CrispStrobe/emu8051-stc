@@ -365,7 +365,7 @@ void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value
 void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);
 
 /* Stage 0: check if an SFR address is valid for the declared part. */
-bool stc12_is_valid_sfr(uint8_t addr);
+bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr);
 
 /* Set the part identity. Call before stc12_init or after reset. */
 void stc12_set_part(struct stc12_state *aState, uint8_t part_id);
