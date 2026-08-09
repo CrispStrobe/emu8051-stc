@@ -109,6 +109,6 @@ $(OUT): $(SRC) $(wildcard *.h) | $(OUTDIR)
 	$(EMCC) $(CFLAGS) $(EMFLAGS) -o $@ $(SRC)
 
 clean:
-	rm -rf $(OUTDIR)
+	rm -f $(OUTDIR)/emu8051.js $(OUTDIR)/emu8051.wasm
 
 .PHONY: all clean
