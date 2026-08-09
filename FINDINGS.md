@@ -423,3 +423,43 @@ no layer is enabled while P0 holds another line's data.
 
 Build: `2dd4c198548e__icstation_4681_Code_main.hex` (SDCC build from
 stc-research corpus).
+
+---
+
+## 14. P0 data polarity is active-HIGH — settled by trace, not by source
+
+**Question:** Is `P0 = 0x00` "all LEDs off" (active-high) or "all LEDs on"
+(active-low)? The spec said active-low; `probe.c` assumed active-high;
+`main.c` followed the spec. Source reasoning alone could not settle it.
+
+**Method:** P0 value histogram from the vendor firmware (SDCC build,
+5 seconds, scan phase only), classifying each P0 write as either
+"blank" (before a P2 select transition) or "data" (after a P2 select).
+
+**Result:**
+
+| Role | P0 value | Count | Notes |
+|------|----------|-------|-------|
+| Blank | `0x00` | 1,560 | exclusively before selects |
+| Data: all-on | `0xFF` | 414 | exclusively after selects |
+| Data: red cols | `0x0F` | 540 | lower 4 bits = red |
+| Data: blue cols | `0xF0` | 460 | upper 4 bits = blue |
+| Data: single | `0x01` | 100 | one column |
+| Data: mixed | `0x11` | 28 | |
+| Data: mixed | `0x10` | 18 | |
+
+**Zero exceptions:** `0x00` is never used as data. `0xFF` is never used
+as blank. During the all-on init phase (P2=0x00), P0 alternates between
+0x00 (blank) and 0xFF (data=lit), confirming 0xFF = all LEDs on.
+
+**Conclusion:** P0 is **active-HIGH**. `1` = LED on, `0` = LED off.
+
+**Confidence:** Strong. Zero exceptions across 5 seconds and 3,930+ P0
+writes. The roles of 0x00 and 0xFF are completely non-overlapping.
+Still conditional on the hardware matching the firmware's intent — a
+bench test with `probe.c` remains the definitive confirmation — but the
+evidence is as strong as a trace measurement can be.
+
+**Impact:** `main.c`'s `P0_ACTIVE_LOW = 1` is inverted. `fb_clear()`
+should set `0x00` (not `0xFF`), and `fb_set_red`/`fb_set_blue` should
+SET bits to light LEDs rather than CLEAR them.
