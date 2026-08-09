@@ -475,3 +475,25 @@ two different ways. All four now cite this finding:
 | `ucsim-stc` spec-008 §2 | prose | fixed (`969b36a`) |
 | `sb3-creator` kernel | `BW_CUBE_ACTIVE_HIGH` | was already correct |
 | `bw-circuit-ui` | `P0_ACTIVE_HIGH` | was already correct |
+
+---
+
+## 15. STC15 monitor verified under emulation: Timer 2 baud + correct resources
+
+The on-chip debug monitor (`10-live-firmware`) built with
+`-DPART_STC15F2K60S2` runs under emu8051-stc's STC15 model:
+
+- AUXR = 0x15 (T2R + T2x12 + S1ST2) — Timer 2 drives UART1 baud
+- T2H/T2L reload for 115200 baud at 11.0592 MHz
+- HELLO reply: `resources = 0x17` (Timer0 + Timer1 + Timer2, no BRT)
+- POS reply: 2 tasks, well-formed, correct checksum
+
+This is the same monitor that was verified on the STC12 model with
+5 independent codecs and the time-freeze measurement. The STC15 build
+changes only the baud source (BRT → Timer 2) and the `consumes` set.
+
+**UART1 pin remap (P_SW1):** not modelled. The STC15 can remap UART1
+from P3.0/P3.1 to P3.6/P3.7 (or P1.6/P1.7) via P_SW1 bits S1_S1:S1_S0.
+This would free the ISP pins for simultaneous debug + programming. Our
+UART model is instant-TX and doesn't route through pins, so the remap
+has no effect under emulation but would matter on silicon.
