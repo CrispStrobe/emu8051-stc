@@ -50,6 +50,7 @@ static void run_ms(int ms) {
 #define CMD_RUN   0x05
 #define CMD_HALT  0x06
 #define CMD_READ  0x02
+#define CMD_REGS  0x04
 
 /* Build a frame: SOF LEN CMD payload[LEN] SUM */
 static int build_frame(uint8_t *buf, uint8_t cmd, const uint8_t *payload, uint8_t len) {
@@ -121,7 +122,7 @@ int main(void) {
     /* === Send HELLO command === */
     printf("\n--- Sending HELLO command ---\n");
 
-    uint8_t frame[8];
+    uint8_t frame[16];
     int flen = build_frame(frame, CMD_HELLO, NULL, 0);
 
     /* Inject each byte into the UART RX, with some clocks between */
@@ -213,6 +214,94 @@ int main(void) {
         CHECK(0, "POS reply: response not well-formed");
     } else {
         CHECK(0, "POS reply: no TX output");
+    }
+
+    /* === Torn frame + idle timeout recovery === */
+    printf("\n--- Torn frame recovery ---\n");
+    tx_idx = 0;
+
+    /* Send partial frame: SOF + LEN but no CMD or SUM */
+    stc12_serial_rx(&cpu, &stc, SOF);
+    run_clocks(1000);
+    stc12_serial_rx(&cpu, &stc, 0x00); /* LEN */
+    run_clocks(1000);
+
+    /* Wait for idle timeout (LIVE_IDLE_MS = 5ms) */
+    run_ms(10);
+
+    /* Now send a valid HELLO — if recovery works, it processes it */
+    flen = build_frame(frame, CMD_HELLO, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    CHECK(tx_idx > 0, "Idle recovery: response after torn frame");
+    if (tx_idx >= 4 && tx_buf[0] == SOF) {
+        CHECK(tx_buf[2] == (CMD_HELLO | 0x80),
+              "Idle recovery: valid HELLO reply after torn frame");
+    }
+
+    /* === REGS command === */
+    printf("\n--- Sending REGS command ---\n");
+    tx_idx = 0;
+
+    flen = build_frame(frame, CMD_REGS, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    printf("  TX output: %d bytes\n", tx_idx);
+    if (tx_idx >= 4 && tx_buf[0] == SOF) {
+        uint8_t rcmd = tx_buf[2];
+        uint8_t rlen = tx_buf[1];
+        CHECK(rcmd == (CMD_REGS | 0x80), "REGS reply: CMD = 0x84");
+        if (rlen >= 15) {
+            printf("  A=%02X B=%02X DPL=%02X DPH=%02X SP=%02X PSW=%02X bank=%d\n",
+                   tx_buf[3], tx_buf[4], tx_buf[5], tx_buf[6],
+                   tx_buf[7], tx_buf[8], tx_buf[9]);
+            printf("  R0..R7:");
+            for (int i = 0; i < 8; i++) printf(" %02X", tx_buf[10 + i]);
+            printf("\n");
+            CHECK(tx_buf[7] > 0, "REGS: SP > 0 (stack in use)");
+        }
+
+        uint8_t sum = 0;
+        for (int i = 1; i < 3 + rlen + 1 && i < tx_idx; i++)
+            sum += tx_buf[i];
+        CHECK(sum == 0, "REGS reply: checksum valid");
+    } else {
+        CHECK(0, "REGS reply: no valid response");
+    }
+
+    /* === READ command: read IRAM at bw_ms address === */
+    printf("\n--- Sending READ (IRAM) command ---\n");
+    tx_idx = 0;
+
+    /* READ: space=IRAM(1), addr_hi=0, addr_lo=bw_ms_addr, len=2 */
+    uint8_t read_payload[] = { 0x01, 0x00, 0x08, 0x02 }; /* space=IRAM, addr=8, len=2 */
+    flen = build_frame(frame, CMD_READ, read_payload, 4);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    printf("  TX output: %d bytes\n", tx_idx);
+    if (tx_idx >= 4 && tx_buf[0] == SOF) {
+        uint8_t rcmd = tx_buf[2];
+        uint8_t rlen = tx_buf[1];
+        CHECK(rcmd == (CMD_READ | 0x80), "READ reply: CMD = 0x82");
+        if (rlen >= 2) {
+            uint16_t bw_ms_val = (tx_buf[3] << 8) | tx_buf[4];
+            printf("  bw_ms = %u (read via monitor protocol)\n", bw_ms_val);
+            CHECK(bw_ms_val > 0, "READ: bw_ms > 0 (timer running)");
+        }
+    } else {
+        CHECK(0, "READ reply: no valid response");
     }
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
