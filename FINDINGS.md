@@ -454,26 +454,24 @@ as blank. During the all-on init phase (P2=0x00), P0 alternates between
 
 **Conclusion:** P0 is **active-HIGH**. `1` = LED on, `0` = LED off.
 
-**Confidence:** Strong. Zero exceptions across 5 seconds and 3,930+ P0
-writes. The roles of 0x00 and 0xFF are completely non-overlapping.
-Still conditional on the hardware matching the firmware's intent — a
-bench test with `probe.c` remains the definitive confirmation — but the
-evidence is as strong as a trace measurement can be.
+**Confidence:** The firmware's intent is settled — zero exceptions across
+5 seconds and 3,930+ P0 writes, with a semantic cross-check that rules
+out coincidence. What remains open is narrower: **whether the hardware
+matches the firmware's intent.** A bench test with `probe.c` confirms
+the second; this measurement confirmed the first. They are different
+claims and only the hardware one still needs a bench session.
 
 **Semantic cross-check:** Under active-HIGH, P0=0x0F (540 appearances)
 means red columns 0-3 on, blue off — consistent with the layer-sweep
 animation (red-only). Under active-LOW, 0x0F would mean red OFF,
 blue ON — contradicting the pattern's visible intent.
 
-**Impact on four codebases:** Four polarity flags exist, defaulting
-two different ways:
+**Impact on four codebases:** Four polarity flags existed, defaulting
+two different ways. All four now cite this finding:
 
-| where | symbol | default | correct |
-|---|---|---|---|
-| `stc/src/20-ledcube/main.c` | `P0_ACTIVE_LOW` | 1 | should be **0** |
-| `ucsim-stc` spec-008 §2 | prose | active-low | should say **active-high** |
-| `sb3-creator` kernel | `BW_CUBE_ACTIVE_HIGH` | 1 | **correct** |
-| `bw-circuit-ui` | `P0_ACTIVE_HIGH` | true | **correct** |
-
-Recommended: align on one name (`BW_CUBE_ACTIVE_HIGH = 1`), cite this
-finding, and set all four from the measurement.
+| where | symbol | status |
+|---|---|---|
+| `stc/src/20-ledcube/main.c` | `P0_ACTIVE_LOW` → `BW_CUBE_ACTIVE_HIGH` | fixed (`2d3d877`) |
+| `ucsim-stc` spec-008 §2 | prose | fixed (`969b36a`) |
+| `sb3-creator` kernel | `BW_CUBE_ACTIVE_HIGH` | was already correct |
+| `bw-circuit-ui` | `P0_ACTIVE_HIGH` | was already correct |
