@@ -33,47 +33,34 @@
 | Boundary D debug control | ✅ Done | ✅ (26 functions) | 37 assertions |
 | Level 1 position (task state) | ✅ Done | ✅ | 4 assertions |
 | UART serial TX/RX | ✅ Done | ✅ | 5 assertions |
-| PC histogram profiling | ✅ Done | ❌ (C only, needs WASM export) | — |
+| PC histogram profiling | ✅ Done | ✅ (4 functions) | 2 assertions |
 | Interrupt state query | ✅ Done | ✅ | — |
 | MCS-51 cycle count verification | ✅ Done | — | 34 assertions |
 | Differential trace emitter | ✅ Done | — | — |
-| Pin history ring buffer | ❌ Not started | ❌ | — |
-| GDB remote protocol stub | ❌ Not started | ❌ | — |
-| UART2 (STC12/15) | ❌ Stub only | — | — |
-| SPI peripheral | ❌ Stub only | — | — |
-| Watchdog | ❌ Stub only | — | — |
+| Pin history ring buffer | ✅ Done | ✅ (5 functions) | 2 assertions |
+| GDB remote protocol stub | ✅ Done (Node.js) | — | 6 assertions |
+| UART2 (STC12/15) | ✅ Done | ✅ | 2 assertions |
+| SPI peripheral | ✅ Done | ✅ | 4 assertions |
+| Watchdog | ✅ Done | ✅ | 3 assertions |
 | 8052 Timer 2 | ❌ Not implemented | — | — |
 
 ---
 
 ## Plan: what to build next, and how
 
-### Phase 1: make the debugger panel possible (front-end unblocking)
+### Phase 1: make the debugger panel possible (front-end unblocking) — DONE
 
-The debugger panel in brickwright-lite needs these WASM exports. Most
-already exist; the gaps are small.
+All WASM exports needed by the debugger panel are implemented and tested.
 
-**1a. Export profiling to WASM** (~10 lines)
-```c
-EMSCRIPTEN_KEEPALIVE void emu_dbg_profile_start(void);
-EMSCRIPTEN_KEEPALIVE void emu_dbg_profile_stop(void);
-EMSCRIPTEN_KEEPALIVE uint32_t emu_dbg_profile_get(uint16_t addr);
-```
-Front-end reads the histogram to color-code lines by execution count.
-
-**1b. Pin history ring buffer** (~60 lines in stc12.c)
-```c
-struct pin_event { uint64_t t_ns; uint8_t port; uint8_t bit; uint8_t mode; uint8_t drive; };
-#define PIN_HISTORY_SIZE 4096
-static struct pin_event pin_history[PIN_HISTORY_SIZE];
-```
-Stored in a circular buffer, written by the existing pin-change callback.
-WASM export: `emu_pin_history_get(index)` returns a pointer to the event.
-Front-end renders as a logic analyzer / oscilloscope trace.
-
-**1c. Stack viewer data** (already possible, no emulator changes)
-Front-end reads `emu_dbg_read_mem(SPACE_IRAM, sp, depth)` and
-`emu_dbg_sp()`. No new exports needed.
+- **Profiling:** `emu_dbg_profile_start/stop/get/total` — 4 WASM exports,
+  tested in test_wasm.mjs. Front-end reads the histogram to color-code
+  lines by execution count.
+- **Pin history ring buffer:** `emu_pin_history_enable/count/head/get` +
+  `emu_pin_event_size` — 5 WASM exports, tested in test_wasm.mjs.
+  4096-entry circular buffer, written by pin-change callback.
+  Front-end renders as a logic analyzer / oscilloscope trace.
+- **Stack viewer:** no emulator changes needed — front-end reads
+  `emu_dbg_read_mem(SPACE_IRAM, sp, depth)` and `emu_dbg_sp()`.
 
 ### Phase 2: serial terminal
 
@@ -86,13 +73,15 @@ Front-end reads `emu_dbg_read_mem(SPACE_IRAM, sp, depth)` and
 For `printf` support: SDCC's `putchar` writes to SBUF. Any program
 using `printf` will produce output through this path automatically.
 
-### Phase 3: GDB remote protocol stub
+### Phase 3: GDB remote protocol stub — DONE
 
-**What it is:** a WebSocket server that speaks the GDB Remote Serial
-Protocol (RSP). A standard debugger (GDB, VS Code + cortex-debug,
-or any GDB-compatible client) connects and gets full debug access.
+**Implemented in `gdb-stub.mjs`** (~250 lines, Node.js). TCP server
+speaking GDB Remote Serial Protocol (RSP) over the WASM debug API.
+6 tests in `test_gdb.mjs`.
 
-**What it maps to:**
+Note: no upstream mcs51 GDB target exists, so this is a transport layer
+below boundary D — useful for custom GDB-compatible front-ends, not
+for `target remote` with stock GDB.
 
 | GDB command | Our API |
 |-------------|---------|
@@ -105,15 +94,6 @@ or any GDB-compatible client) connects and gets full debug access.
 | `Z0` (set breakpoint) | `emu_dbg_set_bp_code(addr)` |
 | `z0` (clear breakpoint) | `emu_dbg_clear_bp(handle)` |
 | `?` (halt reason) | `emu_dbg_state()` + last halt reason |
-
-**Implementation:** ~300 lines. The protocol is text-based, well-documented,
-and the mapping to our debug API is 1:1. Can live as a Node.js wrapper
-around the WASM module, or as a standalone C server.
-
-**What it enables:**
-- VS Code debugging with source-level stepping
-- GDB command-line debugging
-- Any tool that speaks GDB RSP (Eclipse, CLion, etc.)
 
 ### Phase 4: oscilloscope and logic analyzer
 
@@ -136,23 +116,20 @@ The UI:
 - Measurement cursors (frequency, period, duty cycle)
 - Trigger (rising/falling edge on a selected pin)
 
-### Phase 5: additional peripherals
+### Phase 5: additional peripherals — mostly DONE
 
-**UART2** (STC12/15): second serial port on S2CON/S2BUF (0x9A/0x9B).
-Same model as UART1 — intercept S2BUF writes, callback for TX.
-~30 lines on top of the UART1 model.
+**UART2** ✅ Done. S2CON/S2BUF (0x9A/0x9B), TX callback, WASM export
+`emu_serial2_write` / `emu_set_serial2_callback`. Tested.
 
-**SPI:** SPCTL/SPDAT/SPSTAT (0x85/0x86/0xCE on STC12, 0xCD/0xCE/0xCF
-on STC15). Master mode: shift register, clock generation, chip select.
-~100 lines. Enables communication with SPI peripherals (OLED displays,
-flash memory, DACs).
+**SPI** ✅ Done. SPCTL/SPDAT/SPSTAT, master mode shift register.
+Tested in test_integration.c (4 assertions).
 
-**Watchdog:** WDT_CONTR (0xC1). Count-down timer, reset on overflow.
-~20 lines. Mostly a guard against infinite loops in firmware.
+**Watchdog** ✅ Done. WDT_CONTR (0xC1), count-down with prescaler,
+reset on overflow. Tested (3 assertions).
 
-**8052 Timer 2:** T2CON/T2MOD/RCAP2L/RCAP2H/TL2/TH2. Auto-reload and
-capture modes. ~80 lines. Standard 8052 feature, different from STC15's
-Timer 2.
+**8052 Timer 2:** ❌ Not implemented. T2CON/T2MOD/RCAP2L/RCAP2H/TL2/TH2.
+Auto-reload and capture modes. ~80 lines. Standard 8052 feature,
+different from STC15's Timer 2.
 
 ### Phase 6: more MCU targets
 
@@ -193,5 +170,7 @@ Each new feature gets:
 3. A firmware image that exercises it (in `test_images/`)
 4. Differential comparison against ucsim where applicable
 
-Current: 381 assertions across 11 test suites, 21 firmware images,
-275/349 third-party corpus agreement, rung 3 verified on 8 images.
+Current: 347 assertions across 5 test suites (test_suite 136,
+test_integration 140, test_cycles 34, test_wasm 31, test_gdb 6),
+30 firmware images. Third-party corpus: 220/349 strict byte-identical,
+86 timing-only divergence (zero instruction disagreements).

@@ -535,11 +535,8 @@ void emu_dbg_set_task(int idx, uint16_t state_addr, uint16_t until_addr) {
 }
 
 /* Halt callback */
-static dbg_on_halt_fn wasm_halt_cb = NULL;
-
 EMSCRIPTEN_KEEPALIVE
 void emu_dbg_set_on_halt(dbg_on_halt_fn fn) {
-    wasm_halt_cb = fn;
     dbg_set_on_halt(&dbg, fn, NULL);
 }
 
