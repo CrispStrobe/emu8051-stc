@@ -50,10 +50,12 @@ jobs:
 
       # ── Step 1: Build SDCC natively (reference for byte-identity) ──
 
+      - name: Copy source for native build
+        run: cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-native
+
       - name: Build native SDCC (mcs51 only)
+        working-directory: sdcc-native
         run: |
-          cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-native
-          cd sdcc-native
           ./configure \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
@@ -69,15 +71,18 @@ jobs:
 
       # ── Step 2: Build SDCC with Emscripten ──
 
-      - name: Configure SDCC for Emscripten
-        run: |
-          cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
-          cd sdcc-wasm
+      - name: Copy source for WASM build
+        run: cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
 
-          # Cross-compile: CC=emcc, fake host to trigger cross-compile path.
-          # Single-threaded: no -pthread anywhere.
+      - name: Configure SDCC for Emscripten
+        working-directory: sdcc-wasm
+        env:
+          CC: emcc
+          CXX: em++
+        run: |
+          # Cross-compile for Emscripten. Single-threaded (no -pthread).
+          # --host triggers cross-compile path in autoconf.
           emconfigure ./configure \
-            CC=emcc CXX=em++ \
             --host=wasm32-unknown-emscripten \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
@@ -87,27 +92,19 @@ jobs:
             --disable-pdk14-port --disable-pdk15-port --disable-mos6502-port \
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb \
-            --disable-device-lib \
+            --disable-device-lib --disable-packihx \
             --prefix=/opt/sdcc-wasm
 
       - name: Build SDCC WASM
+        working-directory: sdcc-wasm
         run: |
-          cd sdcc-wasm
-
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
-          # MODULARIZE so each tool can be loaded as a JS module.
-          # ALLOW_MEMORY_GROWTH for large compilations.
-          # ENVIRONMENT=node,web for both contexts.
-          # FORCE_FILESYSTEM for stdio/file operations.
+          # Pass WASM flags only at link time via LDFLAGS.
           emmake make -j4 \
             CXXFLAGS="-O2 -Wno-error" \
-            LDFLAGS="-s MODULARIZE=1 -s ALLOW_MEMORY_GROWTH=1 \
-                     -s ENVIRONMENT=web,worker,node \
-                     -s FORCE_FILESYSTEM=1 \
-                     -s EXIT_RUNTIME=1 \
-                     -s INVOKE_RUN=0 \
-                     -s NO_EXIT_RUNTIME=0 \
-                     -s EXPORTED_RUNTIME_METHODS=[callMain,FS,MEMFS]" \
+            LDFLAGS="-sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM \
+                     -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 \
+                     -sEXPORTED_RUNTIME_METHODS=callMain,FS" \
             || {
               echo "::error::SDCC WASM build failed"
               echo "If this is a configure/link error, it may be a genuine"
