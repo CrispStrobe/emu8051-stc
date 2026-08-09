@@ -89,8 +89,10 @@ jobs:
           cd sdcc-emcc
           ls -la configure  # verify configure exists
           # Cross-compile for Emscripten. Single-threaded (no -pthread).
+          # Fake host: SDCC's config.sub doesn't know wasm32-unknown-emscripten.
+          # ppc-unknown-linux triggers cross-compile mode (per gbdk-emscripten).
           emconfigure ./configure \
-            --host=wasm32-unknown-emscripten \
+            --host=ppc-unknown-linux \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
             --disable-tlcs90-port --disable-ez80_z80-port --disable-z80n-port \
