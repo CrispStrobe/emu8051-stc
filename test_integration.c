@@ -955,6 +955,7 @@ static void test_debug_profiling(void);
 static void test_movx_ri_p2(void);
 static void test_pca_capture(void);
 static void test_write_watchpoint(void);
+static void test_stc15_pca3(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -998,6 +999,7 @@ int main(int argc, char **argv) {
     test_movx_ri_p2();
     test_pca_capture();
     test_write_watchpoint();
+    test_stc15_pca3();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1589,5 +1591,47 @@ static void test_write_watchpoint(void) {
     CHECK(val == 0x42, "Write WP: IRAM[30h] = 0x42");
 
     dbg_clear_breakpoint(&dbg, h);
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 34: STC15 third PCA module (CCAPM2)                            *
+ * ================================================================== */
+static void test_stc15_pca3(void) {
+    printf("\n--- test_stc15_pca3 ---\n");
+    setup();
+    stc12_set_part(&stc, PART_STC15);
+
+    /* PCA module 2 in compare+match mode, SYSclk clock */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = 0x08;           /* CPS=100 (SYSclk) */
+    cpu.mSFR[STC_REG_CCAPM2] = CCAPM_ECOM | CCAPM_MAT; /* compare match */
+    cpu.mSFR[STC_REG_CCAP2L] = 0x10;
+    cpu.mSFR[STC_REG_CCAP2H] = 0x00;         /* match at counter = 0x0010 */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    /* Run 16 PCA ticks → counter = 0x0010 → match → CCF2 */
+    run_clocks(16);
+    CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF2,
+          "STC15 PCA3: CCF2 set on module 2 compare match");
+
+    /* Module 2 should not fire on STC12 */
+    setup();
+    stc12_set_part(&stc, PART_STC12);
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;
+    cpu.mSFR[STC_REG_CMOD] = 0x08;
+    cpu.mSFR[STC_REG_CCAPM2] = CCAPM_ECOM | CCAPM_MAT;
+    cpu.mSFR[STC_REG_CCAP2L] = 0x10;
+    cpu.mSFR[STC_REG_CCAP2H] = 0x00;
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    stc.pca_prescaler = 0;
+
+    run_clocks(16);
+    CHECK(!(cpu.mSFR[STC_REG_CCON] & CCON_CCF2),
+          "STC12: module 2 NOT active (only 2 modules)");
+
     teardown();
 }

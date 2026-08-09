@@ -518,6 +518,28 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
  * PCA tick                                                            *
  * ================================================================== */
 
+/* Resolve PCA module pin: port and bit for CCP0/CCP1/CCP2.
+ * STC12: CCP0=P1.3, CCP1=P1.4 (or P4.2, P4.3 if PCA_P4).
+ * STC15: CCP2=P3.7 default. CCP_S pin switching not yet implemented. */
+static void pca_pin(struct em8051 *aCPU, struct stc12_state *st,
+                    int mod, int *port, int *bit)
+{
+    static const uint8_t default_bits[] = { 3, 4, 7 }; /* P1.3, P1.4, P3.7 */
+    static const uint8_t p4_bits[] = { 2, 3, 1 };      /* P4.2, P4.3, P4.1 */
+    if (mod == 2 && st->part_id == PART_STC15) {
+        /* CCP2 default is P3.7 on STC15 */
+        *port = 3;
+        *bit = 7;
+    } else {
+        *port = 1;
+        *bit = default_bits[mod];
+        if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
+            *port = 4;
+            *bit = p4_bits[mod];
+        }
+    }
+}
+
 static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
     /* PCA only runs if CR bit in CCON is set */
@@ -594,13 +616,20 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
         aCPU->mSFR[STC_REG_CCON] |= CCON_CF;
     }
 
-    /* Process each PCA module */
-    for (int mod = 0; mod < 2; mod++) {
-        uint8_t ccapm = aCPU->mSFR[mod == 0 ? STC_REG_CCAPM0 : STC_REG_CCAPM1];
-        uint8_t ccapl_reg = mod == 0 ? STC_REG_CCAP0L : STC_REG_CCAP1L;
-        uint8_t ccaph_reg = mod == 0 ? STC_REG_CCAP0H : STC_REG_CCAP1H;
-        uint8_t pwm_reg   = mod == 0 ? STC_REG_PCA_PWM0 : STC_REG_PCA_PWM1;
-        uint8_t ccf_mask  = mod == 0 ? CCON_CCF0 : CCON_CCF1;
+    /* Process each PCA module (2 on STC12, 3 on STC15) */
+    static const uint8_t ccapm_regs[] = { STC_REG_CCAPM0, STC_REG_CCAPM1, STC_REG_CCAPM2 };
+    static const uint8_t ccapl_regs[] = { STC_REG_CCAP0L, STC_REG_CCAP1L, STC_REG_CCAP2L };
+    static const uint8_t ccaph_regs[] = { STC_REG_CCAP0H, STC_REG_CCAP1H, STC_REG_CCAP2H };
+    static const uint8_t pwm_regs[]   = { STC_REG_PCA_PWM0, STC_REG_PCA_PWM1, STC_REG_PCA_PWM2 };
+    static const uint8_t ccf_masks[]  = { CCON_CCF0, CCON_CCF1, CCON_CCF2 };
+    int n_modules = (st->part_id == PART_STC15) ? 3 : 2;
+
+    for (int mod = 0; mod < n_modules; mod++) {
+        uint8_t ccapm = aCPU->mSFR[ccapm_regs[mod]];
+        uint8_t ccapl_reg = ccapl_regs[mod];
+        uint8_t ccaph_reg = ccaph_regs[mod];
+        uint8_t pwm_reg   = pwm_regs[mod];
+        uint8_t ccf_mask  = ccf_masks[mod];
 
         if (ccapm & CCAPM_PWM) {
             /* 8-bit PWM mode (§5.3):
@@ -624,20 +653,14 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
                 aCPU->mSFR[pwm_reg] = pwm;
             }
 
-            /* Drive the PWM output pin.
-             * §5.3: (0,CL) < {EPCnL,CCAPnL} → LOW, >= → HIGH.
-             * Default: CCP0=P1.3, CCP1=P1.4.
-             * With PCA_P4: CCP0=P4.2, CCP1=P4.3. */
+            /* Drive the PWM output pin. */
             {
                 static const uint8_t port_regs[] = {
                     REG_P0, REG_P1, REG_P2, REG_P3,
                     STC_REG_P4, STC_REG_P5
                 };
-                int pin_port = 1, pin_bit = (mod == 0) ? 3 : 4;
-                if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
-                    pin_port = 4;
-                    pin_bit = (mod == 0) ? 2 : 3;
-                }
+                int pin_port, pin_bit;
+                pca_pin(aCPU, st, mod, &pin_port, &pin_bit);
                 uint8_t compare = aCPU->mSFR[ccapl_reg];
                 uint8_t cl = aCPU->mSFR[STC_REG_CL];
                 bool output_high = (cl >= compare);
@@ -660,17 +683,12 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
             if (counter == compare) {
                 aCPU->mSFR[STC_REG_CCON] |= ccf_mask;
                 if (ccapm & CCAPM_TOG) {
-                    /* Toggle CCP pin. Default: CCP0=P1.3, CCP1=P1.4.
-                     * With AUXR1.PCA_P4: CCP0=P4.2, CCP1=P4.3. */
                     static const uint8_t port_regs[] = {
                         REG_P0, REG_P1, REG_P2, REG_P3,
                         STC_REG_P4, STC_REG_P5
                     };
-                    int pin_port = 1, pin_bit = (mod == 0) ? 3 : 4;
-                    if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
-                        pin_port = 4;
-                        pin_bit = (mod == 0) ? 2 : 3;
-                    }
+                    int pin_port, pin_bit;
+                    pca_pin(aCPU, st, mod, &pin_port, &pin_bit);
                     aCPU->mSFR[port_regs[pin_port]] ^= (1 << pin_bit);
                     emit_pin_changes(aCPU, st, pin_port);
                 }
@@ -678,15 +696,9 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
         }
 
         if ((ccapm & CCAPM_CAPP) || (ccapm & CCAPM_CAPN)) {
-            /* Capture mode — triggered by external CEXn pin edge.
-             * CEX0 = P1.3 (or P4.2 if PCA_P4), CEX1 = P1.4 (or P4.3).
-             * Read the pin level, detect edges, capture CL/CH. */
-            uint8_t pin_port = 1;
-            uint8_t pin_bit = (mod == 0) ? 3 : 4;
-            if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
-                pin_port = 4;
-                pin_bit = (mod == 0) ? 2 : 3;
-            }
+            /* Capture mode — triggered by external CEXn pin edge. */
+            int pin_port, pin_bit;
+            pca_pin(aCPU, st, mod, &pin_port, &pin_bit);
             uint8_t cur_level = (st->port_ext[pin_port] >> pin_bit) & 1;
             uint8_t prev_level = st->pca_cex_last[mod];
             st->pca_cex_last[mod] = cur_level;

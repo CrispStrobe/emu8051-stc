@@ -83,6 +83,12 @@
 #define STC_REG_PCA_PWM0 (0xF2 - 0x80)
 #define STC_REG_PCA_PWM1 (0xF3 - 0x80)
 
+/* STC15 third PCA module (STC15-PERIPHERAL-MODEL.md §3) */
+#define STC_REG_CCAPM2   (0xDC - 0x80)
+#define STC_REG_CCAP2L   (0xEC - 0x80)
+#define STC_REG_CCAP2H   (0xFC - 0x80)
+#define STC_REG_PCA_PWM2 (0xF4 - 0x80)
+
 /* SPI (stub) */
 #define STC_REG_SPCTL    (0x85 - 0x80)
 #define STC_REG_SPDAT    (0x86 - 0x80)
@@ -166,10 +172,12 @@
 
 /* ------------------------------------------------------------------ *
  * CCON bit masks (0xD8) — PCA control                                 *
- * Bit layout: CF CR - - - - CCF1 CCF0                                 *
+ * Bit layout: CF CR - - - CCF2 CCF1 CCF0                              *
+ * (CCF2 exists only on STC15 — 3 PCA modules)                         *
  * ------------------------------------------------------------------ */
 #define CCON_CF          0x80
 #define CCON_CR          0x40
+#define CCON_CCF2        0x04  /* STC15 only */
 #define CCON_CCF1        0x02
 #define CCON_CCF0        0x01
 
@@ -288,7 +296,7 @@ struct stc12_state
     /* PCA state */
     uint8_t pca_prescaler;      /* for FOSC/12 and FOSC/2 sources */
     bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */
-    uint8_t pca_cex_last[2];    /* last CEX0/CEX1 pin level for capture edge detect */
+    uint8_t pca_cex_last[3];    /* last CEX0/CEX1/CEX2 pin level for capture edge detect */
 
     /* Port external input state (active-low: 0xFF = all high) */
     uint8_t port_ext[6];        /* P0..P5 external pin state */
