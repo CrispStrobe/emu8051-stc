@@ -949,8 +949,10 @@ int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
         stc12_tick(aCPU, aState);
         if (ticked) count++;
     }
-    if (aState->on_advance)
-        aState->on_advance(stc12_get_time_ns(aState), aState->board_user_data);
+    if (aState->on_advance) {
+        uint64_t t = stc12_get_time_ns(aState);
+        aState->on_advance((uint32_t)t, (uint32_t)(t >> 32), aState->board_user_data);
+    }
     return count;
 }
 

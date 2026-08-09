@@ -267,7 +267,10 @@ typedef double (*stc12_read_analog_callback)(int port, int bit,
                                              void *user_data);
 
 /* Callback: time has advanced. t_ns = nanoseconds since reset. */
-typedef void (*stc12_advance_callback)(uint64_t t_ns, void *user_data);
+/* on_advance takes (lo32, hi32, user_data) — split to avoid i64
+ * signature mismatch in Emscripten's addFunction. Caller reconstructs
+ * the 64-bit nanosecond timestamp as (hi32 << 32) | lo32. */
+typedef void (*stc12_advance_callback)(uint32_t t_ns_lo, uint32_t t_ns_hi, void *user_data);
 
 /* Callback: a byte was transmitted on the serial port. */
 typedef void (*stc12_serial_tx_callback)(uint8_t byte, void *user_data);

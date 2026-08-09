@@ -96,7 +96,7 @@ EXPORT_LIST := $(shell echo '$(EXPORTS)' | tr ' ' ',')
 
 EMFLAGS := \
 	-s EXPORTED_FUNCTIONS="[$(EXPORT_LIST)]" \
-	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8','addFunction','removeFunction']" \
+	-s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','UTF8ToString','stringToUTF8','addFunction','removeFunction','HEAPU8','HEAPU32']" \
 	-s ALLOW_TABLE_GROWTH=1 \
 	-s WASM_BIGINT=1 \
 	-s MODULARIZE=1 \

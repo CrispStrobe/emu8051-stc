@@ -13,6 +13,7 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_run(cycles)` | `(i32) → i32` | Run N osc clocks. Returns instructions executed. |
 | `emu_advance_to_ns(lo,hi)` | `(i32,i32) → i32` | Run until nanosecond target. Returns instructions. |
 | `emu_set_fosc(hz)` | `(i32) → void` | Set oscillator frequency. |
+| `emu_set_part(id)` | `(i32) → void` | Set part: 0=STC12, 1=STC15. Call after init. |
 | `emu_set_vcc(v)` | `(f64) → void` | Set supply voltage (default 5.0). |
 | `emu_capabilities()` | `() → string` | JSON capabilities per DEBUG-CONTROL-MODEL.md §7. |
 | `emu_version()` | `() → string` | Returns `"emu8051-stc 1.0.0"`. |
@@ -43,7 +44,7 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_set_adc_input(ch,counts)` | `(i32,i32) → void` | ADC input in counts (0-1023). Legacy. |
 | `emu_set_adc_voltage(ch,volts)` | `(i32,f64) → void` | ADC input in volts (0-VCC). |
 | `emu_set_port_input(port,val)` | `(i32,i32) → void` | Set all 8 pins of a port. Legacy. |
-| `emu_set_board_callbacks(pin,read,analog,advance,ud)` | `(ptr×5) → void` | Register push-mode callbacks via `addFunction`. |
+| `emu_set_board_callbacks(pin,read,analog,advance,ud)` | `(ptr×5) → void` | Register push-mode callbacks via `addFunction`. `advance` signature: `(lo32, hi32, ud)` — split i64 for WASM compatibility. |
 | `emu_get_time_ns_lo()` | `() → i32` | Nanoseconds since reset (low 32 bits). |
 | `emu_get_time_ns_hi()` | `() → i32` | Nanoseconds since reset (high 32 bits). |
 
