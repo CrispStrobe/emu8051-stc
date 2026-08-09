@@ -460,6 +460,20 @@ Still conditional on the hardware matching the firmware's intent — a
 bench test with `probe.c` remains the definitive confirmation — but the
 evidence is as strong as a trace measurement can be.
 
-**Impact:** `main.c`'s `P0_ACTIVE_LOW = 1` is inverted. `fb_clear()`
-should set `0x00` (not `0xFF`), and `fb_set_red`/`fb_set_blue` should
-SET bits to light LEDs rather than CLEAR them.
+**Semantic cross-check:** Under active-HIGH, P0=0x0F (540 appearances)
+means red columns 0-3 on, blue off — consistent with the layer-sweep
+animation (red-only). Under active-LOW, 0x0F would mean red OFF,
+blue ON — contradicting the pattern's visible intent.
+
+**Impact on four codebases:** Four polarity flags exist, defaulting
+two different ways:
+
+| where | symbol | default | correct |
+|---|---|---|---|
+| `stc/src/20-ledcube/main.c` | `P0_ACTIVE_LOW` | 1 | should be **0** |
+| `ucsim-stc` spec-008 §2 | prose | active-low | should say **active-high** |
+| `sb3-creator` kernel | `BW_CUBE_ACTIVE_HIGH` | 1 | **correct** |
+| `bw-circuit-ui` | `P0_ACTIVE_HIGH` | true | **correct** |
+
+Recommended: align on one name (`BW_CUBE_ACTIVE_HIGH = 1`), cite this
+finding, and set all four from the measurement.
