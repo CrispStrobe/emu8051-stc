@@ -27,6 +27,7 @@
  * interface to the emulator core and STC12 peripherals.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <emscripten/emscripten.h>
@@ -586,4 +587,39 @@ void emu_set_serial2_callback(stc12_serial_tx_callback cb) {
 EMSCRIPTEN_KEEPALIVE
 int emu_dbg_consumes_count(void) {
     return 0; /* empty array: we consume no peripherals */
+}
+
+/* ------------------------------------------------------------------ *
+ * Capabilities (DEBUG-CONTROL-MODEL.md §7)                            *
+ * Returns a JSON-like string describing this target's capabilities.   *
+ * ------------------------------------------------------------------ */
+
+static char capabilities_buf[512];
+
+EMSCRIPTEN_KEEPALIVE
+const char *emu_capabilities(void) {
+    snprintf(capabilities_buf, sizeof(capabilities_buf),
+        "{"
+        "\"steps\":[\"insn\",\"line\",\"block\",\"over\",\"out\"],"
+        "\"breakpoints\":[\"code\",\"yield\",\"write\",\"read\"],"
+        "\"spaces\":[\"code\",\"iram\",\"sfr\",\"xram\",\"bit\"],"
+        "\"writable\":[\"code\",\"iram\",\"sfr\",\"xram\",\"bit\"],"
+        "\"sfrs\":\"all\","
+        "\"haltPolicy\":\"freeze-timers\","
+        "\"timeFreezes\":true,"
+        "\"consumes\":[],"
+        "\"part\":\"%s\","
+        "\"peripherals\":["
+        "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
+        "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\""
+        "]"
+        "}",
+        stc.part_id == PART_STC15 ? "stc15f2k60s2" : "stc12c5a60s2"
+    );
+    return capabilities_buf;
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *emu_version(void) {
+    return "emu8051-stc 1.0.0";
 }

@@ -261,6 +261,17 @@ emu_run(10);
 // Pin history may or may not have events depending on whether the
 // write went through the opcode path. Just verify the API doesn't crash.
 assert(true, 'Pin history API: no crash');
+// Test 22: Capabilities
+const caps = Module.cwrap('emu_capabilities', 'string', [])();
+assert(caps.includes('"timeFreezes":true'), `Capabilities: timeFreezes=true`);
+assert(caps.includes('"consumes":[]'), `Capabilities: consumes=[]`);
+assert(caps.includes('stc12c5a60s2'), `Capabilities: part=stc12c5a60s2`);
+assert(caps.includes('uart1'), `Capabilities: has uart1`);
+
+// Test 23: Version
+const ver = Module.cwrap('emu_version', 'string', [])();
+assert(ver.includes('emu8051-stc'), `Version: ${ver}`);
+
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -78,6 +78,11 @@ EXPORTS := \
 	_emu_pin_history_head \
 	_emu_pin_history_get \
 	_emu_pin_event_size \
+	_emu_capabilities \
+	_emu_version \
+	_emu_dbg_consumes_count \
+	_emu_serial2_write \
+	_emu_set_serial2_callback \
 	_malloc \
 	_free
 
