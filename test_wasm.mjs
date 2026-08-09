@@ -14,7 +14,7 @@
 
 import { createRequire } from 'module';
 import { readFileSync } from 'fs';
-import { loadSymbols } from './load-symbols.mjs';
+import { loadSymbols, setYieldBreakpoints } from './load-symbols.mjs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -378,6 +378,10 @@ emu_init(1);
         const result = loadSymbols(Module, symJson);
         assert(result.tasks > 0, `loadSymbols: ${result.tasks} tasks loaded`);
         assert(result.bwMsAddr > 0, `loadSymbols: bw_ms addr=${result.bwMsAddr}`);
+
+        // Test setYieldBreakpoints
+        const handles = setYieldBreakpoints(Module, symJson);
+        assert(handles.length > 0, `setYieldBreakpoints: ${handles.length} yields set`);
     } else {
         assert(true, 'loadSymbols: skipped (symbols.json not found)');
     }
