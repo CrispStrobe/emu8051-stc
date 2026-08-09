@@ -116,7 +116,14 @@ jobs:
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb \
             --disable-device-lib --disable-packihx \
-            --prefix=/opt/sdcc-emcc
+            --prefix=/opt/sdcc-emcc \
+            || {
+              echo "=== config.log (last 80 lines) ==="
+              tail -80 config.log
+              echo "=== boost-specific lines ==="
+              grep -i "boost\|adjacency" config.log | tail -20
+              exit 1
+            }
 
       - name: Build SDCC WASM
         run: |
