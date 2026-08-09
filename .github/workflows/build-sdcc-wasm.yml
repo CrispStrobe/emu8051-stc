@@ -100,6 +100,12 @@ jobs:
           # — the value is appended verbatim to CXX, and "yes" becomes
           # a literal argument ("em++ yes -c ..."), breaking every C++ test.
 
+          # Tell libiberty's sub-configure that psignal() exists so
+          # strsignal.c skips its own conflicting definition.
+          # ac_cv_func_psignal is a boolean (yes/no), safe to prime
+          # (unlike ac_cv_prog_cxx_cxx11 which was an option string).
+          export ac_cv_func_psignal=yes
+
           emconfigure ./configure \
             CC=emcc CXX=em++ \
             CFLAGS="-sUSE_ZLIB" \
@@ -116,7 +122,6 @@ jobs:
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb \
             --disable-device-lib --disable-packihx \
-            --disable-sdbinutils \
             --prefix=/opt/sdcc-emcc \
             || {
               echo "=== config.log (last 80 lines) ==="
