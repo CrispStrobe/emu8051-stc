@@ -61,26 +61,20 @@ export function createAvrConformanceAdapter(opts = {}) {
 
         writePort(port, value) {
             // AVR ports: 0=B, 1=C, 2=D
-            // Write to the PORT register (output latch)
-            const portNames = ['B', 'C', 'D'];
             if (port >= 0 && port < 3) {
-                const p = adapter.ports[port];
-                // Write individual bits through the GPIO interface
-                for (let bit = 0; bit < 8; bit++) {
-                    // Set the PORT register bit
-                    const portRegAddr = [0x25, 0x28, 0x2B][port]; // PORTB, PORTC, PORTD
-                    adapter.cpu.writeData(portRegAddr, value);
-                    break; // writeData sets all 8 bits at once
-                }
+                const portRegAddr = [0x25, 0x28, 0x2B][port];
+                adapter.cpu.writeData(portRegAddr, value);
+                // Trigger port listener (writeData alone doesn't fire it)
+                adapter.ports[port].updatePinRegister(adapter.cpu.data);
             }
         },
 
         setPortMode(port, m1, m0) {
             // For AVR: m0 is DDR (direction). m1 is unused (no STC-style modes).
-            // DDR=1 → output, DDR=0 → input
             if (port >= 0 && port < 3) {
-                const ddrAddr = [0x24, 0x27, 0x2A][port]; // DDRB, DDRC, DDRD
+                const ddrAddr = [0x24, 0x27, 0x2A][port];
                 adapter.cpu.writeData(ddrAddr, m0);
+                adapter.ports[port].updatePinRegister(adapter.cpu.data);
             }
         },
 
