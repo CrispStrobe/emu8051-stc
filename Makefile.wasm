@@ -107,6 +107,11 @@ $(OUTDIR):
 
 $(OUT): $(SRC) $(wildcard *.h) | $(OUTDIR)
 	$(EMCC) $(CFLAGS) $(EMFLAGS) -o $@ $(SRC)
+	@# Regenerate BUILD-INFO.md so provenance matches artifacts
+	@JS=$$(sha256sum $(OUTDIR)/emu8051.js | cut -d" " -f1); \
+	 WASM=$$(sha256sum $(OUTDIR)/emu8051.wasm | cut -d" " -f1); \
+	 REV=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown); \
+	 printf "# Build provenance\n\n| File | SHA-256 |\n|------|--------|\n| emu8051.js | \`%s\` |\n| emu8051.wasm | \`%s\` |\n\n**source:** \`%s\`\n" "$$JS" "$$WASM" "$$REV" > $(OUTDIR)/BUILD-INFO.md
 
 clean:
 	rm -f $(OUTDIR)/emu8051.js $(OUTDIR)/emu8051.wasm
