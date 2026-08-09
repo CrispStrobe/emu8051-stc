@@ -263,3 +263,19 @@ recovery via idle timeout.
 Program time provably stops while wall time advances. `skew_ms` reports
 the halt duration. This moves `timeFreezes=true` from a capability the
 target declares to a measured property.
+
+**PC histogram profiling:**
+
+Profiling overhead is negligible — 1 second simulated in 0.68 seconds
+real with profiling active (faster than real time). Example profile of
+`01-blink` over 100 ms:
+
+| Address | Hits | % | Instruction |
+|---------|------|---|-------------|
+| 0x0098 | 551,294 | 99.6% | `JNB TCON.5, #-3` (poll TF0) |
+| 0x0038 | 255 | <0.1% | `MOV @R0, A` (BSS init) |
+
+99.6% of execution is spent polling the timer overflow flag — exactly
+what a polled-delay program should look like. The cooperative scheduler
+(`04-multi-when`) shows a more even profile: `bw_now()` and the
+Duff's-device dispatch dominate at ~3.6% each.
