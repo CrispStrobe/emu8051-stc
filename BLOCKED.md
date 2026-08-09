@@ -1,23 +1,27 @@
 # BLOCKED — items waiting on external action
 
-## SDCC-to-WASM — OUT OF SCOPE for this agent
+## SDCC-to-WASM — configure passes, build fails in sdbinutils
 
-**Decision:** Declared out of scope after 10 CI runs and 8 commits.
+**Status:** Configure now passes (run `31339842453`). `emmake make`
+fails in the sdbinutils sub-build (the assembler/linker component).
 
-**What was tried:** GitHub Actions workflow for SDCC 4.5.0 mcs51 → WASM.
-Configure obstacles resolved: directory collision, config.sub triplet
-(i686-unknown-linux-gnu), zlib (-sUSE_ZLIB), C++11 probe
-(ac_cv_prog_cxx_cxx11=yes). Boost graph headers remain unfound by
-emconfigure despite isolated `-isystem` and correct C++11 — the
-autotools/Emscripten interaction is the blocker, not a missing dependency.
+**What was resolved (11 runs):**
+1. Directory collision: `sdcc-wasm/` existed in repo → `sdcc-emcc`
+2. config.sub: `wasm32-unknown-emscripten` not recognized → `i686-unknown-linux-gnu`
+3. Endianness: `ppc` is big-endian → `i686` (little-endian = wasm32)
+4. zlib: Emscripten sysroot → `-sUSE_ZLIB` in CFLAGS
+5. boost headers: isolated copy → `CPPFLAGS="-isystem /tmp/boost-headers"`
+6. C++11 probe: `ac_cv_prog_cxx_cxx11=yes` injected literal `yes` into CXX →
+   deleted, CXXFLAGS already has `-std=c++11`
 
-**The workflow is in `.github/workflows/build-sdcc-wasm.yml`** and can be
-resumed by anyone who wants to finish the configure fight. The config.log
-diagnostic is wired in.
+**What blocks now:** `emmake make` fails in `sdcc-sdbinutils` (Error 2).
+The sdbinutils sub-tree is a binutils fork with its own build system.
+This is the first real Emscripten compilation failure (all prior were
+configure environment issues).
 
-**What this means:** The hosted compiler stays at SDCC 4.0.0 on Vercel
-for now, producing 888-byte .hex vs the repo's 996-byte reference from
-4.5.0. The divergence is documented but not resolved.
+**The workflow is at `.github/workflows/build-sdcc-wasm.yml`** and
+configure is now green. The next person needs to diagnose the sdbinutils
+compilation error.
 
 ## AVR conformance — blocked on bw-board accepting `input-pullup`
 
