@@ -42,7 +42,7 @@
 | UART2 (STC12/15) | ✅ Done | ✅ | 2 assertions |
 | SPI peripheral | ✅ Done | ✅ | 4 assertions |
 | Watchdog | ✅ Done | ✅ | 3 assertions |
-| 8052 Timer 2 | ❌ Not implemented | — | — |
+| 8052 Timer 2 | N/A (STC remaps 0xC8 to P5) | — | — |
 
 ---
 
@@ -127,9 +127,9 @@ Tested in test_integration.c (4 assertions).
 **Watchdog** ✅ Done. WDT_CONTR (0xC1), count-down with prescaler,
 reset on overflow. Tested (3 assertions).
 
-**8052 Timer 2:** ❌ Not implemented. T2CON/T2MOD/RCAP2L/RCAP2H/TL2/TH2.
-Auto-reload and capture modes. ~80 lines. Standard 8052 feature,
-different from STC15's Timer 2.
+**8052 Timer 2:** N/A for STC12/15. The standard 8052 T2CON (0xC8) is
+remapped to P5 on STC12. STC15's Timer 2 at T2H/T2L (0xD6/0xD7) IS
+implemented. Only needed if we add a generic 8052 target.
 
 ### Phase 6: more MCU targets
 
