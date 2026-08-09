@@ -23,7 +23,7 @@ streams; a further 86 differ only in how far each model advances in a
 2 ms window (zero instruction-level disagreements).
 See [RESULTS.md](RESULTS.md).
 
-**API:** 57 WASM exports. See [API.md](API.md).
+**API:** 69 WASM exports. See [API.md](API.md).
 
 What changed from upstream
 --------------------------

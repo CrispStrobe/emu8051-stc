@@ -58,6 +58,12 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_set_serial2_callback(fn)` | `(ptr) → void` | UART2 TX callback. |
 | `emu_serial2_write(byte)` | `(i32) → void` | UART2 RX inject. |
 
+## Interrupt State
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `emu_get_interrupt_active()` | `() → i32` | Returns `mInterruptActive` (0 = no ISR running). |
+
 ## Boundary D — Debug Control
 
 | Function | Signature | Description |
