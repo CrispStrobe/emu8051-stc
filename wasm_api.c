@@ -616,7 +616,7 @@ const char *emu_capabilities(void) {
     snprintf(capabilities_buf, sizeof(capabilities_buf),
         "{"
         "\"steps\":[\"insn\",\"line\",\"block\",\"over\",\"out\"],"
-        "\"breakpoints\":[\"code\",\"yield\",\"write\",\"read\"],"
+        "\"breakpoints\":[\"code\",\"yield\",\"write\"],"
         "\"spaces\":[\"code\",\"iram\",\"sfr\",\"xram\",\"bit\"],"
         "\"writable\":[\"code\",\"iram\",\"sfr\",\"xram\",\"bit\"],"
         "\"sfrs\":\"all\","

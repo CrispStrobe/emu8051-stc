@@ -139,13 +139,21 @@ bool dbg_tick(struct dbg_target *t)
                 return true;
             }
             break;
-        case BP_WRITE:
+        case BP_WRITE: {
+            /* Polling watchpoint: check if the watched byte changed */
+            uint8_t cur = 0;
+            dbg_read_mem(t, bp->watch.space, bp->addr, &cur, 1);
+            if (cur != t->watch_shadow[i]) {
+                t->watch_shadow[i] = cur;
+                emit_halt(t, HALT_BP, bp->id);
+                return true;
+            }
+            break;
+        }
         case BP_READ:
-            /* Write/read watchpoints: would need to hook into the
-             * memory write/read path. For now, check after each instruction
-             * whether the watched range changed. This is polling, not
-             * exact, but functional. */
-            /* TODO: implement memory write hooks for exact watchpoints */
+            /* Read watchpoints cannot be implemented by polling —
+             * a read doesn't change state. Would need instruction
+             * decode to detect reads. Not implemented. */
             break;
         }
     }
@@ -206,6 +214,12 @@ int dbg_set_breakpoint(struct dbg_target *t, struct dbg_breakpoint *bp)
             t->bps[i] = *bp;
             t->bps[i].id = t->next_bp_id++;
             t->bps[i].active = true;
+            /* Snapshot watched byte for write/read watchpoints */
+            if (bp->kind == BP_WRITE || bp->kind == BP_READ) {
+                uint8_t val = 0;
+                dbg_read_mem(t, bp->watch.space, bp->addr, &val, 1);
+                t->watch_shadow[i] = val;
+            }
             return t->bps[i].id;
         }
     }

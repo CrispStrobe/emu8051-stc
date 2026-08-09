@@ -954,6 +954,7 @@ static void test_wdt_overflow(void);
 static void test_debug_profiling(void);
 static void test_movx_ri_p2(void);
 static void test_pca_capture(void);
+static void test_write_watchpoint(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -996,6 +997,7 @@ int main(int argc, char **argv) {
     test_debug_profiling();
     test_movx_ri_p2();
     test_pca_capture();
+    test_write_watchpoint();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1547,5 +1549,45 @@ static void test_pca_capture(void) {
     CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF1,
           "PCA capture: CCF1 set on falling edge");
 
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 33: Write watchpoint (boundary D)                              *
+ * ================================================================== */
+static void test_write_watchpoint(void) {
+    printf("\n--- test_write_watchpoint ---\n");
+    setup();
+
+    /* Program: MOV 30h,#42h; SJMP $
+     * IRAM[30h] starts at 0 (from calloc), watchpoint triggers on first write */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x30; cpu.mCodeMem[2] = 0x42; /* MOV 30h,#42h */
+    cpu.mCodeMem[3] = 0x80; cpu.mCodeMem[4] = 0xFE; /* SJMP $ */
+
+    struct dbg_target dbg;
+    dbg_init(&dbg, &cpu, &stc);
+
+    /* Set write watchpoint on IRAM 0x30 — initial value is 0x00 */
+    struct dbg_breakpoint wp = {
+        .kind = BP_WRITE,
+        .addr = 0x30,
+        .watch = { .space = SPACE_IRAM, .len = 1 }
+    };
+    int h = dbg_set_breakpoint(&dbg, &wp);
+    CHECK(h > 0, "Write WP: set returns positive handle");
+
+    /* Run — MOV 30h,#42h changes the byte → should trigger */
+    dbg_run(&dbg);
+    for (int i = 0; i < 100 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+        dbg_tick(&dbg);
+
+    CHECK(dbg_get_state(&dbg) == DBG_HALTED, "Write WP: halted on write");
+
+    /* IRAM[0x30] should now be 0x42 */
+    uint8_t val = 0;
+    dbg_read_mem(&dbg, SPACE_IRAM, 0x30, &val, 1);
+    CHECK(val == 0x42, "Write WP: IRAM[30h] = 0x42");
+
+    dbg_clear_breakpoint(&dbg, h);
     teardown();
 }

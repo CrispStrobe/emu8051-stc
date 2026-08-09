@@ -87,6 +87,9 @@ struct dbg_target {
     dbg_on_halt_fn on_halt;
     void *on_halt_data;
 
+    /* Write watchpoint shadow (polling, checked after each instruction) */
+    uint8_t watch_shadow[DBG_MAX_BP];
+
     /* Profiling */
     bool profiling;
     uint32_t *pc_histogram;  /* 64K entries, allocated on start */
