@@ -416,5 +416,10 @@ fell entirely inside the all-on pattern.
 Per-line dwell during scanning: 0.824 ms, frame period 6.593 ms,
 refresh rate 151.7 Hz. The spec stands — the scan model is real.
 
+Ghosting verification: vendor blanks P0 before each select (0 violations
+in 4,192 selects). Clean-room driver holds P2=0xFF across P0 writes
+(0 violations in 243 writes over 4 seconds). Both satisfy the invariant:
+no layer is enabled while P0 holds another line's data.
+
 Build: `2dd4c198548e__icstation_4681_Code_main.hex` (SDCC build from
 stc-research corpus).
