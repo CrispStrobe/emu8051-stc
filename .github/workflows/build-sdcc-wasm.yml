@@ -100,11 +100,10 @@ jobs:
           # — the value is appended verbatim to CXX, and "yes" becomes
           # a literal argument ("em++ yes -c ..."), breaking every C++ test.
 
-          # Tell libiberty's sub-configure that psignal() exists so
-          # strsignal.c skips its own conflicting definition.
-          # ac_cv_func_psignal is a boolean (yes/no), safe to prime
-          # (unlike ac_cv_prog_cxx_cxx11 which was an option string).
-          export ac_cv_func_psignal=yes
+          # Patch strsignal.c: define HAVE_PSIGNAL so libiberty skips its
+          # own psignal() definition (conflicts with Emscripten's).
+          sed -i '1i #define HAVE_PSIGNAL 1' \
+            support/sdbinutils/libiberty/strsignal.c
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
