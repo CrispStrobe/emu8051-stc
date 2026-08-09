@@ -28,3 +28,17 @@ the .hex the page produces. This is the intended fix (ending the
 
 **Cleanup done:** /tmp/sdcc-4.5.0 and tarball removed. No processes
 left running. Build moves to a GitHub Actions workflow.
+
+## SDCC-WASM workflow dispatched
+
+Run `31336965443` dispatched with the working-directory fix. Monitoring
+in background. The Emscripten cross-compile is the real test — previous
+failure was just a path issue.
+
+## AVR conformance — blocked on bw-board accepting `input-pullup`
+
+bw-board's `conformance.js` line 170 rejects `input-pullup` as a valid
+PinMode. spec-update 005 was adjudicated and `input-pullup` is now in
+`simulation-contract.md` (sb3-creator 6255de3). Until bw-board updates
+its conformance checker, the AVR adapter cannot pass the setPin shape
+test because AVR ports default to `input-pullup` when PORT=1, DDR=0.
