@@ -732,6 +732,11 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
     aState->osc_clocks++;
 
+    /* STC89: classic 8052 — upstream tick() handles all timers.
+     * We only track osc_clocks for time reporting. */
+    if (aState->part_id == PART_STC89)
+        return;
+
     bool t0_overflowed = stc12_timer0_tick(aCPU, aState);
     stc12_timer1_tick(aCPU, aState);
     stc12_brt_tick(aCPU, aState);
@@ -867,12 +872,6 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     for (int i = 0; i < 6; i++)
         aState->pin_drive_shadow[i] = 0xFF;
 
-    /* Set STC12 SFR reset values */
-    aCPU->mSFR[STC_REG_P4] = 0xFF;
-    aCPU->mSFR[STC_REG_P5] = 0xFF;
-    aCPU->mSFR[STC_REG_AUXR] = 0x00;
-    aCPU->mSFR[STC_REG_AUXR1] = 0x00;
-
     /* Install port read callbacks */
     aCPU->sfrread[REG_P0] = sfr_read_p0;
     aCPU->sfrread[REG_P1] = sfr_read_p1;
@@ -889,35 +888,50 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrwrite[STC_REG_P4] = sfr_write_port;
     aCPU->sfrwrite[STC_REG_P5] = sfr_write_port;
 
-    /* Port mode write callbacks — emit pin mode changes */
-    aCPU->sfrwrite[STC_REG_P0M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P0M1] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P1M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P1M1] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P2M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P2M1] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P3M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P3M1] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P4M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P4M1] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
-    aCPU->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
+    /* STC-specific peripherals — not present on the classic 8052 (STC89) */
+    if (aState->part_id != PART_STC89) {
+        /* Port mode write callbacks — emit pin mode changes */
+        aCPU->sfrwrite[STC_REG_P0M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P0M1] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P1M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P1M1] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P2M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P2M1] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P3M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P3M1] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P4M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P4M1] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
+        aCPU->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
 
-    /* ADC read/write callbacks */
-    aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
-    aCPU->sfrwrite[STC_REG_ADC_CONTR] = sfr_write_adc_contr;
+        /* ADC */
+        aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
+        aCPU->sfrwrite[STC_REG_ADC_CONTR] = sfr_write_adc_contr;
 
-    /* Watchdog */
-    aCPU->sfrwrite[STC_REG_WDT_CONTR] = sfr_write_wdt;
+        /* Watchdog */
+        aCPU->sfrwrite[STC_REG_WDT_CONTR] = sfr_write_wdt;
 
-    /* Serial port: intercept SBUF writes for instant TX */
+        /* SPI */
+        aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;
+        aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;
+        aCPU->sfrwrite[STC15_REG_SPDAT] = sfr_write_spdat;
+        aCPU->sfrwrite[STC15_REG_SPSTAT] = sfr_write_spstat;
+
+        /* UART2 */
+        aCPU->sfrwrite[STC_REG_S2BUF] = sfr_write_s2buf;
+
+        /* Dual DPTR / AUXR1 */
+        aCPU->sfrwrite[STC_REG_AUXR1] = sfr_write_auxr1;
+
+        /* STC12/15 SFR reset values */
+        aCPU->mSFR[STC_REG_P4] = 0xFF;
+        aCPU->mSFR[STC_REG_P5] = 0xFF;
+        aCPU->mSFR[STC_REG_AUXR] = 0x00;
+        aCPU->mSFR[STC_REG_AUXR1] = 0x00;
+    }
+
+    /* Serial port TX: all parts have UART1 */
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
-    aCPU->sfrwrite[STC_REG_S2BUF] = sfr_write_s2buf;
-    aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;    /* STC12: 0x86 */
-    aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;  /* STC12: 0xCE */
-    aCPU->sfrwrite[STC15_REG_SPDAT] = sfr_write_spdat;  /* STC15: 0xCF */
-    aCPU->sfrwrite[STC15_REG_SPSTAT] = sfr_write_spstat; /* STC15: 0xCD */
-    aCPU->sfrwrite[STC_REG_AUXR1] = sfr_write_auxr1;
 }
 
 /* ================================================================== *
@@ -995,6 +1009,19 @@ static const uint8_t stc12_valid_sfr_set[] = {
     0xF0, 0xF2, 0xF3, 0xF9, 0xFA, 0xFB,
 };
 
+/* Classic 8052 SFRs (for STC89C52RC) — no STC extensions */
+static const uint8_t stc89_valid_sfr_set[] = {
+    0x80, /* P0 */  0x81, /* SP */  0x82, /* DPL */ 0x83, /* DPH */
+    0x87, /* PCON */ 0x88, /* TCON */ 0x89, /* TMOD */
+    0x8A, /* TL0 */ 0x8B, /* TL1 */ 0x8C, /* TH0 */ 0x8D, /* TH1 */
+    0x90, /* P1 */  0x98, /* SCON */ 0x99, /* SBUF */
+    0xA0, /* P2 */  0xA8, /* IE */  0xB0, /* P3 */  0xB8, /* IP */
+    0xC8, /* T2CON */ 0xC9, /* T2MOD */
+    0xCA, /* RCAP2L */ 0xCB, /* RCAP2H */
+    0xCC, /* TL2 */ 0xCD, /* TH2 */
+    0xD0, /* PSW */ 0xE0, /* ACC */ 0xF0, /* B */
+};
+
 /* STC15 adds these SFRs (STC15-PERIPHERAL-MODEL.md §3) */
 static const uint8_t stc15_extra_sfr_set[] = {
     0x8F, /* INT_CLKO/AUXR2 */
@@ -1028,11 +1055,18 @@ static const uint8_t stc12_only_sfr_set[] = {
 
 bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr)
 {
-    /* Check common set (valid on both STC12 and STC15) */
+    /* STC89: classic 8052, completely different SFR set */
+    if (aState && aState->part_id == PART_STC89) {
+        for (unsigned i = 0; i < sizeof(stc89_valid_sfr_set); i++)
+            if (stc89_valid_sfr_set[i] == addr) return true;
+        return false;
+    }
+
+    /* STC12/STC15/STC15W: check common STC12 set */
     for (unsigned i = 0; i < sizeof(stc12_valid_sfr_set); i++) {
         if (stc12_valid_sfr_set[i] == addr) {
-            /* Some addresses are STC12-only — check exclusions for STC15 */
-            if (aState && aState->part_id == PART_STC15) {
+            /* Some addresses are STC12-only — check exclusions for STC15 variants */
+            if (aState && (aState->part_id == PART_STC15 || aState->part_id == PART_STC15W)) {
                 for (unsigned j = 0; j < sizeof(stc12_only_sfr_set); j++) {
                     if (stc12_only_sfr_set[j] == addr) return false;
                 }
@@ -1041,7 +1075,7 @@ bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr)
         }
     }
     /* Check STC15 extras */
-    if (aState && aState->part_id == PART_STC15) {
+    if (aState && (aState->part_id == PART_STC15 || aState->part_id == PART_STC15W)) {
         for (unsigned i = 0; i < sizeof(stc15_extra_sfr_set); i++) {
             if (stc15_extra_sfr_set[i] == addr) return true;
         }

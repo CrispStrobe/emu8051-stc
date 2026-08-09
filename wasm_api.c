@@ -99,11 +99,16 @@ void emu_reset(int wipe) {
     }
 }
 
-/* Set part identity: 0=STC12C5A60S2, 1=STC15F2K60S2.
+/* Set part identity: 0=STC12, 1=STC15, 2=STC89, 3=STC15W.
  * Call after emu_init, before loading firmware. */
 EMSCRIPTEN_KEEPALIVE
 void emu_set_part(int part_id) {
     stc12_set_part(&stc, (uint8_t)part_id);
+    /* STC89: classic 8052, upstream tick() handles timers */
+    cpu.skip_timers = (part_id != PART_STC89);
+    /* Re-init to install part-appropriate SFR callbacks */
+    stc12_init(&cpu, &stc);
+    cpu.skip_timers = (part_id != PART_STC89);
 }
 
 /* ------------------------------------------------------------------ *
@@ -629,6 +634,29 @@ static char capabilities_buf[512];
 
 EMSCRIPTEN_KEEPALIVE
 const char *emu_capabilities(void) {
+    const char *part;
+    const char *peripherals;
+    switch (stc.part_id) {
+    case PART_STC15:
+        part = "stc15f2k60s2";
+        peripherals = "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
+                      "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\"";
+        break;
+    case PART_STC89:
+        part = "stc89c52rc";
+        peripherals = "\"timer0\",\"timer1\",\"uart1\"";
+        break;
+    case PART_STC15W:
+        part = "stc15w408as";
+        peripherals = "\"timer0\",\"timer1\",\"adc\","
+                      "\"uart1\",\"watchdog\"";
+        break;
+    default: /* PART_STC12 */
+        part = "stc12c5a60s2";
+        peripherals = "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
+                      "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\"";
+        break;
+    }
     snprintf(capabilities_buf, sizeof(capabilities_buf),
         "{"
         "\"steps\":[\"insn\",\"line\",\"block\",\"over\",\"out\"],"
@@ -640,12 +668,9 @@ const char *emu_capabilities(void) {
         "\"timeFreezes\":true,"
         "\"consumes\":[],"
         "\"part\":\"%s\","
-        "\"peripherals\":["
-        "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
-        "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\""
-        "]"
+        "\"peripherals\":[%s]"
         "}",
-        stc.part_id == PART_STC15 ? "stc15f2k60s2" : "stc12c5a60s2"
+        part, peripherals
     );
     return capabilities_buf;
 }

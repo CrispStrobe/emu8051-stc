@@ -335,10 +335,11 @@ struct stc12_state
     uint32_t pin_history_head;   /* next write position */
     uint32_t pin_history_count;  /* total events written */
 
-    /* Stage 0: part identity.
-     * 0 = STC12C5A60S2, 1 = STC15F2K60S2. */
-    #define PART_STC12  0
-    #define PART_STC15  1
+    /* Stage 0: part identity. */
+    #define PART_STC12  0   /* STC12C5A60S2: 1T, port modes, ADC, 2 PCA, BRT */
+    #define PART_STC15  1   /* STC15F2K60S2: 1T, port modes, ADC, 3 PCA, Timer 2 baud */
+    #define PART_STC89  2   /* STC89C52RC: 12T only, no port modes/ADC/PCA. Classic 8052. */
+    #define PART_STC15W 3   /* STC15W408AS: 1T, port modes, ADC, NO PCA, Timer 2 baud, 8-pin+ */
     uint8_t  part_id;
     /* Count of accesses to SFRs not modelled for this part */
     uint32_t unmodelled_sfr_accesses;
