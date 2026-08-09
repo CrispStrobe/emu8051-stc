@@ -75,13 +75,13 @@ jobs:
         run: cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
 
       - name: Configure SDCC for Emscripten
-        working-directory: sdcc-wasm
         env:
           CC: emcc
           CXX: em++
         run: |
+          cd sdcc-wasm
+          ls -la configure  # verify configure exists
           # Cross-compile for Emscripten. Single-threaded (no -pthread).
-          # --host triggers cross-compile path in autoconf.
           emconfigure ./configure \
             --host=wasm32-unknown-emscripten \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
@@ -96,8 +96,8 @@ jobs:
             --prefix=/opt/sdcc-wasm
 
       - name: Build SDCC WASM
-        working-directory: sdcc-wasm
         run: |
+          cd sdcc-wasm
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
           # Pass WASM flags only at link time via LDFLAGS.
           emmake make -j4 \
