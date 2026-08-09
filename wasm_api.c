@@ -100,11 +100,14 @@ void emu_reset(int wipe) {
     }
 }
 
-/* Set part identity: 0=STC12, 1=STC15, 2=STC89, 3=STC15W.
+/* Set part identity: 0=STC12, 1=STC15, 2=STC89, 3=STC15W, 4=STC12_16.
  * Call after emu_init, before loading firmware. */
 EMSCRIPTEN_KEEPALIVE
 void emu_set_part(int part_id) {
     stc12_set_part(&stc, (uint8_t)part_id);
+    /* Set memory sizes for the part */
+    cpu.mCodeMemMaxIdx = stc12_flash_size((uint8_t)part_id) - 1;
+    cpu.mExtDataMaxIdx = stc12_xram_size((uint8_t)part_id) - 1;
     /* STC89: classic 8052, upstream tick() handles timers in 12T */
     cpu.skip_timers = (part_id != PART_STC89);
     cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
@@ -112,6 +115,18 @@ void emu_set_part(int part_id) {
     stc12_init(&cpu, &stc);
     cpu.skip_timers = (part_id != PART_STC89);
     cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
+}
+
+/* Get flash size for current part (bytes). */
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_get_flash_size(void) {
+    return stc12_flash_size(stc.part_id);
+}
+
+/* Get XRAM size for current part (bytes). */
+EMSCRIPTEN_KEEPALIVE
+uint16_t emu_get_xram_size(void) {
+    return stc12_xram_size(stc.part_id);
 }
 
 /* ------------------------------------------------------------------ *
@@ -187,6 +202,8 @@ int emu_load_hex(const char *hex_data, int length) {
             int data = HEX2(pos); pos += 2;
             if (addr + i <= (int)cpu.mCodeMemMaxIdx)
                 cpu.mCodeMem[addr + i] = data;
+            else
+                return -4; /* image too large for this part's flash */
         }
         pos += 2; /* skip checksum */
         #undef HEX2
@@ -653,6 +670,11 @@ const char *emu_capabilities(void) {
         part = "stc15w408as";
         peripherals = "\"timer0\",\"timer1\",\"adc\","
                       "\"uart1\",\"watchdog\"";
+        break;
+    case PART_STC12_16:
+        part = "stc12c5a16s2";
+        peripherals = "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
+                      "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\"";
         break;
     default: /* PART_STC12 */
         part = "stc12c5a60s2";

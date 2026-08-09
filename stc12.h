@@ -337,10 +337,11 @@ struct stc12_state
     uint32_t pin_history_count;  /* total events written */
 
     /* Stage 0: part identity. */
-    #define PART_STC12  0   /* STC12C5A60S2: 1T, port modes, ADC, 2 PCA, BRT */
-    #define PART_STC15  1   /* STC15F2K60S2: 1T, port modes, ADC, 3 PCA, Timer 2 baud */
-    #define PART_STC89  2   /* STC89C52RC: 12T only, no port modes/ADC/PCA. Classic 8052. */
-    #define PART_STC15W 3   /* STC15W408AS: 1T, port modes, ADC, NO PCA, Timer 2 baud, 8-pin+ */
+    #define PART_STC12    0  /* STC12C5A60S2: 1T, 60K flash, 1280B SRAM */
+    #define PART_STC15    1  /* STC15F2K60S2: 1T, 60K flash, 2048B SRAM, 3 PCA */
+    #define PART_STC89    2  /* STC89C52RC: 12T, 8K flash, 512B SRAM, classic 8052 */
+    #define PART_STC15W   3  /* STC15W408AS: 1T, 8K flash, 512B SRAM, no PCA */
+    #define PART_STC12_16 4  /* STC12C5A16S2: 1T, 16K flash, 1280B SRAM (same peripherals as STC12) */
     uint8_t  part_id;
     /* Count of accesses to SFRs not modelled for this part */
     uint32_t unmodelled_sfr_accesses;
@@ -420,5 +421,9 @@ int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
 
 /* Get current MCU time in nanoseconds since reset. */
 uint64_t stc12_get_time_ns(struct stc12_state *aState);
+
+/* Get memory sizes for the current part. */
+uint32_t stc12_flash_size(uint8_t part_id);
+uint16_t stc12_xram_size(uint8_t part_id);
 
 #endif /* STC12_H */

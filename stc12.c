@@ -1094,6 +1094,30 @@ void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
     aState->part_id = part_id;
 }
 
+uint32_t stc12_flash_size(uint8_t part_id)
+{
+    switch (part_id) {
+    case PART_STC12:    return 61440;  /* 60 KB */
+    case PART_STC15:    return 61440;  /* 60 KB */
+    case PART_STC89:    return 8192;   /* 8 KB */
+    case PART_STC15W:   return 8192;   /* 8 KB */
+    case PART_STC12_16: return 16384;  /* 16 KB */
+    default:            return 65535;
+    }
+}
+
+uint16_t stc12_xram_size(uint8_t part_id)
+{
+    switch (part_id) {
+    case PART_STC12:    return 1024;   /* 1280 total - 256 scratch = 1024 aux */
+    case PART_STC15:    return 1792;   /* 2048 total - 256 scratch */
+    case PART_STC89:    return 256;    /* 512 total - 256 scratch */
+    case PART_STC15W:   return 256;    /* 512 total - 256 scratch */
+    case PART_STC12_16: return 1024;
+    default:            return 65535;
+    }
+}
+
 /* ================================================================== *
  * Serial port (UART1)                                                 *
  * ================================================================== */

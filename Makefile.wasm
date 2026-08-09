@@ -36,6 +36,8 @@ EXPORTS := \
 	_emu_set_port_input \
 	_emu_set_fosc \
 	_emu_set_part \
+	_emu_get_flash_size \
+	_emu_get_xram_size \
 	_emu_get_pin_mode \
 	_emu_get_pin_drive \
 	_emu_set_pin_input \
