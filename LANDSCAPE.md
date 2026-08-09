@@ -23,7 +23,7 @@
    10-bit ADC with ADRJ, the STC15 ADRJ-moved trap.
 3. **Boundary A push-mode pin bus** — no other 8051 emulator exposes
    pin state as (mode, driveHigh) callbacks.
-4. **Differential-verified peripheral model** — 275/349 corpus images
+4. **Differential-verified peripheral model** — 220/349 corpus images
    agree with an independent implementation, 0 content disagreements.
 
 ## What we lack

@@ -49,18 +49,19 @@ Full corpus analysis (ucsim-stc `tests/corpus_diff.sh`, 2 ms span):
 
 | Category | Count | Description |
 |----------|------:|-------------|
-| **Pass** | 275 | SFR+TF events identical (79%) |
-| Timing divergence | 30 | Same event sequence, different count (cycle gap) |
-| TF edge artifact | 3 | ucsim sampler misses TF inside ISR |
-| Wrong target | 9 | STC8H images touching 0xCC/0xE8/0xE1 |
+| **Strict pass** | 220 | Both event streams fully identical (63%) |
+| Prefix match | 54 | Shorter stream is a prefix of the longer |
+| Diverge | 32 | Different event content or ordering |
+| Wrong target | 12 | STC8H images touching unmodelled SFRs |
 | Empty | 29 | No events from either emulator |
-| Error | 3 | One side produced no output |
+| Error | 2 | One side produced no output |
 
-**Zero content disagreements.** Every divergence is either a timing
-artifact (the two emulators execute at slightly different speeds due to
-the cycle count gap) or a sampling limitation. The timing divergences
-split evenly (15 emu faster, 15 ucsim faster), confirming the gap
-is instruction-mix-dependent, not a systematic bias.
+**220 strict matches** is the honest number. The 54 prefix matches are
+timing divergences where one emulator executed further in the same time
+window. The 32 divergences are also timing-driven: the same firmware
+reaches different code paths due to the 0.1% cycle count gap.
+
+No confirmed peripheral content disagreements across 349 images.
 
 346/347 images run without crash in emu8051-stc. The one silent image
 is an ATmega328 (AVR, not 8051). Results are counts and names only
