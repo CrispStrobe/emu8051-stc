@@ -194,6 +194,11 @@ int emu_load_hex(const char *hex_data, int length) {
         int rectype = HEX2(pos); pos += 2;
 
         if (rectype == 1) return 0; /* EOF record */
+        if (rectype == 2 || rectype == 4) {
+            /* Extended segment/linear address — skip for ≤64K targets */
+            pos += reclen * 2 + 2; /* skip data + checksum */
+            continue;
+        }
         if (rectype != 0) return -3; /* unsupported record type */
 
         if (pos + reclen * 2 + 2 > length) return -2;

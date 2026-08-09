@@ -609,6 +609,16 @@ int load_obj(struct em8051 *aCPU, char *aFilename)
             fclose(f);
             return 0; // we're done
         }
+        if (recordtype == 2 || recordtype == 4)
+        {
+            /* Extended segment (02) or linear (04) address record.
+             * For 8051 with ≤64K, the extended address should be 0.
+             * Skip the data bytes and checksum. */
+            for (i = 0; i < recordlength; i++)
+                readbyte(f);
+            readbyte(f); /* checksum */
+            continue;
+        }
         if (recordtype != 0)
         {
             fclose(f);

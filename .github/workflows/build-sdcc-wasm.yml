@@ -82,19 +82,19 @@ jobs:
           ls sdcc-emcc/ | head -20
 
       - name: Configure SDCC for Emscripten
-        env:
-          CC: emcc
-          CXX: em++
-          CFLAGS: "-sUSE_ZLIB -I/usr/include"
-          CXXFLAGS: "-sUSE_ZLIB -I/usr/include"
-          LDFLAGS: "-sUSE_ZLIB"
         run: |
           cd sdcc-emcc
           ls -la configure
-          # Emscripten's zlib port: -sUSE_ZLIB makes emcc provide zlib.
-          # Fake host: i686-unknown-linux-gnu (little-endian 32-bit = wasm32).
-          # NOT ppc (big-endian — would corrupt byte-identity of codegen).
+          # Pass CC/CXX/flags directly on the configure line so they survive
+          # emconfigure's subprocess wrapping.
+          # -sUSE_ZLIB: Emscripten's zlib port.
+          # -I/usr/include: system boost headers (header-only).
+          # i686: little-endian 32-bit, matching wasm32.
           emconfigure ./configure \
+            CC=emcc CXX=em++ \
+            CFLAGS="-sUSE_ZLIB -I/usr/include" \
+            CXXFLAGS="-sUSE_ZLIB -I/usr/include" \
+            LDFLAGS="-sUSE_ZLIB" \
             --host=i686-unknown-linux-gnu \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
