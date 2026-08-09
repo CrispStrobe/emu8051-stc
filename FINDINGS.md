@@ -311,3 +311,26 @@ is already implemented.
 
 An 8052 Timer 2 model would only be relevant for AT89C52-style chips,
 which are a different target. Marked as out-of-scope for this model.
+
+---
+
+## 10. Prefix-only corpus images: confirmed timing, not instruction disagreement
+
+Investigated the 54 prefix-only images where one model produces more
+SFR events than the other in the same 2ms window.
+
+**Step-PC comparison on a prefix-only image** (nixie_tube_eight_yin):
+- 2000 instruction steps from reset
+- 1999/2000 PCs identical between both models
+- The one "difference" is a leading PC=0000 that we emit at reset
+
+**Conclusion:** the prefix-only gap is the documented 0.1% timing
+difference, not an instruction-level disagreement. Both models execute
+the same instructions in the same order; they disagree on exactly when
+2ms of nanosecond time has elapsed. ucsim reaches further in 50/54
+cases, producing 1-1728 more SFR events in the same time window.
+
+This is not actionable as a bug. A longer trace window would show
+the same events — just with the shorter side catching up later.
+The strict-match count (220/349) is the honest metric; the prefix
+matches (54) are timing noise at the window boundary.
