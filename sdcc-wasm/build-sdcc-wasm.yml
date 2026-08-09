@@ -1,0 +1,70 @@
+# GitHub Actions workflow: build SDCC 4.5.0 for mcs51 as WebAssembly
+#
+# Produces: sdcc.wasm, sdcpp.wasm, sdas8051.wasm, sdld.wasm
+# plus the minimum headers/libraries for mcs51 compilation.
+#
+# Acceptance: byte-identical .hex output against native SDCC 4.5.0
+# for all 9 pseudocode examples.
+#
+# This workflow is NOT wired into CI yet — it is a manual build recipe.
+# Wire it in once the byte-identity test passes.
+
+name: Build SDCC WASM (mcs51)
+
+on:
+  workflow_dispatch:
+
+env:
+  SDCC_VERSION: "4.5.0"
+  SDCC_TARBALL_SHA256: "d5030437fb436bb1d93a8dbdbfb46baaa60613318f4fb3f5871d72815d1eed80"
+  EMSDK_VERSION: "3.1.61"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex libboost-graph-dev texinfo
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+
+      - name: Download SDCC source
+        run: |
+          curl -L -o sdcc-src.tar.bz2 \
+            "https://sourceforge.net/projects/sdcc/files/sdcc/${{ env.SDCC_VERSION }}/sdcc-src-${{ env.SDCC_VERSION }}.tar.bz2/download"
+          echo "${{ env.SDCC_TARBALL_SHA256 }}  sdcc-src.tar.bz2" | sha256sum -c
+          tar xjf sdcc-src.tar.bz2
+
+      - name: Build SDCC natively (reference for byte-identity test)
+        run: |
+          cd sdcc-${{ env.SDCC_VERSION }}
+          ./configure \
+            --disable-z80-port --disable-z180-port --disable-r2k-port \
+            --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
+            --disable-tlcs90-port --disable-ez80_z80-port --disable-z80n-port \
+            --disable-ds390-port --disable-ds400-port --disable-hc08-port \
+            --disable-s08-port --disable-stm8-port --disable-pdk13-port \
+            --disable-pdk14-port --disable-pdk15-port --disable-mos6502-port \
+            --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
+            --disable-ucsim --disable-sdcdb
+          make -j$(nproc) CXXFLAGS="-g -O2 -Wno-error"
+          echo "Native SDCC built"
+          ./bin/sdcc --version | head -1
+
+      # TODO: Cross-compile with Emscripten
+      # This is the complex step — SDCC's build system needs patching
+      # for Emscripten cross-compilation. The gbdk-emscripten project
+      # (chrismaltby/gbdk-emscripten) is the reference for how to do it.
+
+      - name: Upload native build (interim)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdcc-native-${{ env.SDCC_VERSION }}
+          path: sdcc-${{ env.SDCC_VERSION }}/bin/
