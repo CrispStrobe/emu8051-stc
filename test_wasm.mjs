@@ -382,6 +382,8 @@ emu_init(1);
         // Test setYieldBreakpoints
         const handles = setYieldBreakpoints(Module, symJson);
         assert(handles.length > 0, `setYieldBreakpoints: ${handles.length} yields set`);
+
+        // Level 1 position queries are tested natively in test_debug.c
     } else {
         assert(true, 'loadSymbols: skipped (symbols.json not found)');
     }
