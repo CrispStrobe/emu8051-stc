@@ -234,3 +234,32 @@ The three opcode logic bugs (items 1-2, 6) are packaged as patches
 against upstream jarikomppa/emu8051 in `upstream-patches/`:
 - [001](upstream-patches/001-fix-xchd-and-mov-direct-indir.patch) — XCHD + MOV direct,@Ri
 - [002](upstream-patches/002-fix-movx-ri-p2-high-byte.patch) — MOVX @Ri P2 high byte
+
+## On-chip debug monitor (10-live-firmware)
+
+First execution of the on-chip debug monitor under emu8051-stc.
+Protocol verified against **four independent frame codec implementations**:
+
+| Codec | Language | Assertions |
+|-------|----------|-----------|
+| firmware (`live-frame.h`) | C | runs on emulator |
+| `test_monitor.c` (hand-built) | C | 32 |
+| `live-monitor.py` (shipping tool) | Python | 28 |
+| `stc12live.js` (browser extension) | JavaScript | 23 |
+
+**Commands verified:** HELLO (capabilities), POS (Level 1 position),
+REGS (register dump), READ (IRAM memory), HALT, RUN, torn-frame
+recovery via idle timeout.
+
+**Time-freeze measurement (DEBUG-CONTROL-MODEL.md §3.1):**
+
+| | Before halt | During 500ms halt | After resume + 100ms |
+|---|---|---|---|
+| `bw_ms` (program time) | 67 | **67** (frozen) | 168 (running) |
+| TR0 | 1 (running) | **0** (stopped) | 1 (running) |
+| TR1 | 1 (running) | **1** (running) | 1 (running) |
+| `skew_ms` | 0 | 0 (computed on exit) | **527** (~500ms halt) |
+
+Program time provably stops while wall time advances. `skew_ms` reports
+the halt duration. This moves `timeFreezes=true` from a capability the
+target declares to a measured property.

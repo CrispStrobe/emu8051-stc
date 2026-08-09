@@ -18,10 +18,11 @@ STC15 Timer 2.
 memory access (5 address spaces), registers, PC histogram profiling,
 pin history ring buffer, Level 1 position for cooperative scheduler.
 
-**Verified:** 491 test assertions (native + WASM + GDB), 31 firmware
-images. Third-party corpus: 220/349 produce byte-identical event
-streams; a further 86 differ only in how far each model advances in a
-2 ms window (zero instruction-level disagreements).
+**Verified:** 574 test assertions across 14 suites (native + WASM + GDB
+\+ monitor protocol), 31 firmware images. On-chip debug monitor
+(10-live-firmware) protocol verified against 4 independent codecs with
+time-freeze measurement. Third-party corpus: 220/349 byte-identical
+event streams; 86 timing-only (zero instruction disagreements).
 See [RESULTS.md](RESULTS.md).
 
 **API:** 69 WASM exports. See [API.md](API.md).
