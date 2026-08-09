@@ -84,6 +84,8 @@ int main(int argc, char **argv) {
     int max_cycles = 0;           /* 0 = use until_ns instead */
     uint64_t until_ns = 2000000;  /* default 2 ms */
     int step_pcs = 0;             /* -step-pcs N: emit N PCs, one per line */
+    int adc_ch[8] = {0};          /* ADC channel inputs (0-1023) */
+    int adc_set = 0;              /* bitmask of channels set */
     char *hexfile = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -95,13 +97,20 @@ int main(int argc, char **argv) {
             max_cycles = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-step-pcs") == 0 && i + 1 < argc) {
             step_pcs = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-adc") == 0 && i + 1 < argc) {
+            /* -adc CH,VALUE (e.g. -adc 2,512) */
+            int ch, val;
+            if (sscanf(argv[++i], "%d,%d", &ch, &val) == 2 && ch >= 0 && ch < 8) {
+                adc_ch[ch] = val;
+                adc_set |= (1 << ch);
+            }
         } else if (argv[i][0] != '-') {
             hexfile = argv[i];
         }
     }
 
     if (!hexfile) {
-        fprintf(stderr, "Usage: %s [-fosc Hz] [-until-ns N] [-step-pcs N] firmware.hex\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-fosc Hz] [-until-ns N] [-adc CH,VAL] firmware.hex\n", argv[0]);
         return 1;
     }
 
@@ -129,6 +138,12 @@ int main(int argc, char **argv) {
     if (load_obj(&cpu, hexfile) != 0) {
         fprintf(stderr, "Failed to load %s\n", hexfile);
         return 1;
+    }
+
+    /* Apply ADC channel inputs */
+    for (int ch = 0; ch < 8; ch++) {
+        if (adc_set & (1 << ch))
+            stc12_set_adc_input(&stc, ch, adc_ch[ch]);
     }
 
     /* -step-pcs mode: emit N PCs, one per line, interrupts masked.
