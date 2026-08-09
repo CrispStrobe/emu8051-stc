@@ -75,18 +75,18 @@ jobs:
         run: |
           echo "=== Checking original source ==="
           ls -la sdcc-${{ env.SDCC_VERSION }}/configure || echo "NO configure in original!"
-          cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
+          cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-emcc
           echo "=== Checking copy ==="
-          ls -la sdcc-wasm/configure || echo "NO configure in copy!"
-          echo "=== sdcc-wasm top-level files ==="
-          ls sdcc-wasm/ | head -20
+          ls -la sdcc-emcc/configure || echo "NO configure in copy!"
+          echo "=== sdcc-emcc top-level files ==="
+          ls sdcc-emcc/ | head -20
 
       - name: Configure SDCC for Emscripten
         env:
           CC: emcc
           CXX: em++
         run: |
-          cd sdcc-wasm
+          cd sdcc-emcc
           ls -la configure  # verify configure exists
           # Cross-compile for Emscripten. Single-threaded (no -pthread).
           emconfigure ./configure \
@@ -100,11 +100,11 @@ jobs:
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb \
             --disable-device-lib --disable-packihx \
-            --prefix=/opt/sdcc-wasm
+            --prefix=/opt/sdcc-emcc
 
       - name: Build SDCC WASM
         run: |
-          cd sdcc-wasm
+          cd sdcc-emcc
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
           # Pass WASM flags only at link time via LDFLAGS.
           emmake make -j4 \
@@ -125,14 +125,14 @@ jobs:
 
           # Copy WASM binaries
           for tool in sdcc sdcpp; do
-            if [ -f sdcc-wasm/src/$tool.js ]; then
-              cp sdcc-wasm/src/$tool.js sdcc-wasm/src/$tool.wasm dist/sdcc-wasm/
+            if [ -f sdcc-emcc/src/$tool.js ]; then
+              cp sdcc-emcc/src/$tool.js sdcc-emcc/src/$tool.wasm dist/sdcc-wasm/
             fi
           done
 
           # Assembler and linker
           for tool in sdas8051 sdld; do
-            for dir in sdcc-wasm/sdas/as8051 sdcc-wasm/sdas/linksrc sdcc-wasm/support/sdbinutils/binutils; do
+            for dir in sdcc-emcc/sdas/as8051 sdcc-emcc/sdas/linksrc sdcc-emcc/support/sdbinutils/binutils; do
               if [ -f "$dir/$tool.js" ]; then
                 cp "$dir/$tool.js" "$dir/$tool.wasm" dist/sdcc-wasm/
                 break
@@ -162,9 +162,9 @@ jobs:
           ls -lh dist/sdcc-wasm/*.js dist/sdcc-wasm/*.wasm 2>/dev/null || echo "No WASM artifacts found"
           echo ""
           echo "=== Gzipped total ==="
-          tar czf /tmp/sdcc-wasm.tar.gz -C dist sdcc-wasm
-          ls -lh /tmp/sdcc-wasm.tar.gz
-          GZIP_SIZE=$(stat -c%s /tmp/sdcc-wasm.tar.gz)
+          tar czf /tmp/sdcc-emcc.tar.gz -C dist sdcc-emcc
+          ls -lh /tmp/sdcc-emcc.tar.gz
+          GZIP_SIZE=$(stat -c%s /tmp/sdcc-emcc.tar.gz)
           echo "Gzipped transfer size: $GZIP_SIZE bytes ($(echo "scale=1; $GZIP_SIZE / 1048576" | bc) MB)"
 
       # ── Step 3: Byte-identity test ──
@@ -214,7 +214,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sdcc-wasm-${{ env.SDCC_VERSION }}
+          name: sdcc-emcc-${{ env.SDCC_VERSION }}
           path: dist/sdcc-wasm/
 
       # TODO: Create a GitHub release with the artifacts
