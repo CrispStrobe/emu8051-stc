@@ -14,12 +14,12 @@ All phases complete and tested.
 | Phase | Status | Commit |
 |-------|--------|--------|
 | 0. Baseline import | Done | `fdbc893` |
-| 1. SFR set (44 registers) | Done | `049b87f` |
+| 1. SFR set (66+ registers) | Done | `049b87f` |
 | 2. Timer 0/1 with AUXR.7/AUXR.6 1T/12T | Done | `049b87f` |
 | 3. Port modes (PxM1/PxM0) | Done | `049b87f` |
 | 4. ADC (10-bit, 8ch, 4 speeds, ADRJ) | Done | `049b87f` |
 | 5. PCA/PWM (counter, compare, 8-bit PWM) | Done | `049b87f` |
-| 6. WASM build (emcc, 12K+49K) | Done | `0920749` |
+| 6. WASM build (emcc, 19K+62K) | Done | `0920749` |
 | 7. Test images (SDCC, 01-blink, 02-adc) | Done | `9211d4a` |
 
 ## Architecture
@@ -36,12 +36,15 @@ All phases complete and tested.
 
 ## What remains
 
-- **PCA PWM pin output**: the compare logic runs but the result isn't
-  reflected on port pins yet.
-- **BRT**: counter runs but doesn't feed UART baud rate.
-- **SPI, UART2, watchdog**: SFR storage only, no logic.
+All planned features are implemented and tested. See ROADMAP.md for
+future directions (Phase 6: more MCU targets).
+
+**Open caveats:**
 - **ADC silicon verification**: the register sequence matches the datasheet
-  but has not been confirmed on hardware. `02-adc` is the test for that.
+  but has not been confirmed on hardware.
+- **PCA capture mode**: implemented but untested on silicon.
+- **External interrupts (GATE mode)**: upstream core.c stubs — no firmware
+  in our test set uses this.
 
 ## Licence constraints
 
