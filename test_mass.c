@@ -187,6 +187,12 @@ int main(void) {
     CHECK(cpu.serial_out[0] == 'H', "22-hello: first byte is 'H'");
     teardown();
 
+    /* 20-ledcube: clean-room LED cube driver */
+    setup_and_load("test_images/20-ledcube.hex"); run_ms(10);
+    CHECK(cpu.mSFR[REG_TCON] & 0x10 || cpu.mSFR[REG_TCON] & 0x00,
+          "20-ledcube: Timer 0 used for delay");
+    teardown();
+
     /* 21-smoke-all: exercises every peripheral */
     setup_and_load("test_images/21-smoke-all.hex"); run_ms(5);
     CHECK((cpu.mSFR[STC_REG_P1M0] & 0x03) == 0x03, "21-smoke: P1 push-pull");
