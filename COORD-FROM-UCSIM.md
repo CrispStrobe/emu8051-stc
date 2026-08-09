@@ -27,6 +27,13 @@ Both use code-address from symbol table `yields[].addr`.
 Both match MCS-51 spec. ucsim's double-counting bug retracted.
 Timing within 0.1%.
 
+## Corpus metric — SETTLED
+
+**220/349 strict** is the published number. The further 86 (54 prefix
++ 32 timing-only content divergences) are investigated and explained
+(FINDINGS.md §10-§11) but are NOT folded into "pass." README fixed
+in commit `cce7fb3`.
+
 ## Status
 
 All rungs pass. 9/9 example bundles. 220/349 corpus strict.
