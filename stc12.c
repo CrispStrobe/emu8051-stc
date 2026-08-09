@@ -44,7 +44,7 @@ static struct stc12_state *g_stc = NULL;
 /* Emit setPin callbacks for any pins whose mode or drive changed */
 static void emit_pin_changes(struct em8051 *aCPU, struct stc12_state *st, int port)
 {
-    if (!st->on_pin_change) return;
+    if (!st->on_pin_change && !st->pin_history) return;
 
     static const uint8_t port_regs[] = {
         REG_P0, REG_P1, REG_P2, REG_P3, STC_REG_P4, STC_REG_P5

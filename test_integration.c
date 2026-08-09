@@ -946,6 +946,7 @@ static void test_uart2(void);
 static void test_spi(void);
 static void test_dual_dptr(void);
 static void test_pca_toggle(void);
+static void test_pin_history(void);
 static void test_serial_tx(void);
 static void test_serial_rx(void);
 
@@ -985,6 +986,7 @@ int main(int argc, char **argv) {
     test_spi();
     test_dual_dptr();
     test_pca_toggle();
+    test_pin_history();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1353,5 +1355,37 @@ static void test_pca_toggle(void) {
     CHECK(p1_before != p1_after, "PCA toggle: P1.3 toggled on compare match");
     CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF0, "PCA toggle: CCF0 set on match");
 
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 28: Pin history ring buffer                                    *
+ * ================================================================== */
+static void test_pin_history(void) {
+    printf("\n--- test_pin_history ---\n");
+    setup();
+
+    /* Enable pin history */
+    stc.pin_history = calloc(PIN_HISTORY_SIZE, sizeof(struct stc12_pin_event));
+    stc.pin_history_head = 0;
+    stc.pin_history_count = 0;
+
+    /* Program: set P1 push-pull, toggle P1.0 */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x92; cpu.mCodeMem[2] = 0x01; /* P1M0=01 */
+    cpu.mCodeMem[3] = 0xC2; cpu.mCodeMem[4] = 0x90; /* CLR P1.0 */
+    cpu.mCodeMem[5] = 0xD2; cpu.mCodeMem[6] = 0x90; /* SETB P1.0 */
+    cpu.mCodeMem[7] = 0x80; cpu.mCodeMem[8] = 0xFE; /* SJMP $ */
+
+    run_clocks(50);
+
+    CHECK(stc.pin_history_count > 0, "Pin history: events recorded");
+    if (stc.pin_history_count > 0) {
+        /* Check the first event */
+        CHECK(stc.pin_history[0].port == 1, "Pin history: first event port=1");
+        CHECK(stc.pin_history[0].t_ns >= 0, "Pin history: timestamp valid");
+    }
+
+    free(stc.pin_history);
+    stc.pin_history = NULL;
     teardown();
 }
