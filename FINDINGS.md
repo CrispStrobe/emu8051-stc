@@ -382,3 +382,39 @@ R0=0x34, writes via MOVX @R0, and verifies XDATA[0x1234] was written.
 
 This is the third upstream opcode bug found (after XCHD and MOV
 direct,@Ri).
+
+---
+
+## 13. Vendor LED cube firmware: P2 scan table confirmed over 5 seconds
+
+**Context:** Two measurements of the vendor 4x4x4 LED cube firmware
+(ICStation 4681) appeared to contradict each other. The README recorded
+P2 cycling `FE FD FB F7 EF DF BF 7F` (multiplexed scanning), while
+`ucsim-stc/RESULTS.md` recorded `P2=0x00` (all layers lit at once).
+
+**Resolution:** Run under emu8051-stc for 5 seconds (5,000,000,000 ns)
+at FOSC = 11,059,200 Hz. P2 histogram:
+
+| P2 value | Count | Meaning |
+|----------|-------|---------|
+| `0x00`   | 1     | Init: all layers on (~1.71 s) |
+| `0xFE`   | 568   | Layer 0, red pass |
+| `0xFD`   | 568   | Layer 1, red pass |
+| `0xFB`   | 568   | Layer 2, red pass |
+| `0xF7`   | 568   | Layer 3, red pass |
+| `0xEF`   | 568   | Layer 0, blue pass |
+| `0xDF`   | 568   | Layer 1, blue pass |
+| `0xBF`   | 568   | Layer 2, blue pass |
+| `0x7F`   | 568   | Layer 3, blue pass |
+
+**Both measurements are correct.** The vendor firmware holds `P2=0x00`
+for ~1.71 seconds during its all-on init pattern (all layers enabled,
+no multiplexing needed). After that it switches to multiplexed scanning
+through the 8-value scan table. The 50 ms window used by `ucsim-stc`
+fell entirely inside the all-on pattern.
+
+Per-line dwell during scanning: 0.824 ms, frame period 6.593 ms,
+refresh rate 151.7 Hz. The spec stands — the scan model is real.
+
+Build: `2dd4c198548e__icstation_4681_Code_main.hex` (SDCC build from
+stc-research corpus).
