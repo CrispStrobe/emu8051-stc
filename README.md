@@ -17,9 +17,10 @@ UART1/2, SPI, watchdog, dual DPTR, STC15 Timer 2.
 memory access (5 address spaces), registers, PC histogram profiling,
 pin history ring buffer, Level 1 position for cooperative scheduler.
 
-**Verified:** 442 test assertions, 28 firmware images, 306/349
-third-party corpus images agree with an independent implementation
-(zero instruction-level disagreements). See [RESULTS.md](RESULTS.md).
+**Verified:** 442 test assertions, 28 firmware images. Third-party
+corpus: 220/349 produce byte-identical event streams; a further 86
+differ only in how far each model advances in a 2 ms window (zero
+instruction-level disagreements). See [RESULTS.md](RESULTS.md).
 
 **API:** 57 WASM exports. See [API.md](API.md).
 
