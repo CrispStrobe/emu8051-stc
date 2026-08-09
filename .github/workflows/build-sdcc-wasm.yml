@@ -116,6 +116,7 @@ jobs:
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb \
             --disable-device-lib --disable-packihx \
+            --disable-sdbinutils \
             --prefix=/opt/sdcc-emcc \
             || {
               echo "=== config.log (last 80 lines) ==="
