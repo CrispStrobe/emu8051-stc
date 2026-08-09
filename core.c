@@ -454,6 +454,13 @@ bool tick(struct em8051 *aCPU)
     if (aCPU->mTickDelay)
     {
         aCPU->mTickDelay--;
+        /* 12T: when the countdown finishes, DON'T execute the next
+         * opcode on the same tick. Return and let the next tick() call
+         * find mTickDelay==0 and execute. This prevents the shared-tick
+         * problem where one tick serves as both the last of the old
+         * instruction and the first of the new one. */
+        if (aCPU->mTickDelay == 0 && aCPU->mMachineCycleScale > 1)
+            return false;
     }
 
     // Test for Power Down
@@ -479,6 +486,12 @@ bool tick(struct em8051 *aCPU)
             aCPU->mTickDelay = 1;
         } else {
             aCPU->mTickDelay = aCPU->op[aCPU->mCodeMem[aCPU->mPC & (aCPU->mCodeMemMaxIdx)]](aCPU);
+            /* 12T: scale machine cycles to oscillator clocks.
+             * The -2 accounts for: 1 tick consumed by the opcode execution,
+             * plus 1 tick consumed by the early-return when countdown hits 0. */
+            if (aCPU->mMachineCycleScale > 1) {
+                aCPU->mTickDelay = (aCPU->mTickDelay + 1) * aCPU->mMachineCycleScale - 1;
+            }
         }
         ticked = true;
         // update parity bit

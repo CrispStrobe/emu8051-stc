@@ -314,6 +314,7 @@ struct stc12_state
     bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */
     uint8_t pca_cex_last[3];    /* last CEX0/CEX1/CEX2 pin level for capture edge detect */
     uint8_t last_tf1;           /* for INT_CLKO.T1CLKO edge detection */
+    bool    stc89_scaled;       /* true after 12T scaling applied this instruction */
 
     /* Port external input state (active-low: 0xFF = all high) */
     uint8_t port_ext[6];        /* P0..P5 external pin state */

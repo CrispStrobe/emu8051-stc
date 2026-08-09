@@ -82,6 +82,7 @@ void emu_init(int stc12_mode) {
     if (stc12_mode) {
         stc12_init(&cpu, &stc);
         cpu.skip_timers = true;
+        cpu.mMachineCycleScale = 1; /* default 1T; set_part overrides for STC89 */
     }
 
     dbg_init(&dbg, &cpu, &stc);
@@ -104,11 +105,13 @@ void emu_reset(int wipe) {
 EMSCRIPTEN_KEEPALIVE
 void emu_set_part(int part_id) {
     stc12_set_part(&stc, (uint8_t)part_id);
-    /* STC89: classic 8052, upstream tick() handles timers */
+    /* STC89: classic 8052, upstream tick() handles timers in 12T */
     cpu.skip_timers = (part_id != PART_STC89);
+    cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
     /* Re-init to install part-appropriate SFR callbacks */
     stc12_init(&cpu, &stc);
     cpu.skip_timers = (part_id != PART_STC89);
+    cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
 }
 
 /* ------------------------------------------------------------------ *

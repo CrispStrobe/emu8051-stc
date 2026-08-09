@@ -738,8 +738,8 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
     aState->osc_clocks++;
 
-    /* STC89: classic 8052 — upstream tick() handles all timers.
-     * We only track osc_clocks for time reporting. */
+    /* STC89: 12T timing is handled by mMachineCycleScale in core.c tick().
+     * No STC-specific peripheral ticking needed. */
     if (aState->part_id == PART_STC89)
         return;
 
