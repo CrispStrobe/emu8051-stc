@@ -85,8 +85,8 @@ jobs:
         env:
           CC: emcc
           CXX: em++
-          CFLAGS: "-sUSE_ZLIB"
-          CXXFLAGS: "-sUSE_ZLIB"
+          CFLAGS: "-sUSE_ZLIB -I/usr/include"
+          CXXFLAGS: "-sUSE_ZLIB -I/usr/include"
           LDFLAGS: "-sUSE_ZLIB"
         run: |
           cd sdcc-emcc
