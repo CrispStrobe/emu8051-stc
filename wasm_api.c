@@ -471,6 +471,15 @@ int emu_dbg_set_bp_yield(uint16_t addr, uint8_t task, uint16_t state) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+int emu_dbg_set_bp_write(int space, uint16_t addr) {
+    struct dbg_breakpoint bp = {
+        .kind = BP_WRITE, .addr = addr,
+        .watch = { .space = (enum dbg_space)space, .len = 1 }
+    };
+    return dbg_set_breakpoint(&dbg, &bp);
+}
+
+EMSCRIPTEN_KEEPALIVE
 void emu_dbg_clear_bp(int handle) {
     dbg_clear_breakpoint(&dbg, handle);
 }

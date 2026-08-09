@@ -78,6 +78,7 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_dbg_run_until_ns(lo,hi)` | `(i32,i32) → i32` | Run until time or halt. Returns 1 if BP/step. |
 | `emu_dbg_set_bp_code(addr)` | `(i32) → i32` | Set code breakpoint. Returns handle. |
 | `emu_dbg_set_bp_yield(addr,task,state)` | `(i32,i32,i32) → i32` | Set yield breakpoint. |
+| `emu_dbg_set_bp_write(space,addr)` | `(i32,i32) → i32` | Set write watchpoint. Halts when the byte changes. Space: 0=code,1=iram,2=sfr,3=xram. |
 | `emu_dbg_clear_bp(handle)` | `(i32) → void` | Clear breakpoint. |
 | `emu_dbg_read_mem(space,addr,len)` | `(i32,i32,i32) → ptr` | Read memory. space: 0-4. Returns pointer. |
 | `emu_dbg_write_mem(space,addr,val)` | `(i32,i32,i32) → void` | Write one byte. |

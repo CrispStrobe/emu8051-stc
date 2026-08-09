@@ -54,6 +54,7 @@ EXPORTS := \
 	_emu_dbg_run_until_ns \
 	_emu_dbg_set_bp_code \
 	_emu_dbg_set_bp_yield \
+	_emu_dbg_set_bp_write \
 	_emu_dbg_clear_bp \
 	_emu_dbg_read_mem \
 	_emu_dbg_write_mem \
