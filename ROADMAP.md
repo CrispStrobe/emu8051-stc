@@ -170,7 +170,9 @@ Each new feature gets:
 3. A firmware image that exercises it (in `test_images/`)
 4. Differential comparison against ucsim where applicable
 
-Current: 347 assertions across 5 test suites (test_suite 136,
-test_integration 140, test_cycles 34, test_wasm 31, test_gdb 6),
-30 firmware images. Third-party corpus: 220/349 strict byte-identical,
-86 timing-only divergence (zero instruction disagreements).
+Current: 396+ native assertions across 8 test suites (test_stc12 12,
+test_suite 136, test_integration 140, test_debug 37, test_cycles 34,
+test_mass 37, plus test_blink/test_adc/test_multi_when standalone),
+31 WASM tests, 6 GDB tests, 30 firmware images. Third-party corpus:
+220/349 strict byte-identical, 86 timing-only (zero instruction
+disagreements).
