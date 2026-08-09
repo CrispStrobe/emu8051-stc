@@ -95,6 +95,12 @@ int main(void) {
     CHECK(cpu.mSFR[REG_IE] & 0x80, "17-stop-script: EA enabled");
     teardown();
 
+    /* 22-hello-serial: UART TX end-to-end */
+    setup_and_load("test_images/22-hello-serial.hex"); run_ms(10);
+    CHECK(cpu.serial_out_idx > 0, "22-hello: serial output produced");
+    CHECK(cpu.serial_out[0] == 'H', "22-hello: first byte is 'H'");
+    teardown();
+
     /* 21-smoke-all: exercises every peripheral */
     setup_and_load("test_images/21-smoke-all.hex"); run_ms(5);
     CHECK((cpu.mSFR[STC_REG_P1M0] & 0x03) == 0x03, "21-smoke: P1 push-pull");
