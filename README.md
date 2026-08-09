@@ -3,7 +3,7 @@ emu8051-stc
 
 Fork of [jarikomppa/emu8051](https://github.com/jarikomppa/emu8051) (MIT)
 with **STC12C5A60S2 / STC15F2K60S2** peripheral models, a **debug control
-interface**, and a **WASM build** (19K + 62K) for use in the browser.
+interface**, and a **WASM build** (20K + 64K) for use in the browser.
 
 The only MIT-licensed 8051 emulator that runs in a browser with
 STC-specific hardware support. See [LANDSCAPE.md](LANDSCAPE.md) for the
@@ -26,7 +26,7 @@ with time-freeze measurement (bw_ms frozen during halt, skew_ms =
 event streams; 86 timing-only (zero instruction disagreements).
 See [RESULTS.md](RESULTS.md).
 
-**API:** 69 WASM exports. See [API.md](API.md).
+**API:** 71 WASM exports. See [API.md](API.md).
 
 What changed from upstream
 --------------------------

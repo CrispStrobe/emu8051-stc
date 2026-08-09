@@ -19,7 +19,7 @@ All phases complete and tested.
 | 3. Port modes (PxM1/PxM0) | Done | `049b87f` |
 | 4. ADC (10-bit, 8ch, 4 speeds, ADRJ) | Done | `049b87f` |
 | 5. PCA/PWM (counter, compare, 8-bit PWM) | Done | `049b87f` |
-| 6. WASM build (emcc, 19K+62K) | Done | `0920749` |
+| 6. WASM build (emcc, 20K+64K) | Done | `0920749` |
 | 7. Test images (SDCC, 01-blink, 02-adc) | Done | `9211d4a` |
 
 ## Architecture
