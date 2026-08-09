@@ -14,6 +14,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <strings.h>
 #include "emu8051.h"
 #include "stc12.h"
 #include "debug.h"
@@ -90,6 +91,7 @@ int main(int argc, char **argv) {
     int bp_addr = -1;             /* -bp ADDR: code breakpoint */
     int write_space = -1, write_addr = -1, write_val = -1;
     int read_space = -1, read_addr = -1, read_len = 0;
+    int part_id = PART_STC12;     /* -part NAME: STC12/STC15/STC89/STC15W */
     char *hexfile = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -107,6 +109,20 @@ int main(int argc, char **argv) {
             if (sscanf(argv[++i], "%d,%d", &ch, &val) == 2 && ch >= 0 && ch < 8) {
                 adc_ch[ch] = val;
                 adc_set |= (1 << ch);
+            }
+        } else if (strcmp(argv[i], "-part") == 0 && i + 1 < argc) {
+            const char *p = argv[++i];
+            if (strcasecmp(p, "stc12") == 0 || strcasecmp(p, "stc12c5a60s2") == 0)
+                part_id = PART_STC12;
+            else if (strcasecmp(p, "stc15") == 0 || strcasecmp(p, "stc15f2k60s2") == 0)
+                part_id = PART_STC15;
+            else if (strcasecmp(p, "stc89") == 0 || strcasecmp(p, "stc89c52rc") == 0)
+                part_id = PART_STC89;
+            else if (strcasecmp(p, "stc15w") == 0 || strcasecmp(p, "stc15w408as") == 0)
+                part_id = PART_STC15W;
+            else {
+                fprintf(stderr, "Unknown part: %s (use stc12/stc15/stc89/stc15w)\n", p);
+                return 1;
             }
         } else if (strcmp(argv[i], "-bp") == 0 && i + 1 < argc) {
             bp_addr = (int)strtol(argv[++i], NULL, 0);
@@ -138,10 +154,13 @@ int main(int argc, char **argv) {
 
     reset(&cpu, 1);
     stc12_init(&cpu, &stc);
+    stc12_set_part(&stc, part_id);
     stc.fosc = fosc;
     if (fosc > 0)
         stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / fosc + 0.5);
-    cpu.skip_timers = true;
+    /* STC89: 12T core, upstream tick() handles timers */
+    cpu.skip_timers = (part_id != PART_STC89);
+    cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
 
     /* Install pin change callback for trace (not in step-pcs or bp mode) */
     if (step_pcs == 0 && bp_addr < 0)
