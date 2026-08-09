@@ -95,10 +95,10 @@ jobs:
           mkdir -p /tmp/boost-headers
           cp -r /usr/include/boost /tmp/boost-headers/
 
-          # Short-circuit autoconf's C++11 probe — it misfires under
-          # emconfigure (exit-status check fails for unrelated reasons).
-          # Force -std=c++11 to match the native build exactly.
-          export ac_cv_prog_cxx_cxx11=yes
+          # CXXFLAGS already carries -std=c++11, so configure's C++11
+          # detection has nothing to find. Do NOT set ac_cv_prog_cxx_cxx11
+          # — the value is appended verbatim to CXX, and "yes" becomes
+          # a literal argument ("em++ yes -c ..."), breaking every C++ test.
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
