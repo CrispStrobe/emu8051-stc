@@ -11,9 +11,10 @@ competitive analysis.
 
 **Peripherals:** Timer 0/1 (1T/12T), port modes, 10-bit ADC, PCA/PWM
 (8 clock sources, 9-bit compare, double-buffered pin output, toggle,
-capture), UART1/2, SPI, watchdog, dual DPTR, STC15 Timer 2.
+capture; 3 modules on STC15), UART1/2, SPI, watchdog, dual DPTR,
+STC15 Timer 2.
 
-**Debug:** run/halt/step (5 kinds), breakpoints (code + yield),
+**Debug:** run/halt/step (5 kinds), breakpoints (code + yield + write),
 memory access (5 address spaces), registers, PC histogram profiling,
 pin history ring buffer, Level 1 position for cooperative scheduler.
 
