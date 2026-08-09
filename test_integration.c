@@ -970,6 +970,7 @@ static void test_movx_ri_p2(void);
 static void test_pca_capture(void);
 static void test_write_watchpoint(void);
 static void test_stc15_pca3(void);
+static void test_stc15_spi(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -1014,6 +1015,7 @@ int main(int argc, char **argv) {
     test_pca_capture();
     test_write_watchpoint();
     test_stc15_pca3();
+    test_stc15_spi();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1646,6 +1648,34 @@ static void test_stc15_pca3(void) {
     run_clocks(16);
     CHECK(!(cpu.mSFR[STC_REG_CCON] & CCON_CCF2),
           "STC12: module 2 NOT active (only 2 modules)");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 35: STC15 SPI at different addresses                           *
+ * ================================================================== */
+static void test_stc15_spi(void) {
+    printf("\n--- test_stc15_spi ---\n");
+    setup();
+    stc12_set_part(&stc, PART_STC15);
+
+    /* STC15 SPI: SPCTL=0xCE, SPDAT=0xCF, SPSTAT=0xCD */
+    /* Enable SPI via STC15 SPCTL address */
+    cpu.mSFR[STC15_REG_SPCTL] = 0x40; /* SPEN */
+
+    /* Write SPDAT at STC15 address → should set SPIF at STC15 SPSTAT */
+    cpu.mSFR[STC15_REG_SPDAT] = 0xAA;
+    cpu.sfrwrite[STC15_REG_SPDAT](&cpu, STC15_REG_SPDAT + 0x80);
+
+    CHECK(cpu.mSFR[STC15_REG_SPSTAT] & 0x80,
+          "STC15 SPI: SPIF set at 0xCD after SPDAT write at 0xCF");
+
+    /* Clear SPIF via STC15 SPSTAT write */
+    cpu.mSFR[STC15_REG_SPSTAT] = 0x80; /* write 1 to clear */
+    cpu.sfrwrite[STC15_REG_SPSTAT](&cpu, STC15_REG_SPSTAT + 0x80);
+    CHECK(!(cpu.mSFR[STC15_REG_SPSTAT] & 0x80),
+          "STC15 SPI: SPIF cleared");
 
     teardown();
 }

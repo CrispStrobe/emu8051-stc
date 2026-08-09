@@ -90,9 +90,15 @@
 #define STC_REG_PCA_PWM2 (0xF4 - 0x80)
 
 /* SPI (stub) */
-#define STC_REG_SPCTL    (0x85 - 0x80)
-#define STC_REG_SPDAT    (0x86 - 0x80)
-#define STC_REG_SPSTAT   (0xCE - 0x80)
+/* SPI register addresses differ between STC12 and STC15 */
+#define STC_REG_SPCTL    (0x85 - 0x80)  /* STC12 */
+#define STC_REG_SPDAT    (0x86 - 0x80)  /* STC12 */
+#define STC_REG_SPSTAT   (0xCE - 0x80)  /* STC12 */
+
+/* STC15 SPI addresses (STC15-PERIPHERAL-MODEL.md §3) */
+#define STC15_REG_SPSTAT (0xCD - 0x80)
+#define STC15_REG_SPCTL  (0xCE - 0x80)
+#define STC15_REG_SPDAT  (0xCF - 0x80)
 
 /* UART2 (stub) */
 #define STC_REG_S2CON    (0x9A - 0x80)

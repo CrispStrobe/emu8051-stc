@@ -887,8 +887,10 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     /* Serial port: intercept SBUF writes for instant TX */
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
     aCPU->sfrwrite[STC_REG_S2BUF] = sfr_write_s2buf;
-    aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;
-    aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;
+    aCPU->sfrwrite[STC_REG_SPDAT] = sfr_write_spdat;    /* STC12: 0x86 */
+    aCPU->sfrwrite[STC_REG_SPSTAT] = sfr_write_spstat;  /* STC12: 0xCE */
+    aCPU->sfrwrite[STC15_REG_SPDAT] = sfr_write_spdat;  /* STC15: 0xCF */
+    aCPU->sfrwrite[STC15_REG_SPSTAT] = sfr_write_spstat; /* STC15: 0xCD */
     aCPU->sfrwrite[STC_REG_AUXR1] = sfr_write_auxr1;
 }
 
@@ -1123,16 +1125,24 @@ void stc12_serial2_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t b
 #define SPSTAT_WCOL  0x40
 #define SPCTL_SPEN   0x40
 
+/* Resolve SPI register indices based on part.
+ * STC12: SPCTL=0x85, SPDAT=0x86, SPSTAT=0xCE
+ * STC15: SPSTAT=0xCD, SPCTL=0xCE, SPDAT=0xCF */
+static uint8_t spi_reg_spctl(void) {
+    return (g_stc && g_stc->part_id == PART_STC15) ? STC15_REG_SPCTL : STC_REG_SPCTL;
+}
+static uint8_t spi_reg_spstat(void) {
+    return (g_stc && g_stc->part_id == PART_STC15) ? STC15_REG_SPSTAT : STC_REG_SPSTAT;
+}
+
 static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister)
 {
     (void)aRegister;
     if (!g_stc) return;
 
     /* If SPI is enabled, complete the transfer immediately and set SPIF */
-    if (aCPU->mSFR[STC_REG_SPCTL] & SPCTL_SPEN) {
-        aCPU->mSFR[STC_REG_SPSTAT] |= SPSTAT_SPIF;
-        /* In a real chip, SPDAT would contain the received byte.
-         * Without an external device, it stays as written. */
+    if (aCPU->mSFR[spi_reg_spctl()] & SPCTL_SPEN) {
+        aCPU->mSFR[spi_reg_spstat()] |= SPSTAT_SPIF;
     }
 }
 
@@ -1140,10 +1150,10 @@ static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister)
 static void sfr_write_spstat(struct em8051 *aCPU, uint8_t aRegister)
 {
     (void)aRegister;
-    uint8_t val = aCPU->mSFR[STC_REG_SPSTAT];
-    /* Writing 1 to SPIF clears it, writing 1 to WCOL clears it */
-    if (val & SPSTAT_SPIF) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_SPIF;
-    if (val & SPSTAT_WCOL) aCPU->mSFR[STC_REG_SPSTAT] &= ~SPSTAT_WCOL;
+    uint8_t reg = spi_reg_spstat();
+    uint8_t val = aCPU->mSFR[reg];
+    if (val & SPSTAT_SPIF) aCPU->mSFR[reg] &= ~SPSTAT_SPIF;
+    if (val & SPSTAT_WCOL) aCPU->mSFR[reg] &= ~SPSTAT_WCOL;
 }
 
 /* ================================================================== *
