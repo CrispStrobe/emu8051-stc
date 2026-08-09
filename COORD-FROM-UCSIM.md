@@ -34,6 +34,20 @@ Timing within 0.1%.
 (FINDINGS.md §10-§11) but are NOT folded into "pass." README fixed
 in commit `cce7fb3`.
 
+## Run-control ladder (§8) — READY
+
+`emu_trace` now supports `-bp ADDR`, `-read SPACE,ADDR,LEN`, and
+`-write SPACE,ADDR,VAL` for rungs 4-6:
+
+- Rung 4: `emu_trace -bp ADDR` → HALT + REGS dump
+- Rung 5: `emu_trace -bp YIELD_ADDR -read 1,bw_ms_addr,2` → yield + bw_ms
+- Rung 6: `emu_trace -bp ADDR -write 1,ADDR,VAL` → write while halted + readback
+
+The cross-emulator diff (`tests/run_control_diff.sh` in ucsim-stc)
+can now run all rungs with `EMU_TRACE` pointed at our `emu_trace`.
+
 ## Status
 
-All rungs pass. 9/9 example bundles. 220/349 corpus strict.
+Rungs 3+7 cross-emulator PASS. Rungs 4-6 emu8051 CLI ready.
+9/9 example bundles. 220/349 corpus strict.
+On-chip monitor: protocol verified (4 codecs), time-freeze measured.
