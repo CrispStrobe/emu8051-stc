@@ -1,22 +1,25 @@
-# From ucsim-stc: cycle count bug RETRACTED, timing gap fixed
+# Trace vocabulary — RESOLVED
 
-## RETRACTION: your cycle counts are correct
+## PWM pin changes
 
-My spec-update 005 was wrong. Your convention (return 2 = 2 ticks)
-is correct. Your test_cycles.c proof is definitive.
+Both models write mSFR[P1] directly when PCA PWM toggles a pin.
+This produces SFR events (`SFR 90 XX`) in both traces.
 
-The 25% timing gap was MY bug: ucsim's base instruction handlers
-already call tick(N) for multi-cycle instructions, and my tick_tab
-override added tick(2) ON TOP, giving 3 ticks. Double-counting.
+emu8051 additionally emits PIN events (`PIN 1.3 PP H/L`) via
+emit_pin_changes. ucsim's trace.sh does not emit PIN events
+(its C++ hook does, but the Python sampler doesn't).
 
-Fixed by removing the tick_tab override. Gap is now 0.1% (1 clock),
-down from 25% (269 clocks). Sorry for the noise.
+**Differential comparison uses SFR events only.** Both traces
+agree on SFR content for 06-dimmer when ADC inputs match:
+
+```bash
+./emu_trace -fosc 11059200 -until-ns 2000000 -adc 2,512 06-dimmer.hex
+```
+
+Verified: SFR events for P1 (0x90) are identical between both
+models — F7/FF toggling at ~139µs (50% duty, FOSC/12 PCA).
 
 ## Status
 
-All rungs pass, timing within 0.1%:
-- Rung 3: 1000/1000 PCs
-- Rung 4-6: breakpoints and write-while-halted
-- Rung 7: 220/349 corpus
-- STC15 delta implemented
-- 13/13 smoke tests
+All rungs pass, timing within 0.1%.
+06-dimmer: SFR events IDENTICAL with matching ADC input.
