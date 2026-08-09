@@ -808,12 +808,15 @@ static void sfr_write_auxr1(struct em8051 *aCPU, uint8_t aRegister);
 
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
-    /* Preserve board callbacks across init (they're set before first reset) */
+    /* Preserve configuration across init (not callbacks — in WASM they
+     * may point to invalidated addFunction entries after removeFunction). */
     stc12_pin_callback         saved_pin    = aState->on_pin_change;
     stc12_read_pin_callback    saved_read   = aState->on_read_pin;
     stc12_read_analog_callback saved_analog = aState->on_read_analog;
     stc12_advance_callback     saved_adv    = aState->on_advance;
     void                      *saved_ud     = aState->board_user_data;
+    uint8_t                    saved_part   = aState->part_id;
+    struct stc12_pin_event    *saved_hist   = aState->pin_history;
 
     g_stc = aState;
 
@@ -822,12 +825,16 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aState->fosc = 11059200; /* default: 11.0592 MHz crystal */
     aState->vcc = 5.0;
 
-    /* Restore board callbacks */
+    /* Restore board callbacks and configuration */
     aState->on_pin_change  = saved_pin;
     aState->on_read_pin    = saved_read;
     aState->on_read_analog = saved_analog;
     aState->on_advance     = saved_adv;
     aState->board_user_data = saved_ud;
+    aState->part_id        = saved_part;
+    aState->pin_history    = saved_hist;
+    /* Serial callbacks are NOT preserved — they must be re-registered
+     * after reset since they may be WASM addFunction pointers. */
 
     /* Pre-compute ns per clock (fixed-point * 16 for precision) */
     if (aState->fosc > 0)

@@ -193,6 +193,10 @@ emu_set_sfr(0x92, 0x01); // P1M0 = push-pull for bit 0
 assert(true, 'Push mode: emu_set_sfr is debugger-only (no callback expected)');
 
 Module.removeFunction(pinCbPtr);
+// Clear board callbacks so stale pointers don't crash on next emu_run
+const setBoardCbs = Module.cwrap('emu_set_board_callbacks', null,
+    ['number', 'number', 'number', 'number', 'number']);
+setBoardCbs(0, 0, 0, 0, 0);
 assert(true, 'Push mode: removeFunction cleanup — no crash');
 
 // --- Serial and profiling tests ---

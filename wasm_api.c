@@ -99,6 +99,13 @@ void emu_reset(int wipe) {
     }
 }
 
+/* Set part identity: 0=STC12C5A60S2, 1=STC15F2K60S2.
+ * Call after emu_init, before loading firmware. */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_part(int part_id) {
+    stc12_set_part(&stc, (uint8_t)part_id);
+}
+
 /* ------------------------------------------------------------------ *
  * Execution                                                           *
  * ------------------------------------------------------------------ */
