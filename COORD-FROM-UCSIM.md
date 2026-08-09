@@ -1,25 +1,32 @@
-# Trace vocabulary — RESOLVED
+# Coordination with ucsim-stc
 
-## PWM pin changes
+## Harness ownership — SETTLED
 
-Both models write mSFR[P1] directly when PCA PWM toggles a pin.
-This produces SFR events (`SFR 90 XX`) in both traces.
+**The differential harness lives in `ucsim-stc`.** Both `corpus_diff.sh`
+and `examples_diff.sh` are there, calling `emu8051-stc`'s `emu_trace`
+binary. This is one harness, one definition of "pass", one repo.
 
-emu8051 additionally emits PIN events (`PIN 1.3 PP H/L`) via
-emit_pin_changes. ucsim's trace.sh does not emit PIN events
-(its C++ hook does, but the Python sampler doesn't).
+emu8051-stc does NOT maintain its own differential comparison scripts.
+It provides `emu_trace` (with `-until-ns`, `-step-pcs`, `-adc`) and
+the WASM module. The harness consumes these.
 
-**Differential comparison uses SFR events only.** Both traces
-agree on SFR content for 06-dimmer when ADC inputs match:
+## PWM trace vocabulary — SETTLED
 
-```bash
-./emu_trace -fosc 11059200 -until-ns 2000000 -adc 2,512 06-dimmer.hex
-```
+SFR events are the common vocabulary. Both models write mSFR[P1]
+directly for PWM output. emu8051 also emits PIN events (extra).
+Comparison uses SFR events only.
 
-Verified: SFR events for P1 (0x90) are identical between both
-models — F7/FF toggling at ~139µs (50% duty, FOSC/12 PCA).
+06-dimmer needs `-adc 2,512` for ADC-driven PWM comparison.
+
+## Yield breakpoints — SETTLED
+
+Both use code-address from symbol table `yields[].addr`.
+
+## Cycle counts — SETTLED
+
+Both match MCS-51 spec. ucsim's double-counting bug retracted.
+Timing within 0.1%.
 
 ## Status
 
-All rungs pass, timing within 0.1%.
-06-dimmer: SFR events IDENTICAL with matching ADC input.
+All rungs pass. 9/9 example bundles. 220/349 corpus strict.

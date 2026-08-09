@@ -46,17 +46,20 @@ events.
 
 ## Example bundles (stc/examples/)
 
-All 9 official example bundles pass differential comparison:
+All 9 official example bundles pass differential comparison (2 ms span).
+The harness lives in `ucsim-stc/tests/examples_diff.sh` (canonical —
+one harness, one definition of "pass").
 
-```
-./tests/examples_diff.sh
+```bash
+# Run from ucsim-stc:
+EMU_TRACE=/path/to/emu8051-stc/emu_trace ./tests/examples_diff.sh
 ```
 
 | Example | Result |
 |---------|--------|
-| 01-blink through 09-shift-register | 9/9 PASS |
+| 01-blink through 09-shift-register | 9/9 PASS (SFR events, 2 ms) |
 
-06-dimmer requires `-adc 2,512` for PWM comparison.
+06-dimmer needs matching ADC input (`-adc 2,512`) for PWM comparison.
 
 ## Third-party corpus (349 images)
 
