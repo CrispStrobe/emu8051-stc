@@ -51,20 +51,31 @@ static void wasm_exception(struct em8051 *aCPU, int aCode) {
 
 EMSCRIPTEN_KEEPALIVE
 void emu_init(int stc12_mode) {
-    /* Free previous allocations if re-initializing */
-    if (cpu.mCodeMem) free(cpu.mCodeMem);
-    if (cpu.mExtData) free(cpu.mExtData);
-    if (cpu.mUpperData) free(cpu.mUpperData);
-    if (stc.pin_history) { free(stc.pin_history); stc.pin_history = NULL; }
-    if (dbg.pc_histogram) { free(dbg.pc_histogram); dbg.pc_histogram = NULL; }
-
-    memset(&cpu, 0, sizeof(cpu));
-    cpu.mCodeMemMaxIdx = 65535;
-    cpu.mCodeMem = calloc(65536, 1);
-    cpu.mExtDataMaxIdx = 65535;
-    cpu.mExtData = calloc(65536, 1);
-    cpu.mUpperData = calloc(128, 1);
-    cpu.except = wasm_exception;
+    if (initialized) {
+        /* Re-initializing: zero existing buffers instead of free/realloc.
+         * Emscripten's allocator can corrupt on free+calloc cycles. */
+        memset(cpu.mCodeMem, 0, cpu.mCodeMemMaxIdx + 1);
+        memset(cpu.mExtData, 0, cpu.mExtDataMaxIdx + 1);
+        memset(cpu.mUpperData, 0, 128);
+        memset(cpu.mSFR, 0, 128);
+        memset(cpu.mLowerData, 0, 128);
+        cpu.mPC = 0;
+        cpu.mTickDelay = 0;
+        cpu.mInterruptActive = 0;
+        cpu.serial_out_idx = 0;
+        cpu.serial_out_remaining_bits = 0;
+        cpu.serial_interrupt_trigger = false;
+        cpu.skip_timers = false;
+        cpu.except = wasm_exception;
+    } else {
+        memset(&cpu, 0, sizeof(cpu));
+        cpu.mCodeMemMaxIdx = 65535;
+        cpu.mCodeMem = calloc(65536, 1);
+        cpu.mExtDataMaxIdx = 65535;
+        cpu.mExtData = calloc(65536, 1);
+        cpu.mUpperData = calloc(128, 1);
+        cpu.except = wasm_exception;
+    }
 
     reset(&cpu, 1);
 
