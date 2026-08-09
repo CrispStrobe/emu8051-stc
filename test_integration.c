@@ -971,6 +971,7 @@ static void test_pca_capture(void);
 static void test_write_watchpoint(void);
 static void test_stc15_pca3(void);
 static void test_stc15_spi(void);
+static void test_step_block(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -1016,6 +1017,7 @@ int main(int argc, char **argv) {
     test_write_watchpoint();
     test_stc15_pca3();
     test_stc15_spi();
+    test_step_block();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1676,6 +1678,50 @@ static void test_stc15_spi(void) {
     cpu.sfrwrite[STC15_REG_SPSTAT](&cpu, STC15_REG_SPSTAT + 0x80);
     CHECK(!(cpu.mSFR[STC15_REG_SPSTAT] & 0x80),
           "STC15 SPI: SPIF cleared");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 36: STEP_BLOCK — halts when task state variable changes        *
+ * ================================================================== */
+static void test_step_block(void) {
+    printf("\n--- test_step_block ---\n");
+    setup();
+
+    /* Program: NOP; NOP; MOV 30h,#01; NOP; MOV 30h,#02; SJMP $
+     * Task 0 state is at IRAM 0x30. Initial value = 0.
+     * STEP_BLOCK should halt when IRAM[0x30] changes from 0 to 1. */
+    cpu.mCodeMem[0] = 0x00;                                       /* NOP */
+    cpu.mCodeMem[1] = 0x00;                                       /* NOP */
+    cpu.mCodeMem[2] = 0x75; cpu.mCodeMem[3] = 0x30; cpu.mCodeMem[4] = 0x01; /* MOV 30h,#01 */
+    cpu.mCodeMem[5] = 0x00;                                       /* NOP */
+    cpu.mCodeMem[6] = 0x75; cpu.mCodeMem[7] = 0x30; cpu.mCodeMem[8] = 0x02; /* MOV 30h,#02 */
+    cpu.mCodeMem[9] = 0x80; cpu.mCodeMem[10] = 0xFE;              /* SJMP $ */
+
+    struct dbg_target dbg;
+    dbg_init(&dbg, &cpu, &stc);
+
+    /* Configure task 0 with state at IRAM 0x30 */
+    struct dbg_task_pos task0 = { .name = "task0", .state_addr = 0x30, .until_addr = 0 };
+    dbg.syms.tasks = &task0;
+    dbg.syms.n_tasks = 1;
+
+    /* STEP_BLOCK should run until the state changes */
+    dbg_step(&dbg, STEP_BLOCK, 1);
+    for (int i = 0; i < 200 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+        dbg_tick(&dbg);
+
+    CHECK(dbg_get_state(&dbg) == DBG_HALTED, "STEP_BLOCK: halted on state change");
+    CHECK(cpu.mLowerData[0x30] == 0x01, "STEP_BLOCK: state changed to 1 (first yield)");
+
+    /* Step block again — should halt at next state change (0x01 → 0x02) */
+    dbg_step(&dbg, STEP_BLOCK, 1);
+    for (int i = 0; i < 200 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+        dbg_tick(&dbg);
+
+    CHECK(dbg_get_state(&dbg) == DBG_HALTED, "STEP_BLOCK: halted on second change");
+    CHECK(cpu.mLowerData[0x30] == 0x02, "STEP_BLOCK: state changed to 2");
 
     teardown();
 }

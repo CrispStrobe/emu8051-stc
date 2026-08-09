@@ -90,6 +90,9 @@ struct dbg_target {
     /* Write watchpoint shadow (polling, checked after each instruction) */
     uint8_t watch_shadow[DBG_MAX_BP];
 
+    /* Task state snapshot for STEP_BLOCK detection */
+    uint8_t step_task_state[8];  /* max 8 tasks */
+
     /* Profiling */
     bool profiling;
     uint32_t *pc_histogram;  /* 64K entries, allocated on start */

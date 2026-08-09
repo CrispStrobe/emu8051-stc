@@ -60,6 +60,17 @@ int dbg_step(struct dbg_target *t, enum dbg_step_kind kind, int count)
     t->step_kind = kind;
     t->step_count = count;
     t->step_entry_sp = t->cpu->mSFR[REG_SP];
+
+    /* Snapshot task states for STEP_BLOCK detection */
+    if (kind == STEP_BLOCK) {
+        for (int i = 0; i < t->syms.n_tasks && i < 8; i++) {
+            uint16_t addr = t->syms.tasks[i].state_addr;
+            if (addr == 0) { t->step_task_state[i] = 0; continue; }
+            t->step_task_state[i] = (addr < 128) ? t->cpu->mLowerData[addr] :
+                                    (t->cpu->mUpperData ? t->cpu->mUpperData[addr - 128] : 0);
+        }
+    }
+
     t->state = DBG_RUNNING;
     return 0; /* success — we support all step kinds */
 }
@@ -168,10 +179,24 @@ bool dbg_tick(struct dbg_target *t)
             step_done = (t->step_count == 0);
             break;
         case STEP_BLOCK:
-            /* Step until a task's state changes (= a yield happened) */
-            /* This requires checking task states — simplified for now */
-            t->step_count--;
-            step_done = (t->step_count == 0);
+            /* Step until any task's state variable changes (= a yield).
+             * If no tasks are configured, falls back to step-insn. */
+            if (t->syms.n_tasks > 0) {
+                for (int ti = 0; ti < t->syms.n_tasks && ti < 8; ti++) {
+                    uint16_t addr = t->syms.tasks[ti].state_addr;
+                    if (addr == 0) continue;
+                    uint8_t cur = (addr < 128) ? t->cpu->mLowerData[addr] :
+                                  (t->cpu->mUpperData ? t->cpu->mUpperData[addr - 128] : 0);
+                    if (cur != t->step_task_state[ti]) {
+                        t->step_task_state[ti] = cur;
+                        step_done = true;
+                        break;
+                    }
+                }
+            } else {
+                t->step_count--;
+                step_done = (t->step_count == 0);
+            }
             break;
         case STEP_OVER:
             /* Run until SP <= entry SP and a new instruction starts */
