@@ -12,15 +12,19 @@ SDCC source, configures for mcs51 only, cross-compiles with Emscripten,
 runs byte-identity test, and uploads artifacts. This is reproducible,
 doesn't compete for VPS memory, and produces a checked artifact.
 
-**Version question:** The acceptance test requires byte-identical output
-with the compiler that produced all existing measurements. Which SDCC
-version is that?
-- System: 4.2.0 (dpkg)
-- stc-compiler binary: 4.0.0
-- Requested: 4.5.0
+**Version: SDCC 4.5.0** (confirmed by coordinator). The local sdcc that
+built every reference .hex is 4.5.0. The hosted API runs 4.0.0 (forced
+by Vercel's glibc 2.34 — 4.5.0 needs GLIBC_2.36). This means the web
+page has been producing different firmware than `make` (996 vs 888 bytes
+for 01-blink). WASM has no glibc, so building 4.5.0 ends this
+divergence and makes the page agree with the repo for the first time.
 
-The version must be pinned to whichever produced the reference .hex
-files, or the byte-identity test is meaningless.
+**Acceptance:** byte-identical against native SDCC 4.5.0 for all 9
+examples. A match against 4.0.0 would be a failure, not a curiosity.
+
+**Handover note for bw-bundle:** swapping in the WASM compiler changes
+the .hex the page produces. This is the intended fix (ending the
+4.0.0/4.5.0 divergence), not a regression.
 
 **Cleanup done:** /tmp/sdcc-4.5.0 and tarball removed. No processes
-left running.
+left running. Build moves to a GitHub Actions workflow.
