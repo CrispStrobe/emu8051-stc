@@ -97,5 +97,25 @@ const validModes = new Set(['quasi', 'pushpull', 'input', 'opendrain']);
 const allValid = pinEvents.every(e => validModes.has(e.mode));
 check(allValid, `Contract: all modes in {${[...validModes].join(',')}}`);
 
+// --- Test 8: Determinism ---
+// Run the same program twice and assert identical pin event sequences
+{
+    const flash2 = new Uint16Array(16384);
+    flash2[0] = 0x9A25; flash2[1] = 0x9A2D;
+    flash2[2] = 0x982D; flash2[3] = 0xCFFE;
+    const evts2 = [];
+    const a2 = createAvrAdapter({ flash: flash2, clockHz: 16_000_000 });
+    a2.setBoardCallbacks({
+        setPin: (pin, mode, driveHigh) => evts2.push(`${pin}:${mode}:${driveHigh}`),
+        readPin: () => 0, readAnalog: () => 0, advanceTo: () => {},
+    });
+    a2.run(20);
+
+    const evts1 = pinEvents.map(e => `${e.pin}:${e.mode}:${e.driveHigh}`);
+    const identical = evts1.length === evts2.length &&
+                      evts1.every((v, i) => v === evts2[i]);
+    check(identical, `Determinism: ${evts1.length} events identical on second run`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
