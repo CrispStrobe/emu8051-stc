@@ -95,6 +95,14 @@ int main(void) {
     CHECK(cpu.mSFR[REG_IE] & 0x80, "17-stop-script: EA enabled");
     teardown();
 
+    /* 21-smoke-all: exercises every peripheral */
+    setup_and_load("test_images/21-smoke-all.hex"); run_ms(5);
+    CHECK((cpu.mSFR[STC_REG_P1M0] & 0x03) == 0x03, "21-smoke: P1 push-pull");
+    CHECK(cpu.mSFR[STC_REG_P1ASF] & 0x08, "21-smoke: P1ASF for ADC ch3");
+    CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CR, "21-smoke: PCA running");
+    CHECK(cpu.mSFR[REG_TMOD] & 0x01, "21-smoke: Timer 0 mode 1");
+    teardown();
+
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
 }
