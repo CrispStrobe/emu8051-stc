@@ -193,6 +193,13 @@ int main(void) {
           "20-ledcube: Timer 0 used for delay");
     teardown();
 
+    /* 23-stc89-blink: STC89C52RC classic 8052 model */
+    setup_and_load("test_images/23-stc89-blink.hex");
+    cpu.skip_timers = 0; /* STC89: upstream tick handles timers */
+    run_ms(10);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01, "23-stc89: TMOD = 0x01 (Timer 0 mode 1)");
+    teardown();
+
     /* 21-smoke-all: exercises every peripheral */
     setup_and_load("test_images/21-smoke-all.hex"); run_ms(5);
     CHECK((cpu.mSFR[STC_REG_P1M0] & 0x03) == 0x03, "21-smoke: P1 push-pull");

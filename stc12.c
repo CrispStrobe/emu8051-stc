@@ -622,7 +622,13 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
     static const uint8_t ccaph_regs[] = { STC_REG_CCAP0H, STC_REG_CCAP1H, STC_REG_CCAP2H };
     static const uint8_t pwm_regs[]   = { STC_REG_PCA_PWM0, STC_REG_PCA_PWM1, STC_REG_PCA_PWM2 };
     static const uint8_t ccf_masks[]  = { CCON_CCF0, CCON_CCF1, CCON_CCF2 };
-    int n_modules = (st->part_id == PART_STC15) ? 3 : 2;
+    int n_modules;
+    switch (st->part_id) {
+    case PART_STC15:  n_modules = 3; break;
+    case PART_STC12:  n_modules = 2; break;
+    case PART_STC15W: n_modules = 0; break; /* no PCA on W408AS */
+    default:          n_modules = 2; break;
+    }
 
     for (int mod = 0; mod < n_modules; mod++) {
         uint8_t ccapm = aCPU->mSFR[ccapm_regs[mod]];
