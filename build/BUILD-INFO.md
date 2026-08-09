@@ -2,13 +2,20 @@
 
 | File | Size | SHA-256 |
 |------|------|---------|
-| `emu8051.js` | 19 KB | `a41313458b36960171888878675708048f9fd32cb5bb6e9305b5b2c4eaa6a0ef` |
-| `emu8051.wasm` | 58 KB | `4d66e6e8f2e20c5e5ff115b27d67e2a2f50a2c7acbde2a504ff8c8cf954f4ff9` |
+| `emu8051.js` | 19 KB | `2afecbab7bf5fef74786c4060b7e67b93b6e41ff53fd363e9e363456fb23b674` |
+| `emu8051.wasm` | 62 KB | `c21d57743caac777cfdaef0d2b223969a091a9c3a0f25edbb3b841f1f32037d0` |
 
 **Emscripten:** emcc 6.0.6
-**Source commit:** `e455ad8`
+**Source commit:** `1383b08`
 **Build:** `make -f Makefile.wasm`
 **Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.
 
-50+ exported functions. `emu_capabilities()` returns full spec-compliant
-JSON. `emu_version()` returns "emu8051-stc 1.0.0".
+Peripherals: Timer 0/1 (1T/12T), ADC (10-bit, 8ch, ADRJ), PCA/PWM
+(8 sources, 9-bit compare, double-buffered, pin output, toggle),
+UART1/2, SPI, watchdog, dual DPTR, port modes, STC15 Timer 2.
+
+Debug: run/halt/step/breakpoints/memory/registers/profiling/pin history.
+Boundary A: push-mode pin callbacks, ADC in volts, advanceTo(ns).
+Boundary D: capabilities(), consumes=[], version string.
+
+50+ exported functions. `emu_capabilities()` returns spec-compliant JSON.
