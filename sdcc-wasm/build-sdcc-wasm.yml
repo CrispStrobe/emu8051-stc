@@ -72,7 +72,14 @@ jobs:
       # ── Step 2: Build SDCC with Emscripten ──
 
       - name: Copy source for WASM build
-        run: cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
+        run: |
+          echo "=== Checking original source ==="
+          ls -la sdcc-${{ env.SDCC_VERSION }}/configure || echo "NO configure in original!"
+          cp -r sdcc-${{ env.SDCC_VERSION }} sdcc-wasm
+          echo "=== Checking copy ==="
+          ls -la sdcc-wasm/configure || echo "NO configure in copy!"
+          echo "=== sdcc-wasm top-level files ==="
+          ls sdcc-wasm/ | head -20
 
       - name: Configure SDCC for Emscripten
         env:
