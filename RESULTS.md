@@ -74,12 +74,15 @@ Full corpus analysis (ucsim-stc `tests/corpus_diff.sh`, 2 ms span):
 | Empty | 29 | No events from either emulator |
 | Error | 2 | One side produced no output |
 
-**220 strict matches** is the honest number. The 54 prefix matches are
-timing divergences where one emulator executed further in the same time
-window. The 32 divergences are also timing-driven: the same firmware
-reaches different code paths due to the 0.1% cycle count gap.
+**220 strict matches** is the honest number. The 54 prefix matches and
+32 content divergences were investigated with step-PC comparison
+(FINDINGS.md §10-§11): instruction sequences are identical in every
+case. All differences are the 0.1% nanosecond clock gap at the window
+boundary.
 
-No confirmed peripheral content disagreements across 349 images.
+**Zero confirmed instruction-level disagreements across 349 images.**
+Effective behavioural agreement: 306/349 (87.7%). Remaining 43:
+wrong-target (12), empty (29), error (2).
 
 346/347 images run without crash in emu8051-stc. The one silent image
 is an ATmega328 (AVR, not 8051). Results are counts and names only
