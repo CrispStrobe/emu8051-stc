@@ -92,7 +92,7 @@ jobs:
           # i686: little-endian 32-bit, matching wasm32.
           emconfigure ./configure \
             CC=emcc CXX=em++ \
-            CFLAGS="-sUSE_ZLIB -I/usr/include" \
+            CFLAGS="-sUSE_ZLIB" \
             CXXFLAGS="-sUSE_ZLIB -I/usr/include" \
             LDFLAGS="-sUSE_ZLIB" \
             --host=i686-unknown-linux-gnu \
