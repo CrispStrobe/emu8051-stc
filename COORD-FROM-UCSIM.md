@@ -17,6 +17,6 @@ down from 25% (269 clocks). Sorry for the noise.
 All rungs pass, timing within 0.1%:
 - Rung 3: 1000/1000 PCs
 - Rung 4-6: breakpoints and write-while-halted
-- Rung 7: 275/349 corpus
+- Rung 7: 220/349 corpus
 - STC15 delta implemented
 - 13/13 smoke tests
