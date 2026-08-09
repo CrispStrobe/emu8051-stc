@@ -623,6 +623,34 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
                 pwm = (pwm & ~0x01) | ((pwm >> 1) & 0x01); /* EPCnH → EPCnL */
                 aCPU->mSFR[pwm_reg] = pwm;
             }
+
+            /* Drive the PWM output pin.
+             * §5.3: (0,CL) < {EPCnL,CCAPnL} → LOW, >= → HIGH.
+             * Default: CCP0=P1.3, CCP1=P1.4.
+             * With PCA_P4: CCP0=P4.2, CCP1=P4.3. */
+            {
+                static const uint8_t port_regs[] = {
+                    REG_P0, REG_P1, REG_P2, REG_P3,
+                    STC_REG_P4, STC_REG_P5
+                };
+                int pin_port = 1, pin_bit = (mod == 0) ? 3 : 4;
+                if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
+                    pin_port = 4;
+                    pin_bit = (mod == 0) ? 2 : 3;
+                }
+                uint8_t compare = aCPU->mSFR[ccapl_reg];
+                uint8_t cl = aCPU->mSFR[STC_REG_CL];
+                bool output_high = (cl >= compare);
+                uint8_t mask = 1 << pin_bit;
+                uint8_t old = aCPU->mSFR[port_regs[pin_port]];
+                if (output_high)
+                    aCPU->mSFR[port_regs[pin_port]] |= mask;
+                else
+                    aCPU->mSFR[port_regs[pin_port]] &= ~mask;
+                /* Emit pin change if the value actually changed */
+                if ((old ^ aCPU->mSFR[port_regs[pin_port]]) & mask)
+                    emit_pin_changes(aCPU, st, pin_port);
+            }
         }
 
         if ((ccapm & CCAPM_ECOM) && (ccapm & CCAPM_MAT)) {
