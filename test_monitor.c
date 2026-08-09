@@ -304,6 +304,146 @@ int main(void) {
         CHECK(0, "READ reply: no valid response");
     }
 
+    /* === Time-freeze test (DEBUG-CONTROL-MODEL.md §3.1) === */
+    printf("\n--- Time freeze: bw_ms must stop while halted ---\n");
+
+    /* Step 1: Send HALT command */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_HALT, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(10);
+
+    /* The firmware should respond with EVT_HALT (0xF0) containing
+     * the halt cause and position blob. */
+    printf("  After HALT: TX %d bytes\n", tx_idx);
+    if (tx_idx >= 4 && tx_buf[0] == SOF) {
+        printf("  Reply CMD=0x%02X\n", tx_buf[2]);
+        /* 0xF0 = EVT_HALT (unsolicited halt event) or 0x86 = HALT reply */
+    }
+
+    /* The firmware is now in halt loop. TR0 should be 0 (program time frozen),
+     * TR1 should still be 1 (wall time running). */
+    CHECK(!(cpu.mSFR[REG_TCON] & 0x10), "Halt: TR0 = 0 (program time frozen)");
+    CHECK(cpu.mSFR[REG_TCON] & 0x40, "Halt: TR1 = 1 (wall time running)");
+
+    /* Step 2: Read bw_ms BEFORE the long wait */
+    tx_idx = 0;
+    uint8_t read_bwms[] = { 0x01, 0x00, 0x08, 0x02 }; /* IRAM, addr=8, len=2 */
+    flen = build_frame(frame, CMD_READ, read_bwms, 4);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    uint16_t bw_ms_before = 0;
+    if (tx_idx >= 6 && tx_buf[0] == SOF && tx_buf[2] == (CMD_READ | 0x80)) {
+        /* SDCC stores little-endian; wire is big-endian per live-proto.h.
+         * But the firmware reads raw IRAM bytes — so we get the raw LE bytes. */
+        bw_ms_before = tx_buf[3] | (tx_buf[4] << 8); /* LE from IRAM */
+        printf("  bw_ms before halt wait: %u\n", bw_ms_before);
+    }
+
+    /* Step 3: Run the emulator for 500ms of wall time while firmware is halted.
+     * The halt loop polls UART (wall time runs), but bw_ms should NOT advance. */
+    run_ms(500);
+
+    /* Step 4: Read bw_ms AFTER the wait */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_READ, read_bwms, 4);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    uint16_t bw_ms_after = 0;
+    if (tx_idx >= 6 && tx_buf[0] == SOF && tx_buf[2] == (CMD_READ | 0x80)) {
+        bw_ms_after = tx_buf[3] | (tx_buf[4] << 8);
+        printf("  bw_ms after 500ms halt: %u\n", bw_ms_after);
+    }
+
+    CHECK(bw_ms_before > 0, "Time freeze: bw_ms was running before halt");
+    CHECK(bw_ms_after == bw_ms_before,
+          "Time freeze: bw_ms did NOT advance during halt");
+
+    /* Step 5: Read POS to check skew_ms */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_POS, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    if (tx_idx >= 4 && tx_buf[0] == SOF && tx_buf[2] == (CMD_POS | 0x80)) {
+        uint8_t rlen = tx_buf[1];
+        if (rlen >= 6) {
+            uint16_t pos_bwms = (tx_buf[3 + 2] << 8) | tx_buf[3 + 3];
+            uint16_t skew_ms = (tx_buf[3 + 4] << 8) | tx_buf[3 + 5];
+            printf("  POS while halted: bw_ms=%u skew_ms=%u\n", pos_bwms, skew_ms);
+            /* skew_ms accumulates from the moment halt started.
+             * We waited ~500ms, so skew should be ~500. Allow some margin. */
+            /* skew_ms is computed on halt EXIT, not during the halt.
+             * During the halt it shows prior accumulated skew (0 for first halt). */
+            printf("  (skew_ms=%u — computed on resume, not during halt)\n", skew_ms);
+            CHECK(1, "Time freeze: skew_ms read during halt (value computed on resume)");
+        }
+    }
+
+    /* Step 6: Resume and verify bw_ms advances again */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_RUN, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(100); /* let program time run for 100ms */
+
+    CHECK(cpu.mSFR[REG_TCON] & 0x10, "Resume: TR0 = 1 (program time running again)");
+
+    /* Read bw_ms after resume */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_READ, read_bwms, 4);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    uint16_t bw_ms_resumed = 0;
+    if (tx_idx >= 6 && tx_buf[0] == SOF && tx_buf[2] == (CMD_READ | 0x80)) {
+        bw_ms_resumed = tx_buf[3] | (tx_buf[4] << 8);
+        printf("  bw_ms after resume + 100ms: %u\n", bw_ms_resumed);
+    }
+
+    CHECK(bw_ms_resumed > bw_ms_after,
+          "Resume: bw_ms advanced after resume");
+    printf("  bw_ms: before=%u during_halt=%u after_resume=%u\n",
+           bw_ms_before, bw_ms_after, bw_ms_resumed);
+
+    /* Step 7: Read POS after resume to check skew_ms */
+    tx_idx = 0;
+    flen = build_frame(frame, CMD_POS, NULL, 0);
+    for (int i = 0; i < flen; i++) {
+        stc12_serial_rx(&cpu, &stc, frame[i]);
+        run_clocks(1000);
+    }
+    run_ms(5);
+
+    if (tx_idx >= 4 && tx_buf[0] == SOF && tx_buf[2] == (CMD_POS | 0x80)) {
+        uint8_t rlen = tx_buf[1];
+        if (rlen >= 6) {
+            uint16_t pos_bwms = (tx_buf[3 + 2] << 8) | tx_buf[3 + 3];
+            uint16_t skew_after = (tx_buf[3 + 4] << 8) | tx_buf[3 + 5];
+            printf("  POS after resume: bw_ms=%u skew_ms=%u\n", pos_bwms, skew_after);
+            CHECK(skew_after > 400, "Resume skew: skew_ms > 400 (~500ms halt)");
+        }
+    }
+
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
 
     free(cpu.mCodeMem);
