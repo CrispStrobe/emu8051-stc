@@ -93,7 +93,7 @@ for (const evt of pinEvents) {
 check(true, 'Contract: all events have (pin:string, mode:string, driveHigh:boolean)');
 
 // Modes are from the boundary A vocabulary
-const validModes = new Set(['quasi', 'pushpull', 'input', 'opendrain']);
+const validModes = new Set(['quasi', 'pushpull', 'input', 'opendrain', 'input-pullup']);
 const allValid = pinEvents.every(e => validModes.has(e.mode));
 check(allValid, `Contract: all modes in {${[...validModes].join(',')}}`);
 

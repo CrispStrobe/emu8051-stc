@@ -41,7 +41,7 @@ function pinStateToMode(state) {
         case PinState.Low:          return { mode: 'pushpull', driveHigh: false };
         case PinState.High:         return { mode: 'pushpull', driveHigh: true };
         case PinState.Input:        return { mode: 'input', driveHigh: false };
-        case PinState.InputPullUp:  return { mode: 'input', driveHigh: true };
+        case PinState.InputPullUp:  return { mode: 'input-pullup', driveHigh: true };
         default:                    return { mode: 'input', driveHigh: false };
     }
 }
