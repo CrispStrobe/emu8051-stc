@@ -288,6 +288,7 @@ struct stc12_state
     /* PCA state */
     uint8_t pca_prescaler;      /* for FOSC/12 and FOSC/2 sources */
     bool    pca_t0_overflow_pending; /* latched T0 overflow for PCA clock */
+    uint8_t pca_cex_last[2];    /* last CEX0/CEX1 pin level for capture edge detect */
 
     /* Port external input state (active-low: 0xFF = all high) */
     uint8_t port_ext[6];        /* P0..P5 external pin state */

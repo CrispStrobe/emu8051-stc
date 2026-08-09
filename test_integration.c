@@ -953,6 +953,7 @@ static void test_serial_rx(void);
 static void test_wdt_overflow(void);
 static void test_debug_profiling(void);
 static void test_movx_ri_p2(void);
+static void test_pca_capture(void);
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -994,6 +995,7 @@ int main(int argc, char **argv) {
     test_wdt_overflow();
     test_debug_profiling();
     test_movx_ri_p2();
+    test_pca_capture();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1490,6 +1492,60 @@ static void test_movx_ri_p2(void) {
 
     /* Verify address 0xFF34 (default P2) was NOT written */
     CHECK(cpu.mExtData[0xFF34] != 0x42, "MOVX @R0: did not write to default P2 page");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test 32: PCA capture mode                                           *
+ * ================================================================== */
+static void test_pca_capture(void) {
+    printf("\n--- test_pca_capture ---\n");
+    setup();
+
+    /* PCA module 0 in capture mode (rising edge), SYSclk clock */
+    cpu.mSFR[STC_REG_CCON] = CCON_CR;       /* start PCA counter */
+    cpu.mSFR[STC_REG_CMOD] = 0x08;          /* CPS=100 (SYSclk) */
+    cpu.mSFR[STC_REG_CCAPM0] = CCAPM_CAPP;  /* capture on positive edge of CEX0 */
+    cpu.mSFR[STC_REG_CL] = 0x00;
+    cpu.mSFR[STC_REG_CH] = 0x00;
+    cpu.mSFR[STC_REG_CCAP0L] = 0x00;
+    cpu.mSFR[STC_REG_CCAP0H] = 0x00;
+    stc.pca_prescaler = 0;
+    stc.pca_cex_last[0] = 0; /* start low */
+
+    /* CEX0 = P1.3. Set it low initially. */
+    stc12_set_port_input(&stc, 1, 0xF7); /* P1.3 = 0 */
+
+    /* Run 10 clocks to advance PCA counter */
+    run_clocks(10);
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] == 0, "PCA capture: no capture yet (pin still low)");
+
+    /* Now raise CEX0 (P1.3) — this should trigger capture */
+    stc12_set_port_input(&stc, 1, 0xFF); /* P1.3 = 1 (rising edge) */
+    run_clocks(1);
+
+    CHECK(cpu.mSFR[STC_REG_CCAP0L] != 0 || cpu.mSFR[STC_REG_CCAP0H] != 0,
+          "PCA capture: CL/CH captured on rising edge");
+    CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF0,
+          "PCA capture: CCF0 set on capture");
+
+    /* Test falling edge capture with module 1 */
+    cpu.mSFR[STC_REG_CCAPM1] = CCAPM_CAPN;  /* capture on negative edge of CEX1 */
+    cpu.mSFR[STC_REG_CCAP1L] = 0x00;
+    cpu.mSFR[STC_REG_CCAP1H] = 0x00;
+    stc.pca_cex_last[1] = 1; /* start high */
+
+    /* CEX1 = P1.4. Set it high initially. */
+    stc12_set_port_input(&stc, 1, 0xFF); /* P1.4 = 1 */
+    run_clocks(5);
+
+    /* Drop CEX1 (P1.4) — should trigger capture */
+    stc12_set_port_input(&stc, 1, 0xEF); /* P1.4 = 0 (falling edge) */
+    run_clocks(1);
+
+    CHECK(cpu.mSFR[STC_REG_CCON] & CCON_CCF1,
+          "PCA capture: CCF1 set on falling edge");
 
     teardown();
 }

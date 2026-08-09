@@ -678,8 +678,30 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
         }
 
         if ((ccapm & CCAPM_CAPP) || (ccapm & CCAPM_CAPN)) {
-            /* Capture mode — triggered by external pin edge.
-             * Not fully implemented (needs pin edge detection). */
+            /* Capture mode — triggered by external CEXn pin edge.
+             * CEX0 = P1.3 (or P4.2 if PCA_P4), CEX1 = P1.4 (or P4.3).
+             * Read the pin level, detect edges, capture CL/CH. */
+            uint8_t pin_port = 1;
+            uint8_t pin_bit = (mod == 0) ? 3 : 4;
+            if (aCPU->mSFR[STC_REG_AUXR1] & AUXR1_PCA_P4) {
+                pin_port = 4;
+                pin_bit = (mod == 0) ? 2 : 3;
+            }
+            uint8_t cur_level = (st->port_ext[pin_port] >> pin_bit) & 1;
+            uint8_t prev_level = st->pca_cex_last[mod];
+            st->pca_cex_last[mod] = cur_level;
+
+            bool capture = false;
+            if ((ccapm & CCAPM_CAPP) && !prev_level && cur_level)  /* rising */
+                capture = true;
+            if ((ccapm & CCAPM_CAPN) && prev_level && !cur_level)  /* falling */
+                capture = true;
+
+            if (capture) {
+                aCPU->mSFR[ccapl_reg] = aCPU->mSFR[STC_REG_CL];
+                aCPU->mSFR[ccaph_reg] = aCPU->mSFR[STC_REG_CH];
+                aCPU->mSFR[STC_REG_CCON] |= (mod == 0) ? CCON_CCF0 : CCON_CCF1;
+            }
         }
     }
 }
