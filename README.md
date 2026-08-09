@@ -18,10 +18,11 @@ STC15 Timer 2.
 memory access (5 address spaces), registers, PC histogram profiling,
 pin history ring buffer, Level 1 position for cooperative scheduler.
 
-**Verified:** 574 test assertions across 14 suites (native + WASM + GDB
-\+ monitor protocol), 31 firmware images. On-chip debug monitor
-(10-live-firmware) protocol verified against 4 independent codecs with
-time-freeze measurement. Third-party corpus: 220/349 byte-identical
+**Verified:** 598 test assertions across 15 suites (native + WASM + GDB
+\+ monitor protocol × 5 codecs), 31 firmware images. On-chip debug
+monitor protocol verified against 5 independent codec implementations
+with time-freeze measurement (bw_ms frozen during halt, skew_ms =
+527 ms for 500 ms halt). Third-party corpus: 220/349 byte-identical
 event streams; 86 timing-only (zero instruction disagreements).
 See [RESULTS.md](RESULTS.md).
 
