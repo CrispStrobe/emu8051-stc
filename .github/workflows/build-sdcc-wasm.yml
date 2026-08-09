@@ -90,10 +90,16 @@ jobs:
           # -sUSE_ZLIB: Emscripten's zlib port.
           # -I/usr/include: system boost headers (header-only).
           # i686: little-endian 32-bit, matching wasm32.
+          # Copy boost headers to an isolated dir so -isystem doesn't
+          # shadow Emscripten's sysroot (which has its own zlib.h etc.)
+          mkdir -p /tmp/boost-headers
+          cp -r /usr/include/boost /tmp/boost-headers/
+
           emconfigure ./configure \
-            CC=emcc "CXX=em++ -std=c++17" \
+            CC=emcc CXX=em++ \
             CFLAGS="-sUSE_ZLIB" \
-            CXXFLAGS="-sUSE_ZLIB -I/usr/include" \
+            CXXFLAGS="-sUSE_ZLIB" \
+            CPPFLAGS="-isystem /tmp/boost-headers" \
             LDFLAGS="-sUSE_ZLIB" \
             --host=i686-unknown-linux-gnu \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
