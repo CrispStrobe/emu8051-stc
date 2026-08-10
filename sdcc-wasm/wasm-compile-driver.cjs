@@ -58,7 +58,10 @@ console.log(`  Headers: ${headerFiles.length} top-level, ${mcs51Headers.length} 
 console.log(`  Lib files: ${libFiles.length}`);
 
 // ── Startup checks: all tools must be modularized factory functions ──
-const TOOLS = ['sdcc', 'sdcpp', 'sdas8051', 'sdld'];
+// cpp is the preprocessor — make names it 'cpp', not 'sdcpp'.
+// The wasm filename is baked into the JS loader at link time,
+// so the names must match what make produced.
+const TOOLS = ['sdcc', 'cpp', 'sdas8051', 'sdld'];
 const toolFactories = {};
 for (const tool of TOOLS) {
   const p = join(distDir, tool + '.js');
@@ -175,7 +178,7 @@ async function main() {
       '/test.c'
     ];
 
-    const cppMod = await runTool('sdcpp', sdcppArgs, function(M) {
+    const cppMod = await runTool('cpp', sdcppArgs, function(M) {
       populateVFS(M);
       M.FS.writeFile('/test.c', sourceCode);
     });

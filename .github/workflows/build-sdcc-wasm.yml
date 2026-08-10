@@ -163,20 +163,17 @@ jobs:
           # make builds cpp in support/cpp/gcc/ with correct flags (LDFLAGS
           # from configure propagate). Output is 'cpp' not 'cpp.js' because
           # EXEEXT doesn't reach the sub-make. Just copy and rename.
-          CPP=support/cpp/gcc/cpp
-          if [ -f "$CPP" ]; then
-            cp "$CPP" bin/sdcpp.js
-            cp "${CPP}.wasm" bin/sdcpp.wasm 2>/dev/null || true
-            echo "sdcpp installed from make output:"
-            ls -lh bin/sdcpp.js bin/sdcpp.wasm
-          elif [ -f "${CPP}.js" ]; then
-            cp "${CPP}.js" bin/sdcpp.js
-            cp "${CPP}.wasm" bin/sdcpp.wasm 2>/dev/null || true
-            echo "sdcpp installed (had .js extension):"
-            ls -lh bin/sdcpp.js bin/sdcpp.wasm
+          # make links to 'cpp' (no .js) — emscripten produces cpp (JS) + cpp.wasm.
+          # Keep original names: the wasm filename is baked into the JS loader.
+          CPP_DIR=support/cpp/gcc
+          if [ -f "$CPP_DIR/cpp" ] && [ -f "$CPP_DIR/cpp.wasm" ]; then
+            cp "$CPP_DIR/cpp" bin/cpp.js
+            cp "$CPP_DIR/cpp.wasm" bin/cpp.wasm
+            echo "sdcpp (cpp.js + cpp.wasm) installed:"
+            ls -lh bin/cpp.js bin/cpp.wasm
           else
-            echo "::error::make did not produce cpp in support/cpp/gcc/"
-            ls -la support/cpp/gcc/ 2>/dev/null | head -20
+            echo "::error::make did not produce cpp + cpp.wasm in $CPP_DIR"
+            ls -la "$CPP_DIR"/ 2>/dev/null | head -20
             exit 1
           fi
 
@@ -187,9 +184,9 @@ jobs:
           # Catches flag propagation failures in one run, not one per run.
           node -e "
             const tools = ['sdcc', 'sdas8051', 'sdld'];
-            // sdcpp may be in bin/ (from re-link) or found by packaging
-            const sdcppPath = require('fs').existsSync('bin/sdcpp.js')
-              ? 'bin/sdcpp.js' : null;
+            // Preprocessor is named cpp.js (make's output name)
+            const sdcppPath = require('fs').existsSync('bin/cpp.js')
+              ? 'bin/cpp.js' : null;
             let ok = true;
             for (const t of tools) {
               const p = 'bin/' + t + '.js';
@@ -240,9 +237,9 @@ jobs:
           echo "=== Finding WASM artifacts ==="
           find sdcc-emcc -name '*.js' -o -name '*.wasm' | grep -v node_modules | sort
 
-          # Copy all four WASM tools: sdcc, sdcpp, sdas8051, sdld
-          # Each may be in src/, bin/, support/cpp/, or sdas/ subdirectories.
-          for tool in sdcc sdcpp sdas8051 sdld; do
+          # Copy all four WASM tools: sdcc, cpp, sdas8051, sdld
+          # cpp is the preprocessor (make names it 'cpp', not 'sdcpp').
+          for tool in sdcc cpp sdas8051 sdld; do
             # Try known locations first, then fall back to find
             FOUND=""
             for dir in sdcc-emcc/src sdcc-emcc/bin sdcc-emcc/support/cpp; do
@@ -317,14 +314,14 @@ jobs:
           echo ""
 
           # Verify all four WASM tools are present
-          for tool in sdcc sdcpp sdas8051 sdld; do
+          for tool in sdcc cpp sdas8051 sdld; do
             if [ ! -f "$DIST/$tool.js" ]; then
               echo "::error::Missing WASM tool: $DIST/$tool.js"
               ls -la "$DIST/" 2>/dev/null
               exit 1
             fi
           done
-          echo "All WASM tools present: sdcc sdcpp sdas8051 sdld"
+          echo "All WASM tools present: sdcc cpp sdas8051 sdld"
 
           # Compile a minimal test program with both toolchains.
           mkdir -p /tmp/byte-test
@@ -396,7 +393,7 @@ jobs:
             echo ""
             echo "| File | Size |"
             echo "|------|------|"
-            for tool in sdcc sdcpp sdas8051 sdld; do
+            for tool in sdcc cpp sdas8051 sdld; do
               if [ -f "dist/sdcc-wasm/$tool.wasm" ]; then
                 SZ=$(ls -lh "dist/sdcc-wasm/$tool.wasm" | awk '{print $5}')
                 echo "| ${tool}.wasm | ${SZ} |"
