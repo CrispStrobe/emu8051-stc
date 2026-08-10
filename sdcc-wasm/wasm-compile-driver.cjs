@@ -205,12 +205,10 @@ async function main() {
     // "warning 160: only standard input is compiled in c1 mode"
     // We feed it via Emscripten's stdin hook.
     // --c1mode derives module name from -o path. Use bare 'test.asm'
-    // so .module is 'test' not '_work_test'. --obj-ext=.rel makes sdcc
-    // emit the 'O -mmcs51 --model-small' option record in the .asm.
+    // so .module is 'test' not '_work_test'.
     const sdccArgs = [
       '--c1mode',
       '-mmcs51', '--model-small',
-      '--obj-ext=.rel',
       '-o', 'test.asm',
     ];
 
@@ -237,6 +235,17 @@ async function main() {
       const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
       console.log('  VFS root after codegen:', rootFiles);
       throw new Error('Codegen did not produce /test.asm: ' + e.message);
+    }
+    // --c1mode does not emit the .optsdcc directive that the driver adds.
+    // Without it, the assembler misses the O record and area tables differ.
+    // Inject it after the .module line, matching what native sdcc produces.
+    let asmText = asmCode.toString('utf8');
+    if (!asmText.includes('.optsdcc')) {
+      asmText = asmText.replace(
+        /^(\t\.module\s+\S+)/m,
+        '$1\n\t.optsdcc -mmcs51 --model-small'
+      );
+      asmCode = Buffer.from(asmText, 'utf8');
     }
     console.log(`  Assembly: ${asmCode.length} bytes`);
     // Write .asm to host for comparison with native -S output
