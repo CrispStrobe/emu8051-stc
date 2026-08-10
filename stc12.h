@@ -234,11 +234,11 @@
 /* ------------------------------------------------------------------ *
  * ISR vectors for STC12 extras                                        *
  * ------------------------------------------------------------------ */
-#define ISR_ADC          0x2B   /* ADC interrupt vector */
-#define ISR_PCA          0x33   /* PCA interrupt vector */
-/* Note: on STC12, the standard vectors are the same as 8052:
+#define ISR_ADC          0x2B   /* ADC interrupt vector (__interrupt(5)) */
+/* ISR_PCA is defined in emu8051.h as 0x3B (__interrupt(7)).
+ * Note: on STC12, the standard vectors are:
  * 0x03 INT0, 0x0B T0, 0x13 INT1, 0x1B T1, 0x23 UART1,
- * 0x2B ADC (replaces T2 on generic 8052), 0x33 PCA */
+ * 0x2B ADC, 0x33 LVD, 0x3B PCA */
 
 /* ------------------------------------------------------------------ *
  * Boundary A — the pin bus (MCU ⇄ board)                              *

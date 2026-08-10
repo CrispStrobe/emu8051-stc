@@ -385,6 +385,21 @@ void handle_interrupts(struct em8051 *aCPU)
             }
             // TODO
         }
+        /* PCA interrupt: IE bit 6 (EC), CCON flags (CCF0/CCF1/CF) */
+        if (aCPU->mSFR[REG_IE] & 0x40 && !hi)
+        {
+            /* Check if any PCA interrupt source is active */
+            uint8_t ccon = aCPU->mSFR[0xD8 - 0x80]; /* CCON */
+            if (ccon & 0x87) { /* CF | CCF2 | CCF1 | CCF0 */
+                if (!lo)
+                {
+                    dest_ip = ISR_PCA;
+                    lo = 1;
+                }
+                /* PCA has no IP bit on standard 8051; always low priority */
+            }
+        }
+
 #ifdef __8052__
         if (aCPU->mSFR[REG_IE] & IEMASK_ET2 && !hi)
         {

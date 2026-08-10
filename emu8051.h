@@ -253,6 +253,7 @@ enum ISR_VECTORS
     ISR_INT1 = 0x13,
     ISR_TF1  = 0x1B,
     ISR_SR   = 0x23,
+    ISR_PCA  = 0x3B,  /* PCA/CCP interrupt, SDCC __interrupt(7), IE.EC */
 #ifdef __8052__
     ISR_TF2  = 0x2B,
 #endif // __8052__
