@@ -287,6 +287,28 @@ async function main() {
       if (symCode) M.FS.writeFile('/test.sym', symCode);
     });
 
+    // Dump the linker script for diagnostics
+    console.log('  Linker script:');
+    for (const line of lkContent.split('\n')) {
+      if (line.trim()) console.log('    ' + line);
+    }
+
+    // Dump map file if produced (-M flag)
+    try {
+      const mapData = vfsRead(ldMod, '/out.map');
+      console.log('  Map file (' + mapData.length + ' bytes):');
+      const mapText = mapData.toString('utf8');
+      // Show area/segment lines
+      for (const line of mapText.split('\n')) {
+        if (line.match(/^(Area|HOME|GSINIT|CSEG|_CODE|_DATA|DSEG|ISEG|BSEG|XSEG)/i) ||
+            line.match(/Base\s+|Size\s+/)) {
+          console.log('    ' + line);
+        }
+      }
+    } catch(e) {
+      console.log('  No map file produced');
+    }
+
     let ihxOutput;
     try {
       ihxOutput = vfsRead(ldMod, '/out.ihx');
