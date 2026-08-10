@@ -8,7 +8,7 @@
  */
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { runConformance, formatReport } = require('/mnt/volume1/code/bw-board/src/conformance.js');
+const { runConformance, formatReport } = require('../../bw-board/src/conformance.js');
 import { createAvrConformanceAdapter } from './avr-conformance-adapter.mjs';
 
 const adapter = createAvrConformanceAdapter({ clockHz: 16_000_000 });

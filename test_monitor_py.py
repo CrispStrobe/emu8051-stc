@@ -17,12 +17,12 @@ import struct
 import ctypes
 
 # Import live-monitor.py's codec
-sys.path.insert(0, "/mnt/volume1/code/stc/tools")
+sys.path.insert(0, "../../stc/tools")
 from importlib import import_module
 # live-monitor.py has a hyphen, so import by path
 import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "live_monitor", "/mnt/volume1/code/stc/tools/live-monitor.py")
+    "live_monitor", "../../stc/tools/live-monitor.py")
 lm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lm)
 

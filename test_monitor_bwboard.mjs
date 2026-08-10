@@ -25,7 +25,7 @@ function check(cond, msg) {
 // --- Load bw-board's serial-debug.js codec ---
 
 const src = readFileSync(
-    '/mnt/volume1/code/bw-board/src/serial-debug.js', 'utf-8');
+    '../../bw-board/src/serial-debug.js', 'utf-8');
 
 // The file uses module.exports or is a plain module. Extract the codec
 // functions by running the relevant parts in a VM context.

@@ -393,36 +393,46 @@ jobs:
 
           # Compare decoded memory images, not HEX text.
           # Record boundaries may differ; the image is what matters.
+          MATCH=0
           python3 sdcc-wasm/compare-ihx.py \
-            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx || true
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx \
+            || MATCH=$?
 
-          # If mismatch, try packihx normalization
-          if ! python3 sdcc-wasm/compare-ihx.py \
-                /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx > /dev/null 2>&1; then
+          if [ "$MATCH" -ne 0 ]; then
             echo ""
-            echo "=== packihx normalization ==="
-            if command -v packihx > /dev/null 2>&1; then
-              packihx /tmp/byte-test/native.ihx > /tmp/byte-test/native-packed.ihx 2>/dev/null
-              packihx /tmp/byte-test/wasm.ihx > /tmp/byte-test/wasm-packed.ihx 2>/dev/null
-              echo "After packihx:"
-              python3 sdcc-wasm/compare-ihx.py \
-                /tmp/byte-test/native-packed.ihx /tmp/byte-test/wasm-packed.ihx || true
-            else
-              echo "packihx not found — try the installed one"
-              "$INSTALLED/bin/packihx" /tmp/byte-test/native.ihx > /tmp/byte-test/native-packed.ihx 2>/dev/null || true
-              "$INSTALLED/bin/packihx" /tmp/byte-test/wasm.ihx > /tmp/byte-test/wasm-packed.ihx 2>/dev/null || true
-              if [ -f /tmp/byte-test/native-packed.ihx ] && [ -f /tmp/byte-test/wasm-packed.ihx ]; then
-                echo "After packihx:"
-                python3 sdcc-wasm/compare-ihx.py \
-                  /tmp/byte-test/native-packed.ihx /tmp/byte-test/wasm-packed.ihx || true
+            echo "=== Diagnostics (mismatch) ==="
+
+            # .rel comparison: splits compiler+assembler from linker
+            echo "Native .rel (first 5 lines):"
+            head -5 /tmp/byte-test/native.rel 2>/dev/null || echo "(not found)"
+            echo "WASM .rel (first 5 lines):"
+            head -5 /tmp/byte-test/wasm.rel 2>/dev/null || echo "(not found)"
+            if [ -f /tmp/byte-test/native.rel ] && [ -f /tmp/byte-test/wasm.rel ]; then
+              echo ""
+              if diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel > /dev/null 2>&1; then
+                echo ".rel files are IDENTICAL — compiler+assembler agree."
+                echo "The entire difference is in the LINK step."
+              else
+                echo ".rel files DIFFER — compiler or assembler output differs."
+                echo "First difference:"
+                diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -10
               fi
             fi
 
+            # packihx normalization
+            PACKIHX="$(command -v packihx 2>/dev/null || echo "$INSTALLED/bin/packihx")"
+            if [ -x "$PACKIHX" ]; then
+              echo ""
+              echo "After packihx normalization:"
+              "$PACKIHX" /tmp/byte-test/native.ihx > /tmp/byte-test/native-packed.ihx 2>/dev/null
+              "$PACKIHX" /tmp/byte-test/wasm.ihx > /tmp/byte-test/wasm-packed.ihx 2>/dev/null
+              python3 sdcc-wasm/compare-ihx.py \
+                /tmp/byte-test/native-packed.ihx /tmp/byte-test/wasm-packed.ihx || true
+            fi
+
             echo ""
-            echo "=== .rel file comparison (first 5 lines) ==="
-            echo "Native .rel:"
-            head -5 /tmp/byte-test/native.rel 2>/dev/null || echo "(not found)"
-            echo "WASM .rel was in VFS — see pipeline output"
+            echo "::error::Byte-identity test FAILED (see comparison above)"
+            exit 1
           fi
 
       - name: Write BUILD-INFO

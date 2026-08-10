@@ -16,10 +16,10 @@ const Module = await createEmu8051();
 
 // Load the adapter and conformance kit from bw-board
 const { createEmu8051Adapter } = await import(
-  '/mnt/volume1/code/bw-board/src/emu8051-adapter.js'
+  '../../bw-board/src/emu8051-adapter.js'
 );
 const { runConformance, formatReport } = await import(
-  '/mnt/volume1/code/bw-board/src/conformance.js'
+  '../../bw-board/src/conformance.js'
 );
 
 // Create the adapter in poll mode (push mode requires careful setup)

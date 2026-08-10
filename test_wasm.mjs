@@ -369,7 +369,7 @@ emu_init(1);
 
 // Test 28: loadSymbols with 05-scheduler
 {
-    const symPath = '/mnt/volume1/code/stc/examples/05-scheduler/symbols.json';
+    const symPath = '../../stc/examples/05-scheduler/symbols.json';
     const hexPath = join(__dirname, 'test_images', '05-scheduler.hex');
     let symJson;
     try { symJson = JSON.parse(readFileSync(symPath, 'utf-8')); } catch { symJson = null; }

@@ -25,7 +25,7 @@ function check(cond, msg) {
 // --- Load stc12live.js in a VM context with a mock Scratch ---
 
 const src = readFileSync(
-    '/mnt/volume1/code/extensions/extensions/CrispStrobe/stc12live.js', 'utf-8');
+    '../../extensions/extensions/CrispStrobe/stc12live.js', 'utf-8');
 
 let captured = {};
 const mockScratch = {

@@ -8,7 +8,10 @@
 #
 # Results are COUNTS and NAMES only, never file contents.
 
-CORPUS="${CORPUS:-/mnt/volume1/code/stc-research/hex}"
+# The corpus is not distributed with this repo. Supply the path via
+# the CORPUS environment variable, e.g.:
+#   CORPUS=/path/to/stc-research/hex ./corpus_analysis.sh
+CORPUS="${CORPUS:?Set CORPUS to the path containing .hex files}"
 EMU_TRACE="${EMU_TRACE:-./emu_trace}"
 FOSC=11059200
 SPAN_NS=2000000

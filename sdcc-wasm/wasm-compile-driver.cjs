@@ -252,7 +252,11 @@ async function main() {
     console.log(`  Object: ${relCode.length} bytes` +
       (lstCode ? `, lst: ${lstCode.length}` : '') +
       (symCode ? `, sym: ${symCode.length}` : ''));
-    // Dump first 5 lines of .rel for comparison with native
+    // Write .rel to host for comparison with native
+    const wasmRelPath = outFile.replace(/\.[^.]+$/, '.rel');
+    writeFileSync(wasmRelPath, relCode);
+    console.log(`  .rel written to ${wasmRelPath} for comparison`);
+    // Show first 5 lines
     const relText = relCode.toString('utf8');
     console.log('  .rel first 5 lines:');
     for (const line of relText.split('\n').slice(0, 5)) {

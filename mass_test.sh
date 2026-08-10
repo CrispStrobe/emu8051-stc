@@ -7,14 +7,16 @@
 #   ./mass_test.sh --diff             # also diff against ucsim (slow)
 #   ./mass_test.sh --diff --limit 50  # diff first 50 active images
 #
-# The corpus at /mnt/volume1/code/stc-research/hex/ is UNLICENSED.
+# The third-party corpus is UNLICENSED and is not distributed with
+# this repo. Supply the path via the CORPUS environment variable.
 # This script publishes COUNTS and NAMES only, never file contents.
 
 set -e
 
-CORPUS="${CORPUS:-/mnt/volume1/code/stc-research/hex}"
+# The corpus and ucsim trace tool must be supplied by the user.
+CORPUS="${CORPUS:?Set CORPUS to the path containing .hex files}"
 EMU_TRACE="${EMU_TRACE:-./emu_trace}"
-UCSIM_TRACE="${UCSIM_TRACE:-/mnt/volume1/code/ucsim-stc/tests/trace.sh}"
+UCSIM_TRACE="${UCSIM_TRACE:?Set UCSIM_TRACE to the ucsim trace script}"
 FOSC=11059200
 SPAN_NS=2000000
 DIFF_MODE=0

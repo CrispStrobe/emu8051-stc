@@ -421,8 +421,8 @@ in 4,192 selects). Clean-room driver holds P2=0xFF across P0 writes
 (0 violations in 243 writes over 4 seconds). Both satisfy the invariant:
 no layer is enabled while P0 holds another line's data.
 
-Build: `2dd4c198548e__icstation_4681_Code_main.hex` (SDCC build from
-stc-research corpus).
+Build: SDCC build of the vendor LED cube firmware (ICStation 4681)
+from the third-party corpus.
 
 ---
 
