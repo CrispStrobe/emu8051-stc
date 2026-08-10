@@ -1,6 +1,6 @@
 # BLOCKED — items waiting on external action
 
-## SDCC-to-WASM — BUILD PASSES, byte-identity test is a stub
+## SDCC-to-WASM — ALL GREEN, native compiles, WASM loads, identity test pending
 
 **Status: ALL GREEN** (run `31343427469`). SDCC 4.5.0 compiles to
 WebAssembly. Artifacts uploaded: sdcc.js/.wasm, sdas8051.js/.wasm,
