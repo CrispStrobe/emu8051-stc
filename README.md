@@ -173,6 +173,7 @@ MIT. Original emulator core copyright 2006/2022 Jari Komppa. STC12/15/89
 extensions copyright 2024-2026 CrispStrobe. See [LICENSE](LICENSE) and
 [THIRD-PARTY.md](THIRD-PARTY.md).
 
-No code from copyleft sources (ucsim, QEMU, SimulIDE, circuitjs, Verilator)
-was used. SDCC (GPL-2+) is a build-time dependency for test images and for
-the WASM compiler pipeline; it is not linked into the emulator.
+No code from copyleft-licensed emulators or simulators was used. SDCC
+(GPL-2+) is a build-time dependency for test images and for the WASM
+compiler pipeline; it is not linked into the emulator.
+See [THIRD-PARTY.md](THIRD-PARTY.md) for the full dependency list.

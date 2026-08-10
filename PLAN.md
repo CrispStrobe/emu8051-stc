@@ -49,6 +49,6 @@ future directions (Phase 6: more MCU targets).
 ## Licence constraints
 
 - emu8051 is MIT. All additions are MIT.
-- No code from copyleft sources (ucsim, QEMU, SimulIDE, circuitjs).
+- No code from copyleft-licensed emulators or simulators.
 - SDCC is GPL-2+ but is build-time only for test images; it is not linked
   into the emulator or the WASM output.

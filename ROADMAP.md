@@ -133,7 +133,7 @@ implemented. Only needed if we add a generic 8052 target.
 
 ### Phase 6: more MCU targets
 
-**AVR (Arduino):** avr8js (MIT, wokwi) already exists and runs in the
+**AVR (Arduino):** avr8js (MIT) already exists and runs in the
 browser. Integration path: same boundary A/B/D contracts, different CPU
 core. The board layer and circuit designer work unchanged.
 
