@@ -157,6 +157,7 @@ jobs:
           # build compiler), so the make produces .wasm but no .js glue.
           # Re-link the object files with proper emscripten flags.
           echo "=== Checking for sdcpp build artifacts ==="
+          mkdir -p bin
           CPP_DIR=support/cpp/gcc
           if [ -f "$CPP_DIR/cpp.wasm" ]; then
             echo "Found cpp.wasm — re-linking with proper flags"
