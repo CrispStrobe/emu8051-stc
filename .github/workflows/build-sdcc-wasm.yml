@@ -216,12 +216,21 @@ jobs:
       - name: Byte-identity test (native 4.5.0 vs WASM 4.5.0)
         run: |
           NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
-          # Test the MEMFS artifact — the same binary that ships to browsers.
-          # The driver populates the VFS, compiles, then reads output back.
-          WASM_SDCC="$(pwd)/dist/sdcc-wasm/sdcc.js"
+          DIST="$(pwd)/dist/sdcc-wasm"
+          INSTALLED="$(pwd)/sdcc-installed"
 
           echo "Native: $($NATIVE --version | head -1)"
           echo ""
+
+          # Verify all four WASM tools are present
+          for tool in sdcc sdcpp sdas8051 sdld; do
+            if [ ! -f "$DIST/$tool.js" ]; then
+              echo "::error::Missing WASM tool: $DIST/$tool.js"
+              ls -la "$DIST/" 2>/dev/null
+              exit 1
+            fi
+          done
+          echo "All WASM tools present: sdcc sdcpp sdas8051 sdld"
 
           # Compile a minimal test program with both toolchains.
           mkdir -p /tmp/byte-test
@@ -236,45 +245,37 @@ jobs:
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
           else
             echo "::error::Native SDCC failed to compile test.c"
-            cat /tmp/byte-test/test.c
             exit 1
           fi
 
-          # WASM compile — uses the MEMFS binary with VFS driver
-          echo "=== WASM compile (MEMFS) ==="
-          INSTALLED="$(pwd)/sdcc-installed"
+          # WASM compile — four-stage pipeline, no fork/exec needed.
+          # sdcpp → sdcc --c1mode → sdas8051 → sdld
+          echo ""
+          echo "=== WASM compile (MEMFS, four-stage pipeline) ==="
+          node sdcc-wasm/wasm-compile-driver.cjs \
+            "$DIST" "$INSTALLED" \
+            /tmp/byte-test/test.c /tmp/byte-test/wasm.ihx \
+            2>&1 || {
+              echo "::error::WASM sdcc pipeline failed (exit $?)"
+              exit 1
+            }
 
-          if [ -f "$WASM_SDCC" ]; then
-            node sdcc-wasm/wasm-compile-driver.cjs \
-              "$WASM_SDCC" "$INSTALLED" \
-              /tmp/byte-test/test.c /tmp/byte-test/wasm.ihx \
-              2>&1 || {
-                echo "::error::WASM sdcc driver crashed (exit $?)"
-                exit 1
-              }
-
-            if [ -f /tmp/byte-test/wasm.ihx ]; then
-              echo ""
-              echo "=== Byte-identity diff ==="
-              if diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx > /dev/null 2>&1; then
-                echo "BYTE-IDENTICAL: native and WASM produce the same .ihx"
-                echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
-                echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
-              else
-                echo "::error::MISMATCH: native and WASM .ihx differ"
-                echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
-                echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
-                diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx || true
-                exit 1
-              fi
+          if [ -f /tmp/byte-test/wasm.ihx ]; then
+            echo ""
+            echo "=== Byte-identity diff ==="
+            if diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx > /dev/null 2>&1; then
+              echo "BYTE-IDENTICAL: native and WASM produce the same .ihx"
+              echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
+              echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
             else
-              echo "::error::WASM compile did not produce output file"
+              echo "::error::MISMATCH: native and WASM .ihx differ"
+              echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
+              echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
+              diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx || true
               exit 1
             fi
           else
-            echo "::error::WASM sdcc not found at $WASM_SDCC"
-            echo "Contents of dist/sdcc-wasm/:"
-            ls -la dist/sdcc-wasm/ 2>/dev/null || echo "(dir not found)"
+            echo "::error::WASM compile did not produce output file"
             exit 1
           fi
 
