@@ -22,8 +22,17 @@ if (!sdccPath || !installedDir || !srcFile || !outFile) {
   process.exit(1);
 }
 
+function mkdirp(m, path) {
+  const parts = path.split('/').filter(Boolean);
+  let cur = '';
+  for (const p of parts) {
+    cur += '/' + p;
+    try { m.FS.mkdir(cur); } catch(e) {}
+  }
+}
+
 function addDirToFS(m, hostDir, vfsDir) {
-  try { m.FS.mkdir(vfsDir); } catch(e) {}
+  mkdirp(m, vfsDir);
   for (const name of readdirSync(hostDir)) {
     const hostPath = join(hostDir, name);
     const vfsPath = vfsDir + '/' + name;
