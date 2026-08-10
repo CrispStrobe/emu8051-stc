@@ -356,9 +356,10 @@ jobs:
                -o /tmp/byte-test/native.rel \
                /tmp/byte-test/test.c 2>/dev/null || true
 
-          if $NATIVE --verbose -mmcs51 --model-small \
+          $NATIVE --verbose -mmcs51 --model-small \
                -o /tmp/byte-test/native.ihx \
-               /tmp/byte-test/test.c 2>&1; then
+               /tmp/byte-test/test.c > /tmp/byte-test/native-verbose.log 2>&1
+          if [ -f /tmp/byte-test/native.ihx ]; then
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
             # Dump native .lk and .map for comparison
             echo "=== Native .lk file ==="
@@ -402,15 +403,53 @@ jobs:
 
           # 1. Intermediate comparisons (split the pipeline)
           I_STATUS="missing"
+          ICODE_STATUS="missing"
           ASM_STATUS="missing"
           REL_STATUS="missing"
+          FLAGS_STATUS="not compared"
 
           # .i: preprocessed output (stage 1)
           if [ -f /tmp/byte-test/native.i ] && [ -f /tmp/byte-test/wasm.i ]; then
             if diff /tmp/byte-test/native.i /tmp/byte-test/wasm.i > /dev/null 2>&1; then
               I_STATUS="identical"
+              ICODE_STATUS="identical"
             else
               I_STATUS="differ"
+              # i-code: strip #line markers (paths CANNOT match) and compare
+              grep -v '^#' /tmp/byte-test/native.i > /tmp/byte-test/native.i-code
+              grep -v '^#' /tmp/byte-test/wasm.i > /tmp/byte-test/wasm.i-code
+              if diff /tmp/byte-test/native.i-code /tmp/byte-test/wasm.i-code > /dev/null 2>&1; then
+                ICODE_STATUS="identical"
+              else
+                ICODE_STATUS="differ"
+              fi
+            fi
+          fi
+
+          # flags: compare native driver's argv with our reconstructed argv
+          # Native --verbose prints "sdcc: sdcpp <flags>" — extract that line
+          NATIVE_CPP_FLAGS=$(grep "^sdcc: sdcpp " /tmp/byte-test/native-verbose.log 2>/dev/null \
+            | sed 's/^sdcc: sdcpp //' | tr ' ' '\n' | grep '^-D\|^-isystem\|^-std' | sort)
+          WASM_CPP_FLAGS=$(echo "
+            -nostdinc -Wall -std=c11
+            -D__SDCC_CHAR_UNSIGNED -D__SDCC_MODEL_SMALL -D__SDCC_FLOAT_REENT
+            -D__SDCCCALL=0 -D__SDCC=4_5_0 -D__SDCC_VERSION_MAJOR=4
+            -D__SDCC_VERSION_MINOR=5 -D__SDCC_VERSION_PATCH=0 -DSDCC=450
+            -D__SDCC_REVISION=15242 -D__SDCC_mcs51
+            -D__STDC_NO_COMPLEX__=1 -D__STDC_NO_THREADS__=1
+            -D__STDC_NO_ATOMICS__=1 -D__STDC_NO_VLA__=1
+            -D__STDC_ISO_10646__=201409L -D__STDC_UTF_16__=1 -D__STDC_UTF_32__=1
+            -D__SIZEOF_FLOAT__=4 -D__SIZEOF_DOUBLE__=4
+            -D__SDCC_BITINT_MAXWIDTH=64
+            -isystem /include/mcs51 -isystem /include
+          " | tr -s ' \n' '\n' | grep '^-D\|^-isystem\|^-std' | sort)
+          if [ -n "$NATIVE_CPP_FLAGS" ]; then
+            echo "$NATIVE_CPP_FLAGS" > /tmp/byte-test/native-flags.txt
+            echo "$WASM_CPP_FLAGS" > /tmp/byte-test/wasm-flags.txt
+            if diff /tmp/byte-test/native-flags.txt /tmp/byte-test/wasm-flags.txt > /dev/null 2>&1; then
+              FLAGS_STATUS="identical"
+            else
+              FLAGS_STATUS="differ"
             fi
           fi
 
@@ -443,6 +482,8 @@ jobs:
           echo ""
           echo "=== BYTE-IDENTITY SUMMARY ==="
           echo "i:       $I_STATUS"
+          echo "i-code:  $ICODE_STATUS"
+          echo "flags:   $FLAGS_STATUS"
           echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
           echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" | head -5
@@ -455,10 +496,15 @@ jobs:
 
           # 4. On mismatch: show detail, then fail
           if [ "$IHX_EXIT" -ne 0 ]; then
-            if [ "$I_STATUS" = "differ" ]; then
+            if [ "$FLAGS_STATUS" = "differ" ]; then
               echo ""
-              echo "First .i difference:"
-              diff /tmp/byte-test/native.i /tmp/byte-test/wasm.i | head -20
+              echo "=== Flag differences (native vs WASM) ==="
+              diff /tmp/byte-test/native-flags.txt /tmp/byte-test/wasm-flags.txt || true
+            fi
+            if [ "$ICODE_STATUS" = "differ" ]; then
+              echo ""
+              echo "First .i-code difference (# lines stripped):"
+              diff /tmp/byte-test/native.i-code /tmp/byte-test/wasm.i-code | head -20
             fi
             if [ "$ASM_STATUS" = "differ" ]; then
               echo ""
