@@ -3,132 +3,71 @@
  *
  * Usage: node wasm-compile-driver.cjs <sdcc.js> <installed-dir> <src.c> <out.ihx>
  *
- * Strategy: set Module.arguments and Module.preRun BEFORE requiring
- * sdcc.js. The module runs main() on load (INVOKE_RUN=1), reads
- * arguments from Module.arguments, and the VFS is populated in preRun.
+ * Runs WASM sdcc as a subprocess: `node sdcc.js [args]`.
+ * Under Node.js, Emscripten with FORCE_FILESYSTEM uses NODEFS to
+ * read the real filesystem — no VFS setup needed from the driver.
  *
- * This avoids callMain entirely, which requires stack helpers that
- * may not be exported. It is the better-trodden path for running a
- * CLI tool once under Emscripten.
+ * 64 MB fixed heap. EXIT_RUNTIME=1 means one compile per invocation.
+ * For multiple examples, invoke fresh each time.
  *
- * EXIT_RUNTIME=1 means one compile per module instance.
- * For multiple examples, instantiate fresh each time.
- *
- * Build flags this depends on:
- *   -sEXPORTED_RUNTIME_METHODS=FS
- *   -sFORCE_FILESYSTEM
- *   -sEXIT_RUNTIME=1
- *   -sINITIAL_MEMORY=67108864 (64 MB fixed heap)
+ * NOTE for browser use (bw-bundle): this driver uses NODEFS which
+ * only works in Node. In the browser, use Module.preRun to populate
+ * MEMFS with FS.writeFile before main() runs. The fixed-heap build
+ * (no ALLOW_MEMORY_GROWTH) makes FS.writeFile work reliably.
  */
-const { readFileSync, readdirSync, statSync, writeFileSync, existsSync } = require('fs');
-const { join } = require('path');
+const { execFileSync, execSync } = require('child_process');
+const { join, resolve } = require('path');
+const { statSync } = require('fs');
 
-const sdccPath = process.argv[2];
-const installedDir = process.argv[3];
-const srcFile = process.argv[4];
-const outFile = process.argv[5];
+const sdccJs = resolve(process.argv[2]);
+const installedDir = resolve(process.argv[3]);
+const srcFile = resolve(process.argv[4]);
+const outFile = resolve(process.argv[5]);
 
-if (!sdccPath || !installedDir || !srcFile || !outFile) {
+if (!sdccJs || !installedDir || !srcFile || !outFile) {
   console.error('Usage: node wasm-compile-driver.cjs <sdcc.js> <installed-dir> <src.c> <out.ihx>');
   process.exit(1);
 }
 
-function mkdirp(FS, path) {
-  const parts = path.split('/').filter(Boolean);
-  let cur = '';
-  for (const p of parts) {
-    cur += '/' + p;
-    try { FS.mkdir(cur); } catch(e) {}
-  }
-}
+const incDir = join(installedDir, 'share', 'sdcc', 'include');
+const libDir = join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
 
-function addDirToFS(FS, hostDir, vfsDir) {
-  mkdirp(FS, vfsDir);
-  for (const name of readdirSync(hostDir)) {
-    const hostPath = join(hostDir, name);
-    const vfsPath = vfsDir + '/' + name;
-    const st = statSync(hostPath);
-    if (st.isDirectory()) {
-      addDirToFS(FS, hostPath, vfsPath);
-    } else {
-      FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
-    }
-  }
-}
-
-// Set up Module BEFORE requiring sdcc.js
-const shareDir = join(installedDir, 'share', 'sdcc');
-
-globalThis.Module = {
-  // Command-line arguments for sdcc's main()
-  arguments: [
-    '-mmcs51', '--model-small',
-    '-I/share/sdcc/include',
-    '-L/share/sdcc/lib/small-mcs51-stack-auto',
-    '-o', '/out.ihx', '/test.c'
-  ],
-
-  // Populate VFS before main() runs
-  preRun: [function() {
-    const FS = globalThis.Module.FS || Module.FS;
-    console.log('preRun: populating VFS...');
-
-    // mcs51 headers
-    const incDir = join(shareDir, 'include');
-    mkdirp(FS, '/share/sdcc/include');
-    for (const f of readdirSync(incDir)) {
-      if (statSync(join(incDir, f)).isFile()) {
-        FS.writeFile('/share/sdcc/include/' + f, readFileSync(join(incDir, f), 'utf8'));
-      }
-    }
-    const mcs51Inc = join(incDir, 'mcs51');
-    if (existsSync(mcs51Inc)) addDirToFS(FS, mcs51Inc, '/share/sdcc/include/mcs51');
-    const asmMcs51 = join(incDir, 'asm', 'mcs51');
-    if (existsSync(asmMcs51)) addDirToFS(FS, asmMcs51, '/share/sdcc/include/asm/mcs51');
-    const asmDefault = join(incDir, 'asm', 'default');
-    if (existsSync(asmDefault)) addDirToFS(FS, asmDefault, '/share/sdcc/include/asm/default');
-
-    // mcs51 library
-    const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
-    if (existsSync(libDir)) addDirToFS(FS, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
-
-    // Source file
-    FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
-    console.log('preRun: VFS ready, source written');
-  }],
-
-  // After main() finishes, read the output
-  onExit: function(code) {
-    console.log('sdcc exited with code', code);
-  },
-
-  // Suppress default print to stdout (sdcc version banner etc.)
-  print: function(text) { console.log('sdcc:', text); },
-  printErr: function(text) { console.error('sdcc:', text); },
-};
-
-console.log('Loading WASM sdcc (main will run on load)...');
+console.log('Compiling with WASM SDCC...');
+console.log('  sdcc.js:', sdccJs);
+console.log('  -I:', incDir);
+console.log('  src:', srcFile);
+console.log('  out:', outFile);
 
 try {
-  require(sdccPath);
+  const output = execFileSync('node', [
+    sdccJs,
+    '-mmcs51', '--model-small',
+    '-I' + incDir,
+    '-L' + libDir,
+    '-o', outFile,
+    srcFile
+  ], {
+    timeout: 60000,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (output.trim()) console.log(output.trim());
 } catch(e) {
-  // Module may throw on exit(0)
-  console.log('Module exited:', e.message || e);
-}
-
-// Read output after main() ran
-const FS = globalThis.Module.FS;
-if (FS) {
-  try {
-    const ihx = FS.readFile('/out.ihx', { encoding: 'utf8' });
-    writeFileSync(outFile, ihx);
-    console.log('WASM compile: OK (' + ihx.length + ' bytes)');
-  } catch(e) {
-    console.error('WASM compile: output not found');
-    try { console.error('  FS root:', FS.readdir('/').join(', ')); } catch(e2) {}
+  if (e.status === 0 || e.status === null) {
+    // Some Emscripten builds exit via throw rather than process.exit
+    if (e.stdout) console.log(e.stdout.toString().trim());
+  } else {
+    console.error('WASM compile failed (exit', e.status + ')');
+    if (e.stdout) console.error('stdout:', e.stdout.toString().trim());
+    if (e.stderr) console.error('stderr:', e.stderr.toString().trim());
     process.exit(1);
   }
-} else {
-  console.error('FS not available after module exit');
+}
+
+try {
+  const st = statSync(outFile);
+  console.log('WASM compile: OK (' + st.size + ' bytes)');
+} catch(e) {
+  console.error('Output file not found:', outFile);
   process.exit(1);
 }
