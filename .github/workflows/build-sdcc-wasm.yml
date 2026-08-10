@@ -156,26 +156,30 @@ jobs:
           echo "=== Finding WASM artifacts ==="
           find sdcc-emcc -name '*.js' -o -name '*.wasm' | grep -v node_modules | sort
 
-          # Copy WASM binaries — with EXEEXT=.js, tools are name.js + name.wasm
-          for tool in sdcc sdcpp; do
-            for dir in sdcc-emcc/src sdcc-emcc/bin; do
+          # Copy all four WASM tools: sdcc, sdcpp, sdas8051, sdld
+          # Each may be in src/, bin/, support/cpp/, or sdas/ subdirectories.
+          for tool in sdcc sdcpp sdas8051 sdld; do
+            # Try known locations first, then fall back to find
+            FOUND=""
+            for dir in sdcc-emcc/src sdcc-emcc/bin sdcc-emcc/support/cpp; do
               if [ -f "$dir/$tool.js" ]; then
                 cp "$dir/$tool.js" dist/sdcc-wasm/
                 [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
                 echo "Copied $tool from $dir"
+                FOUND=1
                 break
               fi
             done
-          done
-
-          # Assembler and linker from sdas/
-          for tool in sdas8051 sdld; do
-            found=$(find sdcc-emcc -name "$tool.js" -not -path '*/node_modules/*' | head -1)
-            if [ -n "$found" ]; then
-              dir=$(dirname "$found")
-              cp "$dir/$tool.js" dist/sdcc-wasm/
-              [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
-              echo "Copied $tool from $dir"
+            if [ -z "$FOUND" ]; then
+              path=$(find sdcc-emcc -name "$tool.js" -not -path '*/node_modules/*' | head -1)
+              if [ -n "$path" ]; then
+                dir=$(dirname "$path")
+                cp "$dir/$tool.js" dist/sdcc-wasm/
+                [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
+                echo "Copied $tool from $dir (via find)"
+              else
+                echo "::warning::Tool $tool.js not found in build tree"
+              fi
             fi
           done
 
