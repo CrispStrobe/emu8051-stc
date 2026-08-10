@@ -40,13 +40,13 @@ function addDirToFS(m, hostDir, vfsDir) {
     if (st.isDirectory()) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
-      // Text files (.h, .c, .lib, .rel) — write as string
-      // Binary approach failed with 'Cannot read properties of undefined (reading buffer)'
       try {
+        // Use intArrayFromString for text files — Emscripten 3.x's
+        // FS.writeFile needs typed arrays, not strings or Buffers
         const content = readFileSync(hostPath, 'utf8');
-        m.FS.writeFile(vfsPath, content);
+        const arr = m.intArrayFromString(content, true); // true = don't add null
+        m.FS.writeFile(vfsPath, arr);
       } catch(e) {
-        // Skip files that can't be read as text (shouldn't happen for SDCC)
         console.log('  skip:', vfsPath, e.message);
       }
     }
@@ -89,7 +89,8 @@ async function main() {
   addDirToFS(m, join(shareDir, 'lib'), '/share/sdcc/lib');
 
   // Write source file
-  m.FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
+  const srcContent = readFileSync(srcFile, 'utf8');
+  m.FS.writeFile('/test.c', m.intArrayFromString(srcContent, true));
 
   console.log('Compiling', srcFile, '...');
 
