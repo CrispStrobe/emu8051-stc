@@ -391,47 +391,49 @@ jobs:
           echo "  Native .ihx: $(wc -c < /tmp/byte-test/native.ihx) bytes"
           echo "  WASM .ihx:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
 
-          # Compare decoded memory images, not HEX text.
-          # Record boundaries may differ; the image is what matters.
-          MATCH=0
-          python3 sdcc-wasm/compare-ihx.py \
-            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx \
-            || MATCH=$?
+          # ── Compare images and print a self-contained summary ──
+          # grep -A8 "BYTE-IDENTITY SUMMARY" answers the whole question.
 
-          if [ "$MATCH" -ne 0 ]; then
-            echo ""
-            echo "=== Diagnostics (mismatch) ==="
-
-            # .rel comparison: splits compiler+assembler from linker
-            echo "Native .rel (first 5 lines):"
-            head -5 /tmp/byte-test/native.rel 2>/dev/null || echo "(not found)"
-            echo "WASM .rel (first 5 lines):"
-            head -5 /tmp/byte-test/wasm.rel 2>/dev/null || echo "(not found)"
-            if [ -f /tmp/byte-test/native.rel ] && [ -f /tmp/byte-test/wasm.rel ]; then
-              echo ""
-              if diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel > /dev/null 2>&1; then
-                echo ".rel files are IDENTICAL — compiler+assembler agree."
-                echo "The entire difference is in the LINK step."
-              else
-                echo ".rel files DIFFER — compiler or assembler output differs."
-                echo "First difference:"
-                diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -10
-              fi
+          # 1. .rel comparison (splits compiler+assembler from linker)
+          REL_STATUS="not compared"
+          if [ -f /tmp/byte-test/native.rel ] && [ -f /tmp/byte-test/wasm.rel ]; then
+            if diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel > /dev/null 2>&1; then
+              REL_STATUS="identical"
+            else
+              REL_STATUS="differ"
             fi
+          elif [ ! -f /tmp/byte-test/native.rel ]; then
+            REL_STATUS="native .rel missing"
+          elif [ ! -f /tmp/byte-test/wasm.rel ]; then
+            REL_STATUS="wasm .rel missing"
+          fi
 
-            # packihx normalization
-            PACKIHX="$(command -v packihx 2>/dev/null || echo "$INSTALLED/bin/packihx")"
-            if [ -x "$PACKIHX" ]; then
+          # 2. Image comparison
+          IHX_RESULT=$(python3 sdcc-wasm/compare-ihx.py \
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx 2>&1) || true
+          IHX_EXIT=$?
+
+          # 3. Print summary block
+          echo ""
+          echo "=== BYTE-IDENTITY SUMMARY ==="
+          echo "rel:     $REL_STATUS"
+          echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" || true
+          if [ "$IHX_EXIT" -eq 0 ]; then
+            echo "verdict: PASS"
+          else
+            echo "verdict: FAIL"
+          fi
+          echo "=== END BYTE-IDENTITY SUMMARY ==="
+
+          # 4. On mismatch: show .rel diff detail, then fail
+          if [ "$IHX_EXIT" -ne 0 ]; then
+            if [ "$REL_STATUS" = "differ" ]; then
               echo ""
-              echo "After packihx normalization:"
-              "$PACKIHX" /tmp/byte-test/native.ihx > /tmp/byte-test/native-packed.ihx 2>/dev/null
-              "$PACKIHX" /tmp/byte-test/wasm.ihx > /tmp/byte-test/wasm-packed.ihx 2>/dev/null
-              python3 sdcc-wasm/compare-ihx.py \
-                /tmp/byte-test/native-packed.ihx /tmp/byte-test/wasm-packed.ihx || true
+              echo "First .rel difference:"
+              diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -15
             fi
-
             echo ""
-            echo "::error::Byte-identity test FAILED (see comparison above)"
+            echo "::error::Byte-identity test FAILED"
             exit 1
           fi
 
