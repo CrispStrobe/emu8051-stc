@@ -252,6 +252,12 @@ async function main() {
     console.log(`  Object: ${relCode.length} bytes` +
       (lstCode ? `, lst: ${lstCode.length}` : '') +
       (symCode ? `, sym: ${symCode.length}` : ''));
+    // Dump first 5 lines of .rel for comparison with native
+    const relText = relCode.toString('utf8');
+    console.log('  .rel first 5 lines:');
+    for (const line of relText.split('\n').slice(0, 5)) {
+      console.log('    ' + line);
+    }
 
     // ── Stage 4: Link with sdld ──
     console.log('\n=== Stage 4: sdld (link) ===');
@@ -302,10 +308,15 @@ async function main() {
       const mapData = vfsRead(ldMod, '/out.map');
       console.log('  Map file (' + mapData.length + ' bytes):');
       const mapText = mapData.toString('utf8');
-      // Show area/segment lines
-      for (const line of mapText.split('\n')) {
-        if (line.match(/^(Area|HOME|GSINIT|CSEG|_CODE|_DATA|DSEG|ISEG|BSEG|XSEG)/i) ||
-            line.match(/Base\s+|Size\s+/)) {
+      // Show ALL lines that contain addresses (not just named areas)
+      const mapLines = mapText.split('\n');
+      console.log('  First 40 map lines:');
+      for (let i = 0; i < Math.min(40, mapLines.length); i++) {
+        console.log('    ' + mapLines[i]);
+      }
+      console.log('  User bases:');
+      for (const line of mapLines) {
+        if (line.match(/User Base|HOME|XSEG|PSEG|ISEG|BSEG/)) {
           console.log('    ' + line);
         }
       }
