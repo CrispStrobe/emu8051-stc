@@ -41,11 +41,10 @@ function addDirToFS(m, hostDir, vfsDir) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
       try {
-        // Use intArrayFromString for text files — Emscripten 3.x's
-        // FS.writeFile needs typed arrays, not strings or Buffers
+        // Convert to Uint8Array via TextEncoder — works in all environments
         const content = readFileSync(hostPath, 'utf8');
-        const arr = m.intArrayFromString(content, true); // true = don't add null
-        m.FS.writeFile(vfsPath, arr);
+        const encoded = new TextEncoder().encode(content);
+        m.FS.writeFile(vfsPath, encoded);
       } catch(e) {
         console.log('  skip:', vfsPath, e.message);
       }
@@ -90,7 +89,7 @@ async function main() {
 
   // Write source file
   const srcContent = readFileSync(srcFile, 'utf8');
-  m.FS.writeFile('/test.c', m.intArrayFromString(srcContent, true));
+  m.FS.writeFile('/test.c', new TextEncoder().encode(srcContent));
 
   console.log('Compiling', srcFile, '...');
 
