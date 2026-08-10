@@ -40,9 +40,15 @@ function addDirToFS(m, hostDir, vfsDir) {
     if (st.isDirectory()) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
-      // Emscripten FS needs Uint8Array, not Node Buffer
-      const buf = readFileSync(hostPath);
-      m.FS.writeFile(vfsPath, new Uint8Array(buf));
+      // Text files (.h, .c, .lib, .rel) — write as string
+      // Binary approach failed with 'Cannot read properties of undefined (reading buffer)'
+      try {
+        const content = readFileSync(hostPath, 'utf8');
+        m.FS.writeFile(vfsPath, content);
+      } catch(e) {
+        // Skip files that can't be read as text (shouldn't happen for SDCC)
+        console.log('  skip:', vfsPath, e.message);
+      }
     }
   }
 }
