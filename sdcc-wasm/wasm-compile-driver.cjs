@@ -8,6 +8,13 @@
  * and calls sdcc via callMain. Output .ihx is written to <out.ihx>.
  *
  * This is the VFS recipe bw-bundle needs for the browser compile path.
+ *
+ * EXPORTED_RUNTIME_METHODS dependency: the WASM build uses
+ *   -sEXPORTED_RUNTIME_METHODS=callMain,FS
+ * This driver uses: m.callMain(), m.FS.writeFile(), m.FS.readFile(),
+ * m.FS.mkdir(), m.FS.readdir(). All are under the FS export.
+ * File data is written via TextEncoder (standard API, no Emscripten
+ * helpers needed).
  */
 const { readFileSync, readdirSync, statSync, writeFileSync } = require('fs');
 const { join } = require('path');
@@ -82,10 +89,33 @@ async function main() {
 
   console.log('WASM sdcc loaded, populating VFS...');
 
-  // Populate VFS with installed SDCC headers and libs
+  // Populate VFS with ONLY mcs51 headers and libs — not the whole tree.
+  // Copying z80/f8/etc is wasted work and a source of encoding errors.
   const shareDir = join(installedDir, 'share', 'sdcc');
-  addDirToFS(m, join(shareDir, 'include'), '/share/sdcc/include');
-  addDirToFS(m, join(shareDir, 'lib'), '/share/sdcc/lib');
+  const incDir = join(shareDir, 'include');
+  // Top-level headers (8051.h, stdint.h, etc.)
+  mkdirp(m, '/share/sdcc/include');
+  for (const f of readdirSync(incDir)) {
+    const p = join(incDir, f);
+    if (statSync(p).isFile()) {
+      const content = readFileSync(p, 'utf8');
+      m.FS.writeFile('/share/sdcc/include/' + f, new TextEncoder().encode(content));
+    }
+  }
+  // mcs51 sub-headers
+  if (statSync(join(incDir, 'mcs51')).isDirectory()) {
+    addDirToFS(m, join(incDir, 'mcs51'), '/share/sdcc/include/mcs51');
+  }
+  // asm/mcs51 sub-headers
+  const asmMcs51 = join(incDir, 'asm', 'mcs51');
+  if (statSync(asmMcs51).isDirectory()) {
+    addDirToFS(m, asmMcs51, '/share/sdcc/include/asm/mcs51');
+  }
+  // mcs51 model-small library only
+  const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
+  if (statSync(libDir).isDirectory()) {
+    addDirToFS(m, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
+  }
 
   // Write source file
   const srcContent = readFileSync(srcFile, 'utf8');
