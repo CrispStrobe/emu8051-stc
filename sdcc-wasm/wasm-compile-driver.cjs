@@ -63,10 +63,21 @@ async function main() {
     m = factory;
   }
 
-  if (!m || !m.FS || !m.callMain) {
-    console.error('WASM module loaded but missing FS or callMain');
+  if (!m || !m.callMain) {
+    console.error('WASM module loaded but missing callMain');
     console.error('  typeof m:', typeof m);
     if (m) console.error('  keys:', Object.keys(m).slice(0, 20).join(', '));
+    process.exit(1);
+  }
+
+  // Debug FS state
+  console.log('  FS exists:', !!m.FS);
+  console.log('  FS.writeFile:', typeof (m.FS && m.FS.writeFile));
+  console.log('  FS.mkdir:', typeof (m.FS && m.FS.mkdir));
+  console.log('  FS.readdir /:', m.FS ? m.FS.readdir('/').join(',') : 'no FS');
+
+  if (!m.FS || !m.FS.writeFile) {
+    console.error('FS module not available — FORCE_FILESYSTEM may not have taken effect');
     process.exit(1);
   }
 
