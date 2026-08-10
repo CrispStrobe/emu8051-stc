@@ -238,8 +238,9 @@ jobs:
             > /tmp/byte-test/test.c
 
           # Native compile — installed sdcc finds its own headers/libs
-          echo "=== Native compile ==="
-          if $NATIVE -mmcs51 --model-small \
+          # --verbose shows the exact command lines for sdcpp, sdas8051, sdld
+          echo "=== Native compile (--verbose for flag capture) ==="
+          if $NATIVE --verbose -mmcs51 --model-small \
                -o /tmp/byte-test/native.ihx \
                /tmp/byte-test/test.c 2>&1; then
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
@@ -282,29 +283,57 @@ jobs:
       - name: Write BUILD-INFO
         run: |
           EMCC_VER=$(emcc --version | head -1)
-          cat > dist/sdcc-wasm/BUILD-INFO.md << EOF
-          # SDCC WASM build provenance
 
-          **SDCC version:** ${{ env.SDCC_VERSION }}
-          **Source tarball:** ${{ env.SDCC_URL }}
-          **Source SHA-256:** ${{ env.SDCC_SHA256 }}
-          **Emscripten:** $EMCC_VER
-          **Ports:** mcs51 only
-          **Threading:** single-threaded (no -pthread, no SharedArrayBuffer)
-          **Patches applied:** (none / list here if any)
+          # Collect artifact sizes
+          SIZES=""
+          GZIP_TOTAL=""
+          for tool in sdcc sdcpp sdas8051 sdld; do
+            if [ -f "dist/sdcc-wasm/$tool.wasm" ]; then
+              SZ=$(ls -lh "dist/sdcc-wasm/$tool.wasm" | awk '{print $5}')
+              SIZES="${SIZES}| ${tool}.wasm | ${SZ} |\n"
+            fi
+          done
+          tar czf /tmp/sdcc-wasm-all.tar.gz -C dist sdcc-wasm
+          GZIP_TOTAL=$(ls -lh /tmp/sdcc-wasm-all.tar.gz | awk '{print $5}')
 
-          ## Licence
+          cat > dist/sdcc-wasm/BUILD-INFO.md << BUILDEOF
+# SDCC WASM build provenance
 
-          SDCC is GPL-2+. This WASM build is a distribution of SDCC.
-          The corresponding source is the tarball above, plus any patches
-          listed. No modifications beyond build-system changes for
-          Emscripten cross-compilation.
+**SDCC version:** ${{ env.SDCC_VERSION }}
+**Source tarball:** ${{ env.SDCC_URL }}
+**Source SHA-256:** ${{ env.SDCC_SHA256 }}
+**Emscripten:** ${EMCC_VER}
+**Ports:** mcs51 only
+**Threading:** single-threaded (no -pthread, no SharedArrayBuffer)
+**Architecture:** four-stage MEMFS pipeline (no fork/exec)
+**Patches applied:** psignal libiberty conflict (#define HAVE_PSIGNAL 1)
 
-          ## Scope
+## Artifact sizes
 
-          8051/mcs51 only. AVR (avr-gcc) is NOT included and stays
-          server-side.
-          EOF
+| File | Size |
+|------|------|
+$(printf "$SIZES")
+| **gzipped total** | **${GZIP_TOTAL}** |
+
+## Pipeline
+
+\`sdcpp\` (preprocess) → \`sdcc --c1mode\` (codegen) →
+\`sdas8051\` (assemble) → \`sdld\` (link)
+
+Each tool runs as a separate WASM module instance with its own MEMFS.
+Intermediate files are passed through JS. No fork, no exec, no
+SharedArrayBuffer. Works identically in Node and in the browser.
+
+## Licence
+
+SDCC is GPL-2+. This WASM build is a distribution of SDCC.
+The corresponding source is the tarball above, plus the patch listed.
+No modifications beyond build-system changes for Emscripten.
+
+## Scope
+
+8051/mcs51 only. AVR (avr-gcc) is NOT included and stays server-side.
+BUILDEOF
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
