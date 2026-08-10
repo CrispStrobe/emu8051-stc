@@ -3,16 +3,22 @@
  *
  * Usage: node wasm-compile-driver.cjs <sdcc.js> <installed-dir> <src.c> <out.ihx>
  *
- * EXPORTED_RUNTIME_METHODS dependency: the WASM build uses
- *   -sEXPORTED_RUNTIME_METHODS=callMain,FS
- * This driver uses: m.callMain(), m.FS.writeFile(), m.FS.readFile(),
- * m.FS.mkdir(), m.FS.readdir(). All are under the FS export.
- * File data is written as plain strings — FS.writeFile accepts them
- * directly, no TextEncoder or heap views needed.
+ * Strategy: set Module.arguments and Module.preRun BEFORE requiring
+ * sdcc.js. The module runs main() on load (INVOKE_RUN=1), reads
+ * arguments from Module.arguments, and the VFS is populated in preRun.
  *
- * IMPORTANT: FS.writeFile must not be called before the runtime is
- * initialized. Without MODULARIZE, require() returns the Module but
- * HEAPU8 may not exist yet. Use onRuntimeInitialized to wait.
+ * This avoids callMain entirely, which requires stack helpers that
+ * may not be exported. It is the better-trodden path for running a
+ * CLI tool once under Emscripten.
+ *
+ * EXIT_RUNTIME=1 means one compile per module instance.
+ * For multiple examples, instantiate fresh each time.
+ *
+ * Build flags this depends on:
+ *   -sEXPORTED_RUNTIME_METHODS=FS
+ *   -sFORCE_FILESYSTEM
+ *   -sEXIT_RUNTIME=1
+ *   -sINITIAL_MEMORY=67108864 (64 MB fixed heap)
  */
 const { readFileSync, readdirSync, statSync, writeFileSync, existsSync } = require('fs');
 const { join } = require('path');
@@ -27,133 +33,102 @@ if (!sdccPath || !installedDir || !srcFile || !outFile) {
   process.exit(1);
 }
 
-let skipCount = 0;
-
-function mkdirp(m, path) {
+function mkdirp(FS, path) {
   const parts = path.split('/').filter(Boolean);
   let cur = '';
   for (const p of parts) {
     cur += '/' + p;
-    try { m.FS.mkdir(cur); } catch(e) {}
+    try { FS.mkdir(cur); } catch(e) {}
   }
 }
 
-function addDirToFS(m, hostDir, vfsDir) {
-  mkdirp(m, vfsDir);
+function addDirToFS(FS, hostDir, vfsDir) {
+  mkdirp(FS, vfsDir);
   for (const name of readdirSync(hostDir)) {
     const hostPath = join(hostDir, name);
     const vfsPath = vfsDir + '/' + name;
     const st = statSync(hostPath);
     if (st.isDirectory()) {
-      addDirToFS(m, hostPath, vfsPath);
+      addDirToFS(FS, hostPath, vfsPath);
     } else {
-      try {
-        m.FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
-      } catch(e) {
-        // Print full stack on first failure, then abort
-        console.error('  FAIL:', vfsPath, e.message);
-        console.error('  Stack:', e.stack);
-        console.error('  typeof HEAPU8:', typeof m.HEAPU8);
-        console.error('  typeof wasmMemory:', typeof m.wasmMemory);
-        if (m.HEAPU8) console.error('  HEAPU8.buffer:', typeof m.HEAPU8.buffer);
-        process.exit(1);
-      }
+      FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
     }
   }
 }
 
-function doCompile(m) {
-  console.log('Runtime initialized, populating VFS...');
+// Set up Module BEFORE requiring sdcc.js
+const shareDir = join(installedDir, 'share', 'sdcc');
 
-  // Populate VFS with mcs51 headers and libs ONLY
-  const shareDir = join(installedDir, 'share', 'sdcc');
-  const incDir = join(shareDir, 'include');
+globalThis.Module = {
+  // Command-line arguments for sdcc's main()
+  arguments: [
+    '-mmcs51', '--model-small',
+    '-I/share/sdcc/include',
+    '-L/share/sdcc/lib/small-mcs51-stack-auto',
+    '-o', '/out.ihx', '/test.c'
+  ],
 
-  // Top-level headers
-  mkdirp(m, '/share/sdcc/include');
-  for (const f of readdirSync(incDir)) {
-    const p = join(incDir, f);
-    if (statSync(p).isFile()) {
-      try {
-        m.FS.writeFile('/share/sdcc/include/' + f, readFileSync(p, 'utf8'));
-      } catch(e) {
-        console.error('  FAIL:', f, e.message);
-        skipCount++;
+  // Populate VFS before main() runs
+  preRun: [function() {
+    const FS = globalThis.Module.FS || Module.FS;
+    console.log('preRun: populating VFS...');
+
+    // mcs51 headers
+    const incDir = join(shareDir, 'include');
+    mkdirp(FS, '/share/sdcc/include');
+    for (const f of readdirSync(incDir)) {
+      if (statSync(join(incDir, f)).isFile()) {
+        FS.writeFile('/share/sdcc/include/' + f, readFileSync(join(incDir, f), 'utf8'));
       }
     }
-  }
+    const mcs51Inc = join(incDir, 'mcs51');
+    if (existsSync(mcs51Inc)) addDirToFS(FS, mcs51Inc, '/share/sdcc/include/mcs51');
+    const asmMcs51 = join(incDir, 'asm', 'mcs51');
+    if (existsSync(asmMcs51)) addDirToFS(FS, asmMcs51, '/share/sdcc/include/asm/mcs51');
+    const asmDefault = join(incDir, 'asm', 'default');
+    if (existsSync(asmDefault)) addDirToFS(FS, asmDefault, '/share/sdcc/include/asm/default');
 
-  // mcs51 sub-headers
-  const mcs51Inc = join(incDir, 'mcs51');
-  if (existsSync(mcs51Inc)) addDirToFS(m, mcs51Inc, '/share/sdcc/include/mcs51');
+    // mcs51 library
+    const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
+    if (existsSync(libDir)) addDirToFS(FS, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
 
-  // asm/mcs51 sub-headers
-  const asmMcs51 = join(incDir, 'asm', 'mcs51');
-  if (existsSync(asmMcs51)) addDirToFS(m, asmMcs51, '/share/sdcc/include/asm/mcs51');
+    // Source file
+    FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
+    console.log('preRun: VFS ready, source written');
+  }],
 
-  // asm/default (needed by some headers)
-  const asmDefault = join(incDir, 'asm', 'default');
-  if (existsSync(asmDefault)) addDirToFS(m, asmDefault, '/share/sdcc/include/asm/default');
+  // After main() finishes, read the output
+  onExit: function(code) {
+    console.log('sdcc exited with code', code);
+  },
 
-  // mcs51 model-small library
-  const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
-  if (existsSync(libDir)) addDirToFS(m, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
+  // Suppress default print to stdout (sdcc version banner etc.)
+  print: function(text) { console.log('sdcc:', text); },
+  printErr: function(text) { console.error('sdcc:', text); },
+};
 
-  if (skipCount > 0) {
-    console.error(skipCount, 'files failed to write — aborting');
-    process.exit(1);
-  }
+console.log('Loading WASM sdcc (main will run on load)...');
 
-  console.log('VFS populated. Writing source...');
-  m.FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
+try {
+  require(sdccPath);
+} catch(e) {
+  // Module may throw on exit(0)
+  console.log('Module exited:', e.message || e);
+}
 
-  console.log('Compiling...');
+// Read output after main() ran
+const FS = globalThis.Module.FS;
+if (FS) {
   try {
-    m.callMain([
-      '-mmcs51', '--model-small',
-      '-I/share/sdcc/include',
-      '-L/share/sdcc/lib/small-mcs51-stack-auto',
-      '-o', '/out.ihx', '/test.c'
-    ]);
-  } catch(e) {
-    // callMain throws on exit() — check if output was produced
-    console.log('callMain exited:', e.message || e);
-  }
-
-  // Read output
-  try {
-    const ihx = m.FS.readFile('/out.ihx', { encoding: 'utf8' });
+    const ihx = FS.readFile('/out.ihx', { encoding: 'utf8' });
     writeFileSync(outFile, ihx);
     console.log('WASM compile: OK (' + ihx.length + ' bytes)');
   } catch(e) {
     console.error('WASM compile: output not found');
-    try { console.error('  FS root:', m.FS.readdir('/').join(', ')); } catch(e2) {}
+    try { console.error('  FS root:', FS.readdir('/').join(', ')); } catch(e2) {}
     process.exit(1);
   }
-}
-
-// --- Load and wait for runtime initialization ---
-
-console.log('Loading WASM sdcc from', sdccPath);
-const exported = require(sdccPath);
-
-if (typeof exported === 'function') {
-  // MODULARIZE: factory returns a promise
-  exported().then(m => {
-    doCompile(m);
-  }).catch(e => {
-    console.error('Module factory failed:', e);
-    process.exit(1);
-  });
-} else if (exported && exported.onRuntimeInitialized !== undefined) {
-  // Not modularized: Module is returned, wait for runtime
-  exported.onRuntimeInitialized = () => doCompile(exported);
-} else if (exported && exported.FS && exported.callMain) {
-  // Already initialized (unlikely but handle it)
-  doCompile(exported);
 } else {
-  console.error('Cannot determine module type');
-  console.error('  typeof:', typeof exported);
-  if (exported) console.error('  keys:', Object.keys(exported).slice(0, 20).join(', '));
+  console.error('FS not available after module exit');
   process.exit(1);
 }
