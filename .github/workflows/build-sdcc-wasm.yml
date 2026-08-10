@@ -161,8 +161,8 @@ jobs:
           CPP_DIR=support/cpp/gcc
           if [ -f "$CPP_DIR/cpp.wasm" ]; then
             echo "Found cpp.wasm — re-linking with proper flags"
-            # Find all .o files that went into cpp
-            O_FILES=$(find "$CPP_DIR" -name '*.o' | sort)
+            # Find WASM .o files — exclude build/ which has native host tools
+            O_FILES=$(find "$CPP_DIR" -name '*.o' -not -path '*/build/*' | sort)
             LIB_FILES=""
             for lib in support/cpp/libcpp/libcpp.a support/cpp/libbacktrace/.libs/libbacktrace.a \
                        support/sdbinutils/libiberty/libiberty.a; do
