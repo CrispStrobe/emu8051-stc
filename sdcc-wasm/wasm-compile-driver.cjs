@@ -192,6 +192,10 @@ async function main() {
 
     const preprocessed = vfsRead(cppMod, '/test.i');
     console.log(`  Preprocessed: ${preprocessed.length} bytes`);
+    // Write .i to host for comparison with native -E output
+    const wasmIPath = outFile.replace(/\.[^.]+$/, '.i');
+    writeFileSync(wasmIPath, preprocessed);
+    console.log(`  .i written to ${wasmIPath}`);
 
     // ── Stage 2: Codegen with sdcc --c1mode ──
     console.log('\n=== Stage 2: sdcc --c1mode (codegen) ===');

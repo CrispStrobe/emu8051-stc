@@ -345,7 +345,10 @@ jobs:
           # Native compile — installed sdcc finds its own headers/libs
           # --verbose shows the exact command lines for sdcpp, sdas8051, sdld
           echo "=== Native compile (--verbose for flag capture) ==="
-          # -S produces .asm (codegen only), -c produces .rel (assembled)
+          # -E produces .i (preprocessed), -S produces .asm, -c produces .rel
+          $NATIVE -E -mmcs51 --model-small \
+               -o /tmp/byte-test/native.i \
+               /tmp/byte-test/test.c 2>/dev/null || true
           $NATIVE -S -mmcs51 --model-small \
                -o /tmp/byte-test/native.asm \
                /tmp/byte-test/test.c 2>/dev/null || true
@@ -398,8 +401,18 @@ jobs:
           # grep -A10 "BYTE-IDENTITY SUMMARY" answers the whole question.
 
           # 1. Intermediate comparisons (split the pipeline)
+          I_STATUS="missing"
           ASM_STATUS="missing"
           REL_STATUS="missing"
+
+          # .i: preprocessed output (stage 1)
+          if [ -f /tmp/byte-test/native.i ] && [ -f /tmp/byte-test/wasm.i ]; then
+            if diff /tmp/byte-test/native.i /tmp/byte-test/wasm.i > /dev/null 2>&1; then
+              I_STATUS="identical"
+            else
+              I_STATUS="differ"
+            fi
+          fi
 
           # .asm: codegen output (stage 2)
           if [ -f /tmp/byte-test/native.asm ] && [ -f /tmp/byte-test/wasm.asm ]; then
@@ -429,6 +442,7 @@ jobs:
           # 3. Print summary block
           echo ""
           echo "=== BYTE-IDENTITY SUMMARY ==="
+          echo "i:       $I_STATUS"
           echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
           echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" | head -5
@@ -441,6 +455,11 @@ jobs:
 
           # 4. On mismatch: show detail, then fail
           if [ "$IHX_EXIT" -ne 0 ]; then
+            if [ "$I_STATUS" = "differ" ]; then
+              echo ""
+              echo "First .i difference:"
+              diff /tmp/byte-test/native.i /tmp/byte-test/wasm.i | head -20
+            fi
             if [ "$ASM_STATUS" = "differ" ]; then
               echo ""
               echo "First .asm difference:"
