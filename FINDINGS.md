@@ -472,7 +472,7 @@ two different ways. All four now cite this finding:
 | where | symbol | status |
 |---|---|---|
 | `stc/src/20-ledcube/main.c` | `P0_ACTIVE_LOW` → `BW_CUBE_ACTIVE_HIGH` | fixed (`2d3d877`) |
-| `ucsim-stc` spec-008 §2 | prose | fixed (`969b36a`) |
+| `ucsim-stc` spec-008 §2 | prose | fixed (`0f7b35a`) |
 | `sb3-creator` kernel | `BW_CUBE_ACTIVE_HIGH` | was already correct |
 | `bw-circuit-ui` | `P0_ACTIVE_HIGH` | was already correct |
 

@@ -44,7 +44,7 @@ SharedArrayBuffer required (single-threaded, runs on GitHub Pages).
 ATmega168P, ATtiny85. 7/10 conformance tests pass; 3 are honest structural
 gaps (AVR lacks quasi-bidirectional and open-drain modes, ADC needs
 firmware-driven conversion). AVR compilation to WASM is deferred
-(stc d49d0c0); AVR emulation via avr8js is not affected.
+(stc 2e02d0d); AVR emulation via avr8js is not affected.
 
 **UART entry points** for serial DebugTarget integration: TX callback fires
 synchronously on SBUF write, RX inject via `emu_serial_write`. Baud timing

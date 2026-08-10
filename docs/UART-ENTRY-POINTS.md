@@ -187,7 +187,7 @@ category 1 (independent measurement).
 
 **Idle-timeout resync:** The monitor protocol's idle timeout
 (`LIVE_IDLE_MS = 5 ms`) reads Timer 1 wall time, NOT the UART — so it
-is reachable in emulation in principle (ucsim-stc 44bad89). The blocker
+is reachable in emulation in principle (ucsim-stc 2193511). The blocker
 is not a modelling limit but **RX input plumbing**: `emu_serial_write`
 injects a byte immediately with no way to schedule delivery at a future
 nanosecond. To exercise the resync path, the trace harness needs a

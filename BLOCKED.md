@@ -32,7 +32,7 @@ Known benign: version comment says (UNIX) vs (Linux).
 ## Cycle-count fix (done, downstream pending)
 
 `6cb9bc7`: CLR/SETB/CPL/MOV-C bit took 2 MC, should be 1 MC (MCS-51 spec).
-Found by diffing steveschnepp/emu8051 (MIT). Confirmed by ucsim-stc 3d6489e.
+Found by diffing steveschnepp/emu8051 (MIT). Confirmed by ucsim-stc 8350048.
 Post-fix corpus traces generated (318/347). Cross-emulator comparison pending.
 
 ## UART contract (done)
