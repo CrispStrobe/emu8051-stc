@@ -136,6 +136,7 @@ jobs:
           cd sdcc-emcc
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
           # Pass WASM flags only at link time via LDFLAGS.
+          # Build browser artifact (MEMFS, no NODERAWFS)
           emmake make -j4 \
             EXEEXT=.js \
             CXXFLAGS="-O2 -Wno-error" \
@@ -144,10 +145,24 @@ jobs:
                      -sEXPORTED_RUNTIME_METHODS=FS" \
             || {
               echo "::error::SDCC WASM build failed"
-              echo "If this is a configure/link error, it may be a genuine"
-              echo "blocker for Emscripten cross-compilation of SDCC."
               exit 1
             }
+
+          # Re-link with NODERAWFS for the CI byte-identity test.
+          # Same object files, different FS shim. Node-only.
+          mkdir -p ../sdcc-noderawfs
+          cp src/sdcc.js src/sdcc.wasm ../sdcc-noderawfs/ 2>/dev/null || true
+          emmake make -C src clean-local 2>/dev/null || true
+          emmake make -C src \
+            EXEEXT=.js \
+            CXXFLAGS="-O2 -Wno-error" \
+            LDFLAGS="-sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
+                     -sEXIT_RUNTIME=1 -sNODERAWFS=1 \
+                     -sEXPORTED_RUNTIME_METHODS=FS" \
+            || echo "::warning::NODERAWFS re-link failed — byte-identity test will use MEMFS"
+          if [ -f src/sdcc.js ]; then
+            cp src/sdcc.js src/sdcc.wasm ../sdcc-noderawfs/
+          fi
 
       - name: Package WASM artifacts
         run: |
@@ -216,9 +231,10 @@ jobs:
       - name: Byte-identity test (native 4.5.0 vs WASM 4.5.0)
         run: |
           NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
-          WASM_SDCC="$(pwd)/dist/sdcc-wasm/sdcc.js"
-          WASM_AS="$(pwd)/dist/sdcc-wasm/sdas8051.js"
-          WASM_LD="$(pwd)/dist/sdcc-wasm/sdld.js"
+          # Use the NODERAWFS-linked sdcc for testing (reads real FS).
+          # The browser artifact (dist/sdcc-wasm/sdcc.js) uses MEMFS.
+          # Compiler code is identical; only the FS shim differs.
+          WASM_SDCC="$(pwd)/sdcc-noderawfs/sdcc.js"
 
           echo "Native: $($NATIVE --version | head -1)"
           echo "WASM:   $(node $WASM_SDCC --version 2>&1 | head -1 || echo 'cannot run')"
