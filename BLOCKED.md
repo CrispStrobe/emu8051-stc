@@ -69,3 +69,42 @@ PCA uses CCAPMn.ECCF not IE.6. Datasheet Ch. 6 p. 138. Servo confirmed.
 ## Path sweep (done)
 
 0 `/mnt/volume1` references remaining (grep verified). `../X` relative paths.
+
+## The 169-byte figure is the shift, not the content divergence
+
+Recorded at session end, after the weekly quota ran out — this was sent to the
+session but never processed, so it is written here instead of being lost.
+
+Two fixes in a row produced byte-identical failure output:
+
+    9a1124a  module name + model flags   -> 169 bytes differ, 0000-00B0 vs 0001-00B1
+    2044aa9  .optsdcc injection          -> 169 bytes differ, 0000-00B0 vs 0001-00B1
+
+Identical count, identical offsets. The usual reading is that the fixes never
+reached the build. The likelier reading here: **the metric is saturated.**
+
+Both images are 172 bytes and the WASM one starts one byte later. Compare two
+byte strings offset by one and nearly every position mismatches — 169 of 172,
+the three matches being what chance gives you. So 169 measures the one-byte
+shift, not content divergence, and it will read 169 however much content is
+fixed, until the origin is fixed, at which point it drops to 0.
+
+This is consistent with what this file already said above: *"Code generation
+matches native SDCC 4.5.0 (verified by content comparison under address
+shift)."* If that holds, the content fixes may have been landing correctly and
+invisibly.
+
+**Do this before fixing anything else** — the summary block cannot currently
+show whether a fix worked:
+
+    shifted:       identical | differ     (native[0..n] vs wasm[1..n+1])
+    origin-delta:  +1
+
+Then the block shows what is actually left: one address, not 169 bytes.
+
+**Then the one question worth a run:** why does the image start at 0x0001?
+Read the raw `.ihx` records from both sides and establish whether the WASM
+image carries an extra leading byte in its first data record, or simply
+declares a different load address. Those are different bugs — an emitted byte
+too many, versus a placement directive. The decoded address maps say "real +1
+shift", which points at the first; the record itself will say plainly.
