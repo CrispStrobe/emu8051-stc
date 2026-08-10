@@ -66,8 +66,9 @@ jobs:
             --disable-mos65c02-port --disable-pic14-port --disable-pic16-port \
             --disable-ucsim --disable-sdcdb
           make -j4 CXXFLAGS="-g -O2 -Wno-error"
-          echo "Native SDCC built:"
-          src/sdcc --version | head -1
+          make install prefix="$(pwd)/../sdcc-installed"
+          echo "Native SDCC built and installed:"
+          ../sdcc-installed/bin/sdcc --version | head -1
 
       # ── Step 2: Build SDCC with Emscripten ──
 
@@ -214,7 +215,7 @@ jobs:
 
       - name: Byte-identity test (native 4.5.0 vs WASM 4.5.0)
         run: |
-          NATIVE="$(pwd)/sdcc-native/bin/sdcc"
+          NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
           WASM_SDCC="$(pwd)/dist/sdcc-wasm/sdcc.js"
           WASM_AS="$(pwd)/dist/sdcc-wasm/sdas8051.js"
           WASM_LD="$(pwd)/dist/sdcc-wasm/sdld.js"
@@ -226,17 +227,17 @@ jobs:
           # Compile a minimal test program with both toolchains.
           # Use the simplest possible C that exercises the mcs51 codegen.
           mkdir -p /tmp/byte-test
-          # Use __sfr to avoid needing 8051.h — tests raw mcs51 codegen
-          printf '__sfr __at(0x90) P1;\nvoid main(void) { P1 = 0xAA; while(1); }\n' \
+          # Installed sdcc finds its own headers — use 8051.h
+          printf '#include <8051.h>\nvoid main(void) { P1 = 0xAA; while(1); }\n' \
             > /tmp/byte-test/test.c
 
           PASS=0
           FAIL=0
           SKIP=0
 
-          # Native compile — no stdlib needed, __sfr is built-in
+          # Native compile — installed sdcc finds its own headers/libs
           echo "=== Native compile ==="
-          if $NATIVE -mmcs51 --model-small --nostdlib \
+          if $NATIVE -mmcs51 --model-small \
                -o /tmp/byte-test/native.ihx \
                /tmp/byte-test/test.c 2>&1; then
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
