@@ -156,46 +156,28 @@ jobs:
               exit 1
             }
 
-      - name: Build sdcpp WASM (re-link if make missed it)
+      - name: Install sdcpp from make output
         run: |
           cd sdcc-emcc
           mkdir -p bin
-          # Check if make already produced sdcpp.js (configure-time LDFLAGS
-          # should propagate to support/cpp, but its sub-configure may fail)
-          if [ -f bin/sdcpp.js ]; then
-            echo "sdcpp.js already built by make:"
+          # make builds cpp in support/cpp/gcc/ with correct flags (LDFLAGS
+          # from configure propagate). Output is 'cpp' not 'cpp.js' because
+          # EXEEXT doesn't reach the sub-make. Just copy and rename.
+          CPP=support/cpp/gcc/cpp
+          if [ -f "$CPP" ]; then
+            cp "$CPP" bin/sdcpp.js
+            cp "${CPP}.wasm" bin/sdcpp.wasm 2>/dev/null || true
+            echo "sdcpp installed from make output:"
+            ls -lh bin/sdcpp.js bin/sdcpp.wasm
+          elif [ -f "${CPP}.js" ]; then
+            cp "${CPP}.js" bin/sdcpp.js
+            cp "${CPP}.wasm" bin/sdcpp.wasm 2>/dev/null || true
+            echo "sdcpp installed (had .js extension):"
             ls -lh bin/sdcpp.js bin/sdcpp.wasm
           else
-            echo "sdcpp.js not produced by make — re-linking from .o files"
-            CPP_DIR=support/cpp/gcc
-            if [ ! -f "$CPP_DIR/cpp.wasm" ]; then
-              echo "::error::No cpp.wasm in $CPP_DIR — sdcpp was not compiled at all"
-              ls -la "$CPP_DIR/" 2>/dev/null
-              exit 1
-            fi
-            # Find WASM .o files — exclude build/ which has native host tools
-            O_FILES=$(find "$CPP_DIR" -name '*.o' -not -path '*/build/*' | sort)
-            LIB_FILES=""
-            for lib in support/cpp/libcpp/libcpp.a \
-                       support/cpp/libbacktrace/.libs/libbacktrace.a \
-                       support/sdbinutils/libiberty/libiberty.a; do
-              [ -f "$lib" ] && LIB_FILES="$LIB_FILES $lib"
-            done
-            echo "Object files: $(echo $O_FILES | wc -w)"
-            echo "Libraries: $LIB_FILES"
-            # Use the same flags configure baked into LDFLAGS
-            emcc -O2 \
-              $O_FILES $LIB_FILES \
-              -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
-              -sMODULARIZE=1 -sEXPORT_NAME=createSDCC \
-              -sEXPORTED_RUNTIME_METHODS=FS \
-              -o bin/sdcpp.js
-            if [ ! -f bin/sdcpp.js ]; then
-              echo "::error::sdcpp re-link failed"
-              exit 1
-            fi
-            echo "sdcpp re-linked:"
-            ls -lh bin/sdcpp.js bin/sdcpp.wasm
+            echo "::error::make did not produce cpp in support/cpp/gcc/"
+            ls -la support/cpp/gcc/ 2>/dev/null | head -20
+            exit 1
           fi
 
       - name: Verify all WASM tools are modularized
