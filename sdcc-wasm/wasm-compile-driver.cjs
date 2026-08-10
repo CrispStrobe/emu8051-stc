@@ -48,12 +48,15 @@ function addDirToFS(m, hostDir, vfsDir) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
       try {
-        // FS.writeFile with a string. HEAPU8 must be in
-        // EXPORTED_RUNTIME_METHODS for MEMFS to work.
         m.FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
       } catch(e) {
+        // Print full stack on first failure, then abort
         console.error('  FAIL:', vfsPath, e.message);
-        skipCount++;
+        console.error('  Stack:', e.stack);
+        console.error('  typeof HEAPU8:', typeof m.HEAPU8);
+        console.error('  typeof wasmMemory:', typeof m.wasmMemory);
+        if (m.HEAPU8) console.error('  HEAPU8.buffer:', typeof m.HEAPU8.buffer);
+        process.exit(1);
       }
     }
   }
