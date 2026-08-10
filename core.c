@@ -385,18 +385,34 @@ void handle_interrupts(struct em8051 *aCPU)
             }
             // TODO
         }
-        /* PCA interrupt: IE bit 6 (EC), CCON flags (CCF0/CCF1/CF) */
-        if (aCPU->mSFR[REG_IE] & 0x40 && !hi)
+        /* PCA interrupt: no enable in IE — gated by ECCFn in CCAPMn and ECF in CMOD.
+         * Datasheet Ch. 6 p. 138: enable = (ECF+ECCF0+ECCF1)/EA
+         * Flags: CF/CCF0/CCF1 in CCON; each fires only if its enable bit is set.
+         * Priority: IP.7 (PPCA), IPH.7 (PPCAH) — NOT "always low". */
+        if (!hi)
         {
-            /* Check if any PCA interrupt source is active */
             uint8_t ccon = aCPU->mSFR[0xD8 - 0x80]; /* CCON */
-            if (ccon & 0x87) { /* CF | CCF2 | CCF1 | CCF0 */
+            int pca_pending = 0;
+            /* CCF0 fires if ECCF0 set in CCAPM0 */
+            if ((ccon & 0x01) && (aCPU->mSFR[0xDA - 0x80] & 0x01)) pca_pending = 1;
+            /* CCF1 fires if ECCF1 set in CCAPM1 */
+            if ((ccon & 0x02) && (aCPU->mSFR[0xDB - 0x80] & 0x01)) pca_pending = 1;
+            /* CCF2 fires if ECCF2 set in CCAPM2 (STC15) */
+            if ((ccon & 0x04) && (aCPU->mSFR[0xDC - 0x80] & 0x01)) pca_pending = 1;
+            /* CF (overflow) fires if ECF set in CMOD */
+            if ((ccon & 0x80) && (aCPU->mSFR[0xD9 - 0x80] & 0x01)) pca_pending = 1;
+            if (pca_pending)
+            {
                 if (!lo)
                 {
                     dest_ip = ISR_PCA;
                     lo = 1;
                 }
-                /* PCA has no IP bit on standard 8051; always low priority */
+                if (aCPU->mSFR[REG_IP] & 0x80) /* IP.7 = PPCA */
+                {
+                    hi = 1;
+                    dest_ip = ISR_PCA;
+                }
             }
         }
 

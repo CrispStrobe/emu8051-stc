@@ -135,34 +135,19 @@ jobs:
         run: |
           cd sdcc-emcc
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
-          # Pass WASM flags only at link time via LDFLAGS.
-          # Build browser artifact (MEMFS, no NODERAWFS)
+          # MEMFS only — this is the artifact that ships to browsers.
+          # The byte-identity test runs THIS binary, not a NODERAWFS variant,
+          # so the test proves the shipped artifact produces correct output.
           emmake make -j4 \
             EXEEXT=.js \
             CXXFLAGS="-O2 -Wno-error" \
             LDFLAGS="-sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
-                     -sEXIT_RUNTIME=1 \
+                     -sMODULARIZE=1 -sEXPORT_NAME=createSDCC \
                      -sEXPORTED_RUNTIME_METHODS=FS" \
             || {
               echo "::error::SDCC WASM build failed"
               exit 1
             }
-
-          # Re-link with NODERAWFS for the CI byte-identity test.
-          # Same object files, different FS shim. Node-only.
-          mkdir -p ../sdcc-noderawfs
-          cp src/sdcc.js src/sdcc.wasm ../sdcc-noderawfs/ 2>/dev/null || true
-          emmake make -C src clean-local 2>/dev/null || true
-          emmake make -C src \
-            EXEEXT=.js \
-            CXXFLAGS="-O2 -Wno-error" \
-            LDFLAGS="-sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
-                     -sEXIT_RUNTIME=1 -sNODERAWFS=1 \
-                     -sEXPORTED_RUNTIME_METHODS=FS" \
-            || echo "::warning::NODERAWFS re-link failed — byte-identity test will use MEMFS"
-          if [ -f src/sdcc.js ]; then
-            cp src/sdcc.js src/sdcc.wasm ../sdcc-noderawfs/
-          fi
 
       - name: Package WASM artifacts
         run: |
@@ -231,25 +216,17 @@ jobs:
       - name: Byte-identity test (native 4.5.0 vs WASM 4.5.0)
         run: |
           NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
-          # Use the NODERAWFS-linked sdcc for testing (reads real FS).
-          # The browser artifact (dist/sdcc-wasm/sdcc.js) uses MEMFS.
-          # Compiler code is identical; only the FS shim differs.
-          WASM_SDCC="$(pwd)/sdcc-noderawfs/sdcc.js"
+          # Test the MEMFS artifact — the same binary that ships to browsers.
+          # The driver populates the VFS, compiles, then reads output back.
+          WASM_SDCC="$(pwd)/dist/sdcc-wasm/sdcc.js"
 
           echo "Native: $($NATIVE --version | head -1)"
-          echo "WASM:   $(node $WASM_SDCC --version 2>&1 | head -1 || echo 'cannot run')"
           echo ""
 
           # Compile a minimal test program with both toolchains.
-          # Use the simplest possible C that exercises the mcs51 codegen.
           mkdir -p /tmp/byte-test
-          # Installed sdcc finds its own headers — use 8051.h
           printf '#include <8051.h>\nvoid main(void) { P1 = 0xAA; while(1); }\n' \
             > /tmp/byte-test/test.c
-
-          PASS=0
-          FAIL=0
-          SKIP=0
 
           # Native compile — installed sdcc finds its own headers/libs
           echo "=== Native compile ==="
@@ -263,21 +240,16 @@ jobs:
             exit 1
           fi
 
-          # WASM compile — preload VFS with headers/libs, then compile
-          echo "=== WASM compile ==="
+          # WASM compile — uses the MEMFS binary with VFS driver
+          echo "=== WASM compile (MEMFS) ==="
           INSTALLED="$(pwd)/sdcc-installed"
 
-          # Write the VFS driver as a checked-in file would be better,
-          # but for now use node -e with proper quoting
-          cp sdcc-wasm/wasm-compile-driver.cjs /tmp/byte-test/wasm-compile.cjs
-
           if [ -f "$WASM_SDCC" ]; then
-            node /tmp/byte-test/wasm-compile.cjs \
+            node sdcc-wasm/wasm-compile-driver.cjs \
               "$WASM_SDCC" "$INSTALLED" \
               /tmp/byte-test/test.c /tmp/byte-test/wasm.ihx \
               2>&1 || {
                 echo "::error::WASM sdcc driver crashed (exit $?)"
-                echo "The WASM module failed to load or compile."
                 exit 1
               }
 
@@ -296,10 +268,13 @@ jobs:
                 exit 1
               fi
             else
-              echo "::warning::WASM compile did not produce output"
+              echo "::error::WASM compile did not produce output file"
+              exit 1
             fi
           else
             echo "::error::WASM sdcc not found at $WASM_SDCC"
+            echo "Contents of dist/sdcc-wasm/:"
+            ls -la dist/sdcc-wasm/ 2>/dev/null || echo "(dir not found)"
             exit 1
           fi
 
