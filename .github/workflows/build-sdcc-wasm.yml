@@ -226,19 +226,17 @@ jobs:
           # Compile a minimal test program with both toolchains.
           # Use the simplest possible C that exercises the mcs51 codegen.
           mkdir -p /tmp/byte-test
-          printf '#include <8051.h>\nvoid main(void) { P1 = 0xAA; while(1); }\n' \
+          # Use __sfr to avoid needing 8051.h — tests raw mcs51 codegen
+          printf '__sfr __at(0x90) P1;\nvoid main(void) { P1 = 0xAA; while(1); }\n' \
             > /tmp/byte-test/test.c
 
           PASS=0
           FAIL=0
           SKIP=0
 
-          # Native compile
-          NATIVE_INC="$(pwd)/sdcc-native/device/include"
-          NATIVE_LIB="$(pwd)/sdcc-native/device/lib/build/small-mcs51-stack-auto"
+          # Native compile — no stdlib needed, __sfr is built-in
           echo "=== Native compile ==="
-          if $NATIVE -mmcs51 --model-small \
-               -I"$NATIVE_INC" -L"$NATIVE_LIB" \
+          if $NATIVE -mmcs51 --model-small --nostdlib \
                -o /tmp/byte-test/native.ihx \
                /tmp/byte-test/test.c 2>&1; then
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
