@@ -40,7 +40,9 @@ function addDirToFS(m, hostDir, vfsDir) {
     if (st.isDirectory()) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
-      m.FS.writeFile(vfsPath, readFileSync(hostPath));
+      // Emscripten FS needs Uint8Array, not Node Buffer
+      const buf = readFileSync(hostPath);
+      m.FS.writeFile(vfsPath, new Uint8Array(buf));
     }
   }
 }
@@ -70,7 +72,7 @@ async function main() {
   addDirToFS(m, join(shareDir, 'lib'), '/share/sdcc/lib');
 
   // Write source file
-  m.FS.writeFile('/test.c', readFileSync(srcFile));
+  m.FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
 
   console.log('Compiling', srcFile, '...');
 
