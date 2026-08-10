@@ -65,15 +65,17 @@ function populateVFS(Module) {
   for (const f of libFiles) Module.FS.writeFile('/lib/' + f.name, f.data);
 }
 
-// Run a WASM tool and return the Module (with FS still alive)
-async function runTool(name, args, setupFn) {
+// Run a WASM tool and return the Module (with FS still alive).
+// setupFn receives the Module during preRun to populate VFS.
+// opts can include { stdin: function } for --c1mode piping.
+async function runTool(name, args, setupFn, opts) {
   const jsPath = join(distDir, name + '.js');
   if (!existsSync(jsPath)) {
     throw new Error(`Tool not found: ${jsPath}`);
   }
 
   const createModule = require(jsPath);
-  const Module = await createModule({
+  const config = {
     noExitRuntime: true,
     arguments: args,
     preRun: [function(M) {
@@ -81,8 +83,14 @@ async function runTool(name, args, setupFn) {
     }],
     print: function(text) { console.log(`  [${name}] ${text}`); },
     printErr: function(text) { console.error(`  [${name}] ${text}`); },
-  });
+  };
 
+  // Allow caller to provide stdin (for --c1mode)
+  if (opts && opts.stdin) {
+    config.stdin = opts.stdin;
+  }
+
+  const Module = await createModule(config);
   return Module;
 }
 
@@ -145,30 +153,37 @@ async function main() {
     // ── Stage 2: Codegen with sdcc --c1mode ──
     console.log('\n=== Stage 2: sdcc --c1mode (codegen) ===');
 
-    // --c1mode reads preprocessed from stdin, writes .asm to stdout.
-    // But in practice sdcc --c1mode also takes a filename argument.
-    // Let's try giving it the preprocessed file directly.
+    // --c1mode reads preprocessed code from STDIN (not a file argument).
+    // "warning 160: only standard input is compiled in c1 mode"
+    // We feed it via Emscripten's stdin hook.
     const sdccArgs = [
       '-mmcs51', '--model-small',
       '--c1mode',
-      '--nostdinc',
       '-o', '/test.asm',
-      '/test.i'
     ];
+
+    // Build a stdin feeder from the preprocessed buffer
+    let stdinPos = 0;
 
     const ccMod = await runTool('sdcc', sdccArgs, function(M) {
       populateVFS(M);
-      M.FS.writeFile('/test.i', preprocessed);
+    }, {
+      stdin: function() {
+        if (stdinPos < preprocessed.length) {
+          return preprocessed[stdinPos++];
+        }
+        return null; // EOF
+      }
     });
 
     let asmCode;
     try {
       asmCode = vfsRead(ccMod, '/test.asm');
     } catch(e) {
-      // c1mode may write to stdout — check what files were created
+      // Check what files were created
       const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
       console.log('  VFS root after codegen:', rootFiles);
-      throw new Error('Codegen did not produce /test.asm');
+      throw new Error('Codegen did not produce /test.asm: ' + e.message);
     }
     console.log(`  Assembly: ${asmCode.length} bytes`);
 
