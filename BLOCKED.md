@@ -27,7 +27,10 @@ diff are the acceptance criterion.
 **Patches applied (GPL source obligation):** One `sed` inserting
 `#define HAVE_PSIGNAL 1` at line 1 of `libiberty/strsignal.c`.
 
-## AVR conformance — blocked on bw-board accepting `input-pullup`
+## ~~AVR conformance — blocked on bw-board accepting `input-pullup`~~ RESOLVED
 
-bw-board's `conformance.js` rejects `input-pullup` as a valid PinMode.
-spec-update 005 was adjudicated (sb3-creator 6255de3).
+Resolved by coordinator: bw-board `ea2ccfb` adds `input-pullup` to the
+conformance setPin shape test, matching the adjudicated PinMode union
+(sb3-creator 6255de3, contract §5a). The engine side (pin-model.js,
+35 kΩ Thévenin) was already in place. Pull bw-board and re-run the AVR
+conformance suite.
