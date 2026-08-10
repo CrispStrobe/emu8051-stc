@@ -345,7 +345,10 @@ jobs:
           # Native compile — installed sdcc finds its own headers/libs
           # --verbose shows the exact command lines for sdcpp, sdas8051, sdld
           echo "=== Native compile (--verbose for flag capture) ==="
-          # -c produces .rel without linking — save for comparison
+          # -S produces .asm (codegen only), -c produces .rel (assembled)
+          $NATIVE -S -mmcs51 --model-small \
+               -o /tmp/byte-test/native.asm \
+               /tmp/byte-test/test.c 2>/dev/null || true
           $NATIVE -c -mmcs51 --model-small \
                -o /tmp/byte-test/native.rel \
                /tmp/byte-test/test.c 2>/dev/null || true
@@ -392,32 +395,43 @@ jobs:
           echo "  WASM .ihx:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
 
           # ── Compare images and print a self-contained summary ──
-          # grep -A8 "BYTE-IDENTITY SUMMARY" answers the whole question.
+          # grep -A10 "BYTE-IDENTITY SUMMARY" answers the whole question.
 
-          # 1. .rel comparison (splits compiler+assembler from linker)
-          REL_STATUS="not compared"
+          # 1. Intermediate comparisons (split the pipeline)
+          ASM_STATUS="missing"
+          REL_STATUS="missing"
+
+          # .asm: codegen output (stage 2)
+          if [ -f /tmp/byte-test/native.asm ] && [ -f /tmp/byte-test/wasm.asm ]; then
+            if diff /tmp/byte-test/native.asm /tmp/byte-test/wasm.asm > /dev/null 2>&1; then
+              ASM_STATUS="identical"
+            else
+              ASM_STATUS="differ"
+            fi
+          fi
+
+          # .rel: assembler output (stage 3)
           if [ -f /tmp/byte-test/native.rel ] && [ -f /tmp/byte-test/wasm.rel ]; then
             if diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel > /dev/null 2>&1; then
               REL_STATUS="identical"
             else
               REL_STATUS="differ"
             fi
-          elif [ ! -f /tmp/byte-test/native.rel ]; then
-            REL_STATUS="native .rel missing"
-          elif [ ! -f /tmp/byte-test/wasm.rel ]; then
-            REL_STATUS="wasm .rel missing"
           fi
 
-          # 2. Image comparison
+          # 2. Image comparison — capture exit code WITHOUT || true
+          set +e
           IHX_RESULT=$(python3 sdcc-wasm/compare-ihx.py \
-            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx 2>&1) || true
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx 2>&1)
           IHX_EXIT=$?
+          set -e
 
           # 3. Print summary block
           echo ""
           echo "=== BYTE-IDENTITY SUMMARY ==="
+          echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
-          echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" || true
+          echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" | head -5
           if [ "$IHX_EXIT" -eq 0 ]; then
             echo "verdict: PASS"
           else
@@ -425,8 +439,13 @@ jobs:
           fi
           echo "=== END BYTE-IDENTITY SUMMARY ==="
 
-          # 4. On mismatch: show .rel diff detail, then fail
+          # 4. On mismatch: show detail, then fail
           if [ "$IHX_EXIT" -ne 0 ]; then
+            if [ "$ASM_STATUS" = "differ" ]; then
+              echo ""
+              echo "First .asm difference:"
+              diff /tmp/byte-test/native.asm /tmp/byte-test/wasm.asm | head -20
+            fi
             if [ "$REL_STATUS" = "differ" ]; then
               echo ""
               echo "First .rel difference:"

@@ -229,6 +229,10 @@ async function main() {
       throw new Error('Codegen did not produce /test.asm: ' + e.message);
     }
     console.log(`  Assembly: ${asmCode.length} bytes`);
+    // Write .asm to host for comparison with native -S output
+    const wasmAsmPath = outFile.replace(/\.[^.]+$/, '.asm');
+    writeFileSync(wasmAsmPath, asmCode);
+    console.log(`  .asm written to ${wasmAsmPath}`);
 
     // ── Stage 3: Assemble with sdas8051 ──
     console.log('\n=== Stage 3: sdas8051 (assemble) ===');
