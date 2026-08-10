@@ -181,16 +181,17 @@ async function main() {
       '-D__SDCC_BITINT_MAXWIDTH=64',
       '-isystem', '/include/mcs51',
       '-isystem', '/include',
-      '-o', '/test.i',
-      '/test.c'
+      '-o', '/work/test.i',
+      '/work/test.c'
     ];
 
     const cppMod = await runTool('cc1', cc1Args, function(M) {
       populateVFS(M);
-      M.FS.writeFile('/test.c', sourceCode);
+      try { M.FS.mkdir('/work'); } catch(e) {}
+      M.FS.writeFile('/work/test.c', sourceCode);
     });
 
-    const preprocessed = vfsRead(cppMod, '/test.i');
+    const preprocessed = vfsRead(cppMod, '/work/test.i');
     console.log(`  Preprocessed: ${preprocessed.length} bytes`);
     // Write .i to host for comparison with native -E output
     const wasmIPath = outFile.replace(/\.[^.]+$/, '.i');
@@ -204,9 +205,9 @@ async function main() {
     // "warning 160: only standard input is compiled in c1 mode"
     // We feed it via Emscripten's stdin hook.
     const sdccArgs = [
-      '-mmcs51', '--model-small',
       '--c1mode',
-      '-o', '/test.asm',
+      '-mmcs51', '--model-small',
+      '-o', '/work/test.asm',
     ];
 
     // Build a stdin feeder from the preprocessed buffer
@@ -214,6 +215,7 @@ async function main() {
 
     const ccMod = await runTool('sdcc', sdccArgs, function(M) {
       populateVFS(M);
+      try { M.FS.mkdir('/work'); } catch(e) {}
     }, {
       stdin: function() {
         if (stdinPos < preprocessed.length) {
@@ -225,7 +227,7 @@ async function main() {
 
     let asmCode;
     try {
-      asmCode = vfsRead(ccMod, '/test.asm');
+      asmCode = vfsRead(ccMod, '/work/test.asm');
     } catch(e) {
       // Check what files were created
       const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
@@ -243,20 +245,21 @@ async function main() {
 
     const asmArgs = [
       '-plosgffw',
-      '/test.rel',
-      '/test.asm'
+      '/work/test.rel',
+      '/work/test.asm'
     ];
 
     const asMod = await runTool('sdas8051', asmArgs, function(M) {
-      M.FS.writeFile('/test.asm', asmCode);
+      try { M.FS.mkdir('/work'); } catch(e) {}
+      M.FS.writeFile('/work/test.asm', asmCode);
     });
 
-    const relCode = vfsRead(asMod, '/test.rel');
+    const relCode = vfsRead(asMod, '/work/test.rel');
     // Also grab .lst and .sym if the assembler produced them —
     // sdld expects /test.lst beside /test.rel
     let lstCode = null, symCode = null;
-    try { lstCode = vfsRead(asMod, '/test.lst'); } catch(e) {}
-    try { symCode = vfsRead(asMod, '/test.sym'); } catch(e) {}
+    try { lstCode = vfsRead(asMod, '/work/test.lst'); } catch(e) {}
+    try { symCode = vfsRead(asMod, '/work/test.sym'); } catch(e) {}
     console.log(`  Object: ${relCode.length} bytes` +
       (lstCode ? `, lst: ${lstCode.length}` : '') +
       (symCode ? `, sym: ${symCode.length}` : ''));
@@ -280,7 +283,7 @@ async function main() {
     // User .rel comes AFTER -l lines (libraries provide crt0).
     const lkContent = [
       '-muwx',
-      '-i /out.ihx',
+      '-i /work/out.ihx',
       '-M',
       '-b HOME = 0x0000',
       '-b XSEG = 0x0001',
@@ -293,20 +296,21 @@ async function main() {
       '-l libint',
       '-l liblong',
       '-l libfloat',
-      '/test.rel',
+      '/work/test.rel',
       '',
       '-e'
     ].join('\n') + '\n';
 
-    const ldArgs = ['-nf', '/test.lk'];
+    const ldArgs = ['-nf', '/work/test.lk'];
 
     const ldMod = await runTool('sdld', ldArgs, function(M) {
       populateVFS(M);
-      M.FS.writeFile('/test.rel', relCode);
-      M.FS.writeFile('/test.lk', lkContent);
+      try { M.FS.mkdir('/work'); } catch(e) {}
+      M.FS.writeFile('/work/test.rel', relCode);
+      M.FS.writeFile('/work/test.lk', lkContent);
       // sdld looks for .lst and .sym beside .rel
-      if (lstCode) M.FS.writeFile('/test.lst', lstCode);
-      if (symCode) M.FS.writeFile('/test.sym', symCode);
+      if (lstCode) M.FS.writeFile('/work/test.lst', lstCode);
+      if (symCode) M.FS.writeFile('/work/test.sym', symCode);
     });
 
     // Dump the linker script for diagnostics
@@ -317,7 +321,7 @@ async function main() {
 
     // Dump map file if produced (-M flag)
     try {
-      const mapData = vfsRead(ldMod, '/out.map');
+      const mapData = vfsRead(ldMod, '/work/out.map');
       console.log('  Map file (' + mapData.length + ' bytes):');
       const mapText = mapData.toString('utf8');
       // Show ALL lines that contain addresses (not just named areas)
@@ -338,13 +342,13 @@ async function main() {
 
     let ihxOutput;
     try {
-      ihxOutput = vfsRead(ldMod, '/out.ihx');
+      ihxOutput = vfsRead(ldMod, '/work/out.ihx');
     } catch(e) {
-      console.error('  /out.ihx not found in VFS after link');
+      console.error('  /work/out.ihx not found in VFS after link');
       try {
         console.log('  VFS root:', ldMod.FS.readdir('/'));
       } catch(e2) {}
-      throw new Error('Linker did not produce /out.ihx');
+      throw new Error('Linker did not produce /work/out.ihx');
     }
     writeFileSync(outFile, ihxOutput);
     console.log(`\nWASM compile: OK (${ihxOutput.length} bytes written to ${outFile})`);
