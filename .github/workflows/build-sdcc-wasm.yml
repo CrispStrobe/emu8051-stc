@@ -172,12 +172,12 @@ jobs:
             echo "Libraries: $LIB_FILES"
 
             # Re-link with Emscripten MODULARIZE flags
+            # Use identical flags to the main build for consistency
             emcc -O2 \
               $O_FILES $LIB_FILES \
               -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
-              -sMODULARIZE=1 -sEXPORT_NAME=createSdcpp \
+              -sMODULARIZE=1 -sEXPORT_NAME=createSDCC \
               -sEXPORTED_RUNTIME_METHODS=FS \
-              -sALLOW_MEMORY_GROWTH=1 \
               -o bin/sdcpp.js \
               2>&1 || {
                 echo "::warning::sdcpp re-link failed, trying alternative approach"
@@ -247,8 +247,12 @@ jobs:
 
           # mcs51 library (model-small)
           mkdir -p dist/sdcc-wasm/lib/small
-          cp sdcc-native/device/lib/build/small-mcs51-stack-auto/*.rel dist/sdcc-wasm/lib/small/ 2>/dev/null || true
-          cp sdcc-native/device/lib/build/small-mcs51-stack-auto/*.lib dist/sdcc-wasm/lib/small/ 2>/dev/null || true
+          # SDCC 4.5.0 uses small-stack-auto; older uses small-mcs51-stack-auto
+          LIB_BUILD=sdcc-native/device/lib/build/small-stack-auto
+          [ -d "$LIB_BUILD" ] || LIB_BUILD=sdcc-native/device/lib/build/small-mcs51-stack-auto
+          cp "$LIB_BUILD"/*.rel dist/sdcc-wasm/lib/small/ 2>/dev/null || true
+          cp "$LIB_BUILD"/*.lib dist/sdcc-wasm/lib/small/ 2>/dev/null || true
+          echo "Lib files: $(ls dist/sdcc-wasm/lib/small/ 2>/dev/null | wc -l) from $LIB_BUILD"
 
           # Report sizes
           echo "=== Artifact sizes ==="

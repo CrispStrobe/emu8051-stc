@@ -28,7 +28,9 @@ if (!distDir || !installedDir || !srcFile || !outFile) {
 
 const incDir = join(installedDir, 'share', 'sdcc', 'include');
 const mcs51IncDir = join(incDir, 'mcs51');
-const libDir = join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
+// SDCC 4.5.0 uses 'small-stack-auto', older versions 'small-mcs51-stack-auto'
+const libDir = join(installedDir, 'share', 'sdcc', 'lib', 'small-stack-auto');
+const libDirAlt = join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
 
 // Collect files from a directory
 function collectFiles(dir) {
@@ -47,12 +49,35 @@ function collectFiles(dir) {
 const sourceCode = readFileSync(srcFile);
 const headerFiles = collectFiles(incDir);
 const mcs51Headers = collectFiles(mcs51IncDir);
-const libFiles = collectFiles(libDir);
+let libFiles = collectFiles(libDir);
+if (libFiles.length === 0) libFiles = collectFiles(libDirAlt);
 
 console.log('WASM SDCC pipeline (MEMFS, no fork)');
 console.log(`  Source: ${srcFile} (${sourceCode.length} bytes)`);
 console.log(`  Headers: ${headerFiles.length} top-level, ${mcs51Headers.length} mcs51`);
 console.log(`  Lib files: ${libFiles.length}`);
+
+// ── Startup checks: verify all tools load and libs are present ──
+const TOOLS = ['sdcc', 'sdcpp', 'sdas8051', 'sdld'];
+for (const tool of TOOLS) {
+  const p = join(distDir, tool + '.js');
+  if (!existsSync(p)) {
+    console.error(`FATAL: ${tool}.js not found at ${p}`);
+    process.exit(1);
+  }
+  const mod = require(p);
+  if (typeof mod !== 'function') {
+    console.error(`FATAL: ${tool}.js does not export a factory function (typeof=${typeof mod}). Check MODULARIZE flag.`);
+    process.exit(1);
+  }
+  console.log(`  ${tool}.js: OK (factory function)`);
+}
+if (libFiles.length === 0) {
+  console.error('FATAL: No library files found. sdld will fail at stage 4.');
+  console.error(`  Tried: ${libDir}`);
+  console.error(`  Also:  ${libDirAlt}`);
+  process.exit(1);
+}
 
 // Populate a module's VFS with headers and libs
 function populateVFS(Module) {
