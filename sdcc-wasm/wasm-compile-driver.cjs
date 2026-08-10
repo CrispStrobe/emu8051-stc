@@ -87,63 +87,52 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('WASM sdcc loaded, populating VFS...');
+  console.log('WASM sdcc loaded, mounting NODEFS...');
 
-  // Populate VFS with ONLY mcs51 headers and libs — not the whole tree.
-  // Copying z80/f8/etc is wasted work and a source of encoding errors.
-  const shareDir = join(installedDir, 'share', 'sdcc');
-  const incDir = join(shareDir, 'include');
-  // Top-level headers (8051.h, stdint.h, etc.)
-  mkdirp(m, '/share/sdcc/include');
-  for (const f of readdirSync(incDir)) {
-    const p = join(incDir, f);
-    if (statSync(p).isFile()) {
-      const content = readFileSync(p, 'utf8');
-      m.FS.writeFile('/share/sdcc/include/' + f, new TextEncoder().encode(content));
-    }
-  }
-  // mcs51 sub-headers
-  if (statSync(join(incDir, 'mcs51')).isDirectory()) {
-    addDirToFS(m, join(incDir, 'mcs51'), '/share/sdcc/include/mcs51');
-  }
-  // asm/mcs51 sub-headers
-  const asmMcs51 = join(incDir, 'asm', 'mcs51');
-  if (statSync(asmMcs51).isDirectory()) {
-    addDirToFS(m, asmMcs51, '/share/sdcc/include/asm/mcs51');
-  }
-  // mcs51 model-small library only
-  const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
-  if (statSync(libDir).isDirectory()) {
-    addDirToFS(m, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
-  }
+  // Mount the real filesystem via NODEFS — avoids the FS.writeFile
+  // buffer bug entirely. SDCC reads headers/libs from real paths.
+  mkdirp(m, '/host');
+  m.FS.mount(m.FS.filesystems.NODEFS, { root: '/' }, '/host');
 
-  // Write source file
-  const srcContent = readFileSync(srcFile, 'utf8');
-  m.FS.writeFile('/test.c', new TextEncoder().encode(srcContent));
+  // Copy source to a temp location SDCC can read
+  const { mkdtempSync } = require('fs');
+  const { tmpdir } = require('os');
+  const workDir = mkdtempSync(join(tmpdir(), 'sdcc-'));
+  const { copyFileSync } = require('fs');
+  copyFileSync(srcFile, join(workDir, 'test.c'));
 
-  console.log('Compiling', srcFile, '...');
+  // Use /host paths so SDCC reads from the real filesystem via NODEFS
+  const hostInc = '/host' + join(installedDir, 'share', 'sdcc', 'include');
+  const hostLib = '/host' + join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
+  const hostSrc = '/host' + join(workDir, 'test.c');
+  const hostOut = '/host' + join(workDir, 'out.ihx');
+
+  console.log('Compiling via NODEFS...');
+  console.log('  -I', hostInc);
+  console.log('  -L', hostLib);
+  console.log('  src:', hostSrc);
 
   // Compile
   try {
     m.callMain([
-      '-mmcs51', '--model-small', '--no-std-crt0',
-      '-I/share/sdcc/include',
-      '-L/share/sdcc/lib/small-mcs51-stack-auto',
-      '-o', '/out.ihx', '/test.c'
+      '-mmcs51', '--model-small',
+      '-I' + hostInc,
+      '-L' + hostLib,
+      '-o', hostOut, hostSrc
     ]);
   } catch(e) {
-    // callMain throws on exit() — check if output was produced
     console.log('callMain exited:', e.message || e);
   }
 
-  // Read output
+  // Read output from real filesystem
+  const outPath = join(workDir, 'out.ihx');
   try {
-    const ihx = m.FS.readFile('/out.ihx', { encoding: 'utf8' });
+    const ihx = readFileSync(outPath, 'utf8');
     writeFileSync(outFile, ihx);
     console.log('WASM compile: OK (' + ihx.length + ' bytes)');
   } catch(e) {
-    console.error('WASM compile: output not found');
-    try { console.error('  FS root:', m.FS.readdir('/').join(', ')); } catch(e2) {}
+    console.error('WASM compile: output not found at', outPath);
+    try { console.error('  workDir:', readdirSync(workDir).join(', ')); } catch(e2) {}
     process.exit(1);
   }
 }
