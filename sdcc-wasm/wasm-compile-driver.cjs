@@ -48,8 +48,13 @@ function addDirToFS(m, hostDir, vfsDir) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
       try {
-        // FS.writeFile accepts a plain string — no conversion needed
-        m.FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
+        // Pass data as a plain Array of byte values — the most
+        // compatible FS.writeFile format across Emscripten versions.
+        // String and Uint8Array both crash with 'reading buffer' in
+        // this build (HEAPU8 appears to be undefined inside MEMFS).
+        const buf = readFileSync(hostPath);
+        const arr = Array.from(buf);
+        m.FS.writeFile(vfsPath, arr);
       } catch(e) {
         console.error('  FAIL:', vfsPath, e.message);
         skipCount++;
@@ -71,7 +76,7 @@ function doCompile(m) {
     const p = join(incDir, f);
     if (statSync(p).isFile()) {
       try {
-        m.FS.writeFile('/share/sdcc/include/' + f, readFileSync(p, 'utf8'));
+        m.FS.writeFile('/share/sdcc/include/' + f, Array.from(readFileSync(p)));
       } catch(e) {
         console.error('  FAIL:', f, e.message);
         skipCount++;
@@ -101,7 +106,7 @@ function doCompile(m) {
   }
 
   console.log('VFS populated. Writing source...');
-  m.FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
+  m.FS.writeFile('/test.c', Array.from(readFileSync(srcFile)));
 
   console.log('Compiling...');
   try {
