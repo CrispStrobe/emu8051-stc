@@ -18,13 +18,16 @@ shift remains: native image at 0000-00B0, WASM at 0001-00B1.
 - `asm: differ` — divergence is in codegen or earlier
 - `i: differ` — preprocessed files differ (but `.i` carries `#line` paths)
 
-**What run 31421530762 will show (dispatched, not yet complete):**
-- `i-code: identical|differ` — preprocessed output with `#line` stripped
-- `flags: identical|differ` — native sdcpp flags vs our reconstructed argv
+**Run 31421530762 result:**
+- `i-code: identical` — preprocessed code is byte-identical. Stage 1 exonerated.
+- `flags: differ` — the cause is in our stage-2 argv, not in defines.
 
-**Most likely cause:** Our hand-built cc1 argv is missing or mis-stating a
-`-D` define that the native sdcc driver computes. If `flags: differ`, the
-diff prints the missing define.
+**Cause found (two argv bugs, fixed in fd91210):**
+1. `-mmcs51 --model-small` not reaching `--c1mode` — native .rel has
+   `O -mmcs51 --model-small`, ours did not. Different memory model.
+2. Source at `/test.c` yields module `_test` (leading slash sanitised).
+   Moved to `/work/test.c` so module name matches native's `test`.
+Known benign: version comment says (UNIX) vs (Linux).
 
 ## Cycle-count fix (done, downstream pending)
 
