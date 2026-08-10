@@ -61,10 +61,17 @@ export function createAvrConformanceAdapter(opts = {}) {
 
         writePort(port, value) {
             // AVR ports: 0=B, 1=C, 2=D
+            // On AVR, PORT writes only drive pins when DDR is set to output.
+            // The boundary-A contract treats writePort as "drive these pins",
+            // so we set DDR to output for all bits being driven.
             if (port >= 0 && port < 3) {
+                const ddrAddr = [0x24, 0x27, 0x2A][port];
                 const portRegAddr = [0x25, 0x28, 0x2B][port];
-                adapter.cpu.writeData(portRegAddr, value);
-                // Trigger port listener (writeData alone doesn't fire it)
+                // Set DDR to output for all 8 bits (or 6 for port C)
+                const nPins = port === 1 ? 6 : 8;
+                const mask = (1 << nPins) - 1;
+                adapter.cpu.writeData(ddrAddr, mask);
+                adapter.cpu.writeData(portRegAddr, value & mask);
                 adapter.ports[port].updatePinRegister(adapter.cpu.data);
             }
         },
@@ -92,10 +99,19 @@ export function createAvrConformanceAdapter(opts = {}) {
 
         // ADC — ATmega328P ADC on PC0-PC5
         startAdc(channel) {
-            // Write ADMUX and ADCSRA to start a conversion
-            const admux = (channel & 0x0F); // AVcc ref, right-adjusted
+            // Map conformance channel to AVR ADC channel.
+            // Conformance passes channel 3 expecting P1.3; on AVR this
+            // is ADC channel 3 = PC3 (port C bit 3).
+            // First set port C to input (DDR=0) for analog read
+            const ddrAddr = 0x27; // DDRC
+            adapter.cpu.writeData(ddrAddr, 0x00);
+            adapter.ports[1].updatePinRegister(adapter.cpu.data);
+
+            // Write ADMUX: AVcc reference (REFS0=1), right-adjusted, channel
+            const admux = 0x40 | (channel & 0x0F); // REFS0 + channel
             adapter.cpu.writeData(0x7C, admux);  // ADMUX
-            adapter.cpu.writeData(0x7A, 0xC7);   // ADCSRA: ADEN+ADSC+prescaler
+            // Write ADCSRA: ADEN + ADSC + prescaler /128
+            adapter.cpu.writeData(0x7A, 0xC7);   // ADCSRA
         },
 
         adcReady() {
