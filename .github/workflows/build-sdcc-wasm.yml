@@ -141,7 +141,7 @@ jobs:
             CXXFLAGS="-O2 -Wno-error" \
             LDFLAGS="-sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM \
                      -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 \
-                     -sEXPORTED_RUNTIME_METHODS=callMain,FS" \
+                     -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8" \
             || {
               echo "::error::SDCC WASM build failed"
               echo "If this is a configure/link error, it may be a genuine"
