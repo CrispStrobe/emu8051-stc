@@ -106,12 +106,21 @@ jobs:
           sed -i '1i #define HAVE_PSIGNAL 1' \
             support/sdbinutils/libiberty/strsignal.c
 
+          # Pass WASM link flags at CONFIGURE time so autoconf bakes them
+          # into every generated Makefile in the tree — including support/cpp
+          # (sdcpp). This is the fix for sdcpp not receiving MODULARIZE/FS:
+          # command-line make variables do not propagate to sub-makes that
+          # assign LDFLAGS themselves, but configure-time LDFLAGS do.
+          WASM_LDFLAGS="-sUSE_ZLIB -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM"
+          WASM_LDFLAGS="$WASM_LDFLAGS -sMODULARIZE=1 -sEXPORT_NAME=createSDCC"
+          WASM_LDFLAGS="$WASM_LDFLAGS -sEXPORTED_RUNTIME_METHODS=FS"
+
           emconfigure ./configure \
             CC=emcc CXX=em++ \
             CFLAGS="-sUSE_ZLIB" \
             CXXFLAGS="-sUSE_ZLIB -std=c++11" \
             CPPFLAGS="-isystem /tmp/boost-headers" \
-            LDFLAGS="-sUSE_ZLIB" \
+            LDFLAGS="$WASM_LDFLAGS" \
             --host=i686-unknown-linux-gnu \
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
@@ -138,63 +147,109 @@ jobs:
           # MEMFS only — this is the artifact that ships to browsers.
           # The byte-identity test runs THIS binary, not a NODERAWFS variant,
           # so the test proves the shipped artifact produces correct output.
+          # LDFLAGS already baked in by configure. Only EXEEXT and CXXFLAGS here.
           emmake make -j4 \
             EXEEXT=.js \
             CXXFLAGS="-O2 -Wno-error" \
-            LDFLAGS="-sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
-                     -sMODULARIZE=1 -sEXPORT_NAME=createSDCC \
-                     -sEXPORTED_RUNTIME_METHODS=FS" \
             || {
               echo "::error::SDCC WASM build failed"
               exit 1
             }
 
-      - name: Build sdcpp WASM
+      - name: Build sdcpp WASM (re-link if make missed it)
         run: |
           cd sdcc-emcc
-          # sdcpp is GCC's cpp, built in support/cpp/gcc/.
-          # Its sub-configure fails under emconfigure (can't find native
-          # build compiler), so the make produces .wasm but no .js glue.
-          # Re-link the object files with proper emscripten flags.
-          echo "=== Checking for sdcpp build artifacts ==="
           mkdir -p bin
-          CPP_DIR=support/cpp/gcc
-          if [ -f "$CPP_DIR/cpp.wasm" ]; then
-            echo "Found cpp.wasm — re-linking with proper flags"
+          # Check if make already produced sdcpp.js (configure-time LDFLAGS
+          # should propagate to support/cpp, but its sub-configure may fail)
+          if [ -f bin/sdcpp.js ]; then
+            echo "sdcpp.js already built by make:"
+            ls -lh bin/sdcpp.js bin/sdcpp.wasm
+          else
+            echo "sdcpp.js not produced by make — re-linking from .o files"
+            CPP_DIR=support/cpp/gcc
+            if [ ! -f "$CPP_DIR/cpp.wasm" ]; then
+              echo "::error::No cpp.wasm in $CPP_DIR — sdcpp was not compiled at all"
+              ls -la "$CPP_DIR/" 2>/dev/null
+              exit 1
+            fi
             # Find WASM .o files — exclude build/ which has native host tools
             O_FILES=$(find "$CPP_DIR" -name '*.o' -not -path '*/build/*' | sort)
             LIB_FILES=""
-            for lib in support/cpp/libcpp/libcpp.a support/cpp/libbacktrace/.libs/libbacktrace.a \
+            for lib in support/cpp/libcpp/libcpp.a \
+                       support/cpp/libbacktrace/.libs/libbacktrace.a \
                        support/sdbinutils/libiberty/libiberty.a; do
               [ -f "$lib" ] && LIB_FILES="$LIB_FILES $lib"
             done
             echo "Object files: $(echo $O_FILES | wc -w)"
             echo "Libraries: $LIB_FILES"
-
-            # Re-link with EXACTLY the same flags as the main build.
-            # These must match emmake make LDFLAGS above, or the module
-            # exports a different shape and the driver fails at load time.
+            # Use the same flags configure baked into LDFLAGS
             emcc -O2 \
               $O_FILES $LIB_FILES \
               -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
               -sMODULARIZE=1 -sEXPORT_NAME=createSDCC \
               -sEXPORTED_RUNTIME_METHODS=FS \
-              -o bin/sdcpp.js \
-              2>&1
+              -o bin/sdcpp.js
             if [ ! -f bin/sdcpp.js ]; then
-              echo "::error::sdcpp re-link failed. Cannot proceed."
+              echo "::error::sdcpp re-link failed"
               exit 1
             fi
             echo "sdcpp re-linked:"
             ls -lh bin/sdcpp.js bin/sdcpp.wasm
-          else
-            echo "::warning::No cpp.wasm found — sdcpp was not built"
-            echo "Contents of $CPP_DIR:"
-            ls -la "$CPP_DIR/" 2>/dev/null || echo "(dir not found)"
-            # Try to build sdcpp from scratch using the native-installed version as reference
-            # for what source files are needed. Skip for now.
           fi
-          ls -lh bin/sdcpp.* 2>/dev/null || echo "sdcpp NOT available"
+
+      - name: Verify all WASM tools are modularized
+        run: |
+          cd sdcc-emcc
+          # Assert every tool exports a factory function with FS.
+          # Catches flag propagation failures in one run, not one per run.
+          node -e "
+            const tools = ['sdcc', 'sdas8051', 'sdld'];
+            // sdcpp may be in bin/ (from re-link) or found by packaging
+            const sdcppPath = require('fs').existsSync('bin/sdcpp.js')
+              ? 'bin/sdcpp.js' : null;
+            let ok = true;
+            for (const t of tools) {
+              const p = 'bin/' + t + '.js';
+              try {
+                const m = require('./' + p);
+                if (typeof m !== 'function') {
+                  console.error(t + ': NOT modularized (typeof=' + typeof m + ')');
+                  ok = false;
+                } else {
+                  console.log(t + ': OK (factory)');
+                }
+              } catch(e) {
+                // May be in src/ instead of bin/
+                try {
+                  const m2 = require('./src/' + t + '.js');
+                  if (typeof m2 !== 'function') {
+                    console.error(t + ': NOT modularized');
+                    ok = false;
+                  } else {
+                    console.log(t + ': OK (factory, in src/)');
+                  }
+                } catch(e2) {
+                  console.error(t + ': not found in bin/ or src/');
+                  ok = false;
+                }
+              }
+            }
+            if (sdcppPath) {
+              const m = require('./' + sdcppPath);
+              if (typeof m !== 'function') {
+                console.error('sdcpp: NOT modularized (typeof=' + typeof m + ')');
+                ok = false;
+              } else {
+                console.log('sdcpp: OK (factory)');
+              }
+            } else {
+              console.error('sdcpp: not found');
+              ok = false;
+            }
+            if (!ok) { process.exit(1); }
+            console.log('All tools modularized.');
+          "
 
       - name: Package WASM artifacts
         run: |
