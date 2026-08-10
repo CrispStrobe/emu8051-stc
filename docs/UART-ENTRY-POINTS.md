@@ -179,11 +179,20 @@ callback. The emulator owns this buffer and may overwrite it at any time.
 **The trap, stated plainly:** A serial DebugTarget that passes all its
 tests against this emulator has demonstrated that the protocol logic is
 correct — bytes arrive in the right order, frames parse, commands
-execute. It has NOT demonstrated that the wire works. An idle-timeout
-resync path (which the monitor protocol's framed codec has) is
-unreachable in emulation because bytes arrive instantly and never
-experience the inter-byte gaps that trigger it. A passing test against
-an untimed UART model says nothing about baud mismatch, framing errors,
-or timing-sensitive recovery on real hardware. Say so when reporting
-results: this is evidence category 2b (model agreement), not category 1
-(independent measurement).
+execute. It has NOT demonstrated that the wire works. A passing test
+against an untimed UART model says nothing about baud mismatch, framing
+errors, or timing-sensitive recovery on real hardware. Say so when
+reporting results: this is evidence category 2b (model agreement), not
+category 1 (independent measurement).
+
+**Idle-timeout resync:** The monitor protocol's idle timeout
+(`LIVE_IDLE_MS = 5 ms`) reads Timer 1 wall time, NOT the UART — so it
+is reachable in emulation in principle (ucsim-stc 44bad89). The blocker
+is not a modelling limit but **RX input plumbing**: `emu_serial_write`
+injects a byte immediately with no way to schedule delivery at a future
+nanosecond. To exercise the resync path, the trace harness needs a
+`-inject TIME_NS,BYTE` flag that schedules a byte delivery at a
+specific wall-clock time. Once that exists: send a truncated frame, let
+5 ms pass, then send a well-formed frame and verify the monitor accepts
+it. That is the recovery path a real wire tests hardest and that nothing
+has ever exercised.
