@@ -240,7 +240,14 @@ async function main() {
     });
 
     const relCode = vfsRead(asMod, '/test.rel');
-    console.log(`  Object: ${relCode.length} bytes`);
+    // Also grab .lst and .sym if the assembler produced them —
+    // sdld expects /test.lst beside /test.rel
+    let lstCode = null, symCode = null;
+    try { lstCode = vfsRead(asMod, '/test.lst'); } catch(e) {}
+    try { symCode = vfsRead(asMod, '/test.sym'); } catch(e) {}
+    console.log(`  Object: ${relCode.length} bytes` +
+      (lstCode ? `, lst: ${lstCode.length}` : '') +
+      (symCode ? `, sym: ${symCode.length}` : ''));
 
     // ── Stage 4: Link with sdld ──
     console.log('\n=== Stage 4: sdld (link) ===');
@@ -268,9 +275,21 @@ async function main() {
       populateVFS(M);
       M.FS.writeFile('/test.rel', relCode);
       M.FS.writeFile('/test.lk', lkContent);
+      // sdld looks for .lst and .sym beside .rel
+      if (lstCode) M.FS.writeFile('/test.lst', lstCode);
+      if (symCode) M.FS.writeFile('/test.sym', symCode);
     });
 
-    const ihxOutput = vfsRead(ldMod, '/out.ihx');
+    let ihxOutput;
+    try {
+      ihxOutput = vfsRead(ldMod, '/out.ihx');
+    } catch(e) {
+      console.error('  /out.ihx not found in VFS after link');
+      try {
+        console.log('  VFS root:', ldMod.FS.readdir('/'));
+      } catch(e2) {}
+      throw new Error('Linker did not produce /out.ihx');
+    }
     writeFileSync(outFile, ihxOutput);
     console.log(`\nWASM compile: OK (${ihxOutput.length} bytes written to ${outFile})`);
 
