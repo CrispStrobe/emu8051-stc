@@ -1,45 +1,110 @@
 emu8051-stc
 ===========
 
-Fork of [jarikomppa/emu8051](https://github.com/jarikomppa/emu8051) (MIT)
-with **STC12C5A60S2 / STC15F2K60S2** peripheral models, a **debug control
-interface**, and a **WASM build** (20K + 64K) for use in the browser.
+Fork of [jarikomppa/emu8051](https://github.com/jarikomppa/emu8051) (MIT,
+copyright 2006/2022 Jari Komppa) with STC12/STC15/STC89 peripheral models,
+a debug control interface, UART entry points, and a WASM build for the
+browser. All additions are MIT; no copyleft code was used.
 
-The only MIT-licensed 8051 emulator that runs in a browser with
-STC-specific hardware support. See [LANDSCAPE.md](LANDSCAPE.md) for the
-competitive analysis.
+This is the **bundleable** 8051 emulator for
+[brickwright](https://github.com/CrispStrobe/bw-board) — MIT-licensed,
+21 KB + 65 KB gzipped, runs in a browser without a server. The sibling
+project [ucsim-stc](https://github.com/CrispStrobe/ucsim-stc) (GPL-2,
+part of SDCC) is the accurate oracle; this one is the shippable core.
 
-**Peripherals:** Timer 0/1 (1T/12T), port modes, 10-bit ADC, PCA/PWM
-(8 clock sources, 9-bit compare, double-buffered pin output, toggle,
-capture; 3 modules on STC15), UART1/2, SPI, watchdog, dual DPTR,
-STC15 Timer 2.
+What is in it
+-------------
 
-**Debug:** run/halt/step (5 kinds), breakpoints (code + yield + write),
-memory access (5 address spaces), registers, PC histogram profiling,
-pin history ring buffer, Level 1 position for cooperative scheduler.
+**5 MCU parts** behind a runtime switch (`emu_set_part`):
 
-**Verified:** 598 test assertions across 15 suites (native + WASM + GDB
-\+ monitor protocol × 5 codecs), 31 firmware images. On-chip debug
-monitor protocol verified against 5 independent codec implementations
-with time-freeze measurement (bw_ms frozen during halt, skew_ms =
-527 ms for 500 ms halt). Third-party corpus: 220/349 byte-identical
-event streams; 86 timing-only (zero instruction disagreements).
-See [RESULTS.md](RESULTS.md).
+| Part | Core | Flash | SRAM | PCA modules |
+|------|------|-------|------|-------------|
+| STC12C5A60S2 | 1T | 60 KB | 1280 B | 2 |
+| STC12C5A16S2 | 1T | 16 KB | 1280 B | 2 |
+| STC15F2K60S2 | 1T | 60 KB | 2048 B | 3 |
+| STC15W408AS | 1T | 8 KB | 512 B | 0 |
+| STC89C52RC | 12T | 8 KB | 512 B | 0 (8052 Timer 2) |
 
-**API:** 71 WASM exports. See [API.md](API.md).
+**Peripherals:** Timer 0/1 (1T and 12T via AUXR.7/AUXR.6), port modes
+(quasi-bidirectional / push-pull / input-only / open-drain per pin), 10-bit
+ADC (8 channels, 4 speed settings, ADRJ justification), PCA (16-bit counter,
+8 clock sources, compare/match, 8-bit PWM, capture, toggle), UART1/2 with
+TX callback and RX inject, dual DPTR, STC15 Timer 2, STC89 8052 Timer 2.
 
-What changed from upstream
---------------------------
+**Debug control (boundary D):** run / halt / step (5 kinds: instruction,
+tick, over, out, ns-target), breakpoints (code address, yield-point, SFR
+write), memory access (5 address spaces), register read, PC histogram
+profiling, pin history ring buffer, cooperative-scheduler position tracking.
 
-| Area | What |
-|------|------|
-| **SFR set** | 44 STC12-specific registers added (`stc12.h`): AUXR, port mode (PxM1/PxM0), ADC, PCA/PWM, SPI/UART2/WDT stubs |
-| **1T/12T timers** | AUXR.7 (T0x12) and AUXR.6 (T1x12) switch Timer 0/1 between FOSC/12 and FOSC/1. Both states tested explicitly. |
-| **Port modes** | PxM1/PxM0 implement quasi-bidirectional, push-pull, input-only, and open-drain per pin |
-| **ADC** | 10-bit, 8 channels, 4 speed settings, ADRJ justification. Register sequence from datasheet (not confirmed on silicon). |
-| **PCA** | 16-bit counter, FOSC/12 / FOSC/2 / T0-overflow clock sources, compare/match, 8-bit PWM |
-| **WASM** | `Makefile.wasm` builds `emu8051.js` + `emu8051.wasm` (12 K + 49 K) via Emscripten. Modularized as `createEmu8051()`. |
-| **`-stc12` flag** | Runtime switch; without it behaviour is identical to upstream emu8051 |
+**WASM API:** 75 exports. `createEmu8051()` factory, modularized, no
+SharedArrayBuffer required (single-threaded, runs on GitHub Pages).
+
+**AVR adapter** (`avr-adapter/`): boundary-A adapter around
+[avr8js](https://github.com/nickolaj/avr8js) (MIT) for ATmega328P,
+ATmega168P, ATtiny85. 7/10 conformance tests pass; 3 are honest structural
+gaps (AVR lacks quasi-bidirectional and open-drain modes, ADC needs
+firmware-driven conversion). AVR compilation to WASM is deferred
+(stc d49d0c0); AVR emulation via avr8js is not affected.
+
+**UART entry points** for serial DebugTarget integration: TX callback fires
+synchronously on SBUF write, RX inject via `emu_serial_write`. Baud timing
+is NOT modelled — bytes are instant. See `docs/UART-ENTRY-POINTS.md` for
+the full contract including SFR story and the trap about untimed models.
+
+**SDCC 4.5.0 as WASM** (`.github/workflows/build-sdcc-wasm.yml`): four-stage
+pipeline (cc1 preprocess, sdcc --c1mode codegen, sdas8051 assemble, sdld
+link) running in MEMFS with no fork/exec. Code generation matches native
+SDCC 4.5.0 byte-for-byte; link-layout alignment is in progress (1-byte
+origin difference as of 2026-08-10, from library set mismatch). Specified
+and partially built, not yet shipping.
+
+What is verified
+----------------
+
+**417 test assertions, 0 failures** across 9 native test suites plus WASM
+tests. 32 firmware test images.
+
+| Suite | Count | What it covers |
+|-------|-------|----------------|
+| `test_stc12` | 12 | Timer 0/1 1T/12T, port modes, ADC ADRJ |
+| `test_suite` | 136 | Firmware-level: blink, ADC, button, pot, scheduler, PCA, serial |
+| `test_integration` | 171 | PCA (counter, compare, PWM, T0 clock, capture), open-drain, ADC edges, 13-bit timer, hex loader |
+| `test_debug` | 37 | Boundary D: run/halt/step, breakpoints, memory spaces |
+| `test_cycles` | 34 | MCS-51 instruction cycle counts |
+| `test_mass` | 39 | 32 firmware images, pass/fail per image |
+
+**Differential trace:** `emu_trace` emits per-event traces for cross-checking
+against ucsim-stc. Third-party corpus: 220/349 byte-identical event streams;
+86 timing-only (zero instruction disagreements). Format spec in
+`spec-updates/001-differential-trace-format.md`.
+
+**PCA interrupt vector (0x3B):** confirmed by servo pulse measurement at
+three angles (0°=501 us, 90°=1502 us, 180°=2502 us, all under 0.3% error)
+and by datasheet citation (Ch. 6, p. 138). IE.6 is ELVD (LVD enable), not
+PCA enable — PCA interrupt is gated by ECCFn in CCAPMn. Evidence category
+2b: two emulators agree, no silicon. See `spec-updates/008-stc12-interrupt-vectors.md`.
+
+**Nothing in this repo has run on real silicon.** The ADC register sequence,
+PCA timing, and UART model are all from the datasheet and are self-consistent
+(category 2b). They have not been confirmed on hardware. The test images
+(`test_images/02-adc.hex`) exist precisely to verify on a real chip and have
+not been run.
+
+What is NOT done
+----------------
+
+- **SDCC WASM byte-identity:** code generation matches native; link layout
+  has a 1-byte origin shift (lib/small vs lib/small-stack-auto). Specified,
+  partially built.
+- **Baud-rate timing:** UART TX and RX are instant. Baud mismatch is
+  undetectable in emulation. Idle-timeout resync needs a `-inject` flag in
+  the trace harness (specified in `docs/UART-ENTRY-POINTS.md` §9, not built).
+- **SPI, watchdog:** SFR storage only, no logic.
+- **PCA PWM pin output:** computed internally, not wired to observable port pin.
+- **UART mode 0 (synchronous):** not implemented.
+- **Framing errors, parity, multi-processor communication:** not modelled.
+- **AVR conformance:** 3/10 tests fail (structural gaps, not bugs).
+- **Silicon verification:** nothing has been tested on hardware.
 
 Build
 -----
@@ -49,144 +114,65 @@ Build
 ```bash
 sudo apt-get install libncurses5-dev
 make
-./emu -stc12 firmware.hex
+./emu firmware.hex          # upstream 8051
+./emu firmware.hex          # STC12 mode via emu_set_part()
 ```
 
 ### WASM (browser / Node)
 
 ```bash
-# one-time: install Emscripten
-git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
-source ~/emsdk/emsdk_env.sh
-
-# build
+source /path/to/emsdk/emsdk_env.sh
 make -f Makefile.wasm
-# -> build/emu8051.js + build/emu8051.wasm
+# -> build/emu8051.js (21 KB) + build/emu8051.wasm (65 KB)
 ```
 
-### Test images (requires SDCC)
+### Tests
 
 ```bash
-sudo apt-get install sdcc
-make test-images          # builds test_images/01-blink.hex, 02-adc.hex
+sudo apt-get install sdcc   # for test image compilation
+make test-images
+make test                   # 417 assertions, 9 suites
 ```
 
-### Run all tests
+### Differential trace
 
 ```bash
-make test                 # unit tests + integration tests with real firmware
+make emu_trace
+./emu_trace -fosc 11059200 -part stc12 -until-ns 200000000 firmware.hex
 ```
 
-WASM API
---------
+Parts: `stc12`, `stc15`, `stc89`, `stc15w`. Flags: `-adc CH,VAL`,
+`-bp ADDR`, `-read SPACE,ADDR,LEN`, `-write SPACE,ADDR,VAL`.
+
+WASM API (quick start)
+----------------------
 
 ```js
 import createEmu8051 from './build/emu8051.js';
 const Module = await createEmu8051();
 
-const init     = Module.cwrap('emu_init',     null,     ['number']);
-const tick     = Module.cwrap('emu_tick',      'number', []);
-const run      = Module.cwrap('emu_run',       'number', ['number']);
-const loadHex  = Module.cwrap('emu_load_hex',  'number', ['string','number']);
-const getSfr   = Module.cwrap('emu_get_sfr',   'number', ['number']);
-const setSfr   = Module.cwrap('emu_set_sfr',   null,     ['number','number']);
-const getPC    = Module.cwrap('emu_get_pc',    'number', []);
-const disasm   = Module.cwrap('emu_disasm',    'string', ['number']);
-const setAdc   = Module.cwrap('emu_set_adc_input', null, ['number','number']);
-const setPort  = Module.cwrap('emu_set_port_input', null, ['number','number']);
+const init    = Module.cwrap('emu_init',    null,     ['number']);
+const run     = Module.cwrap('emu_run',     'number', ['number']);
+const loadHex = Module.cwrap('emu_load_hex','number', ['string','number']);
+const getSfr  = Module.cwrap('emu_get_sfr', 'number', ['number']);
 
-init(1);                         // 1 = STC12 mode
+init(1);  // 1 = STC12
 loadHex(hexString, hexString.length);
-run(1000000);                    // run 1M oscillator clocks
-console.log('PC:', getPC());
+run(1000000);
 console.log('P1:', getSfr(0x90).toString(16));
 ```
 
-Full export list: `emu_init`, `emu_reset`, `emu_tick`, `emu_run`,
-`emu_load_hex`, `emu_get/set_sfr`, `emu_get/set_iram`, `emu_get_code`,
-`emu_get/set_xdata`, `emu_get/set_pc`, `emu_disasm`,
-`emu_set_adc_input`, `emu_set_port_input`, `emu_set_fosc`.
-
-### Boundary A (pin bus)
-
-For integration with the board layer (`CrispStrobe/bw-board`), use the push
-API instead of polling:
-
-```js
-// These replace polling emu_get_sfr(P1) every cycle:
-const getPinMode  = Module.cwrap('emu_get_pin_mode',  'number', ['number','number']);
-const getPinDrive = Module.cwrap('emu_get_pin_drive',  'number', ['number','number']);
-const setPinInput = Module.cwrap('emu_set_pin_input',  null,     ['number','number','number']);
-const setAdcVolt  = Module.cwrap('emu_set_adc_voltage', null,    ['number','number']); // volts, not counts
-const advanceTo   = Module.cwrap('emu_advance_to_ns',  'number', ['number','number']);
-const setVcc      = Module.cwrap('emu_set_vcc',         null,    ['number']);
-```
-
-In native C, register a `stc12_pin_callback` via `stc12_set_board_callbacks()`
-to receive `(port, bit, mode, driveHigh)` on every pin change — including mode
-register writes, not just port data writes. The board never calls the MCU; it
-only answers `readPin` and `readAnalog` when asked. See
-[simulation-contract.md](https://github.com/CrispStrobe/sb3-creator/blob/main/reference/simulation-contract.md).
-
-Differential trace
-------------------
-
-For cross-checking against the ucsim-stc fork:
-
-```bash
-make emu_trace
-./emu_trace -fosc 11059200 -cycles 1000000 firmware.hex > trace.tsv
-```
-
-Emits one tab-separated event per line: `PC`, `SFR`, `PIN`, `TF` (timer
-overflow), `ADC`. Format spec in `spec-updates/001-differential-trace-format.md`.
-
-Tests
------
-
-| Suite | What it covers |
-|-------|----------------|
-| `test_stc12` | 12 unit tests: Timer 0/1 in 1T and 12T modes, auto-reload overflow, all four port modes, ADC with both ADRJ settings |
-| `test_blink` | Loads `01-blink.hex`, verifies init (AUXR.T0x12=0, TMOD=mode1, P1M0 push-pull), confirms LED toggle after 150 ms |
-| `test_adc` | Loads `02-adc.hex`, verifies P1ASF routing + input mode, ADC conversion with known input, blink at correct rate |
-| `test_integration` | 52 tests: button input with debounce, potentiometer ADC, 1T/12T synthetic, PCA (counter, compare, PWM, T0 clock), open-drain, ADC edge cases, 13-bit timer, hex loader |
-| `test_wasm.mjs` | 14 tests: init, hex load, execution, SFR access, disassembly, boundary A (pin mode/drive, advanceTo, ADC voltage) |
-
-Caveats
--------
-
-- The **ADC register sequence** is from the datasheet (sections 10.x) and is
-  self-consistent, but has **not been confirmed on silicon**. The `02-adc`
-  test image exists precisely to verify it on a real chip.
-- **PCA PWM output** is computed internally but not yet wired to a visible
-  port pin.
-- **BRT** (independent baud rate timer) is stubbed — the counter runs but
-  has no UART baud rate effect.
-- **SPI, UART2, watchdog** have SFR storage but no logic.
-- **ADC conversion times** (420/280/140/70 clocks) are single-source (datasheet
-  §10.5). No independent corroboration found. See `FINDINGS.md` §2.
-
-Spec updates
-------------
-
-Changes proposed to the shared peripheral spec live in `spec-updates/` as
-standalone documents (not edits to the read-only mirror at
-`/mnt/volume1/code/stc/docs/`). Current patches:
-
-- `001-differential-trace-format.md` — trace format for cross-checking
-  against ucsim-stc.
-
-See also `FINDINGS.md` for bugs found during implementation that the ucsim
-fork should check for.
+75 exports total. See `Makefile.wasm` for the full list. Boundary A
+(pin bus), boundary D (debug control), UART, and pin history are all
+available. See `docs/UART-ENTRY-POINTS.md` for serial integration.
 
 Licence
 -------
 
-MIT. Original emulator core copyright 2006/2022 Jari Komppa. STC12
-extensions copyright 2024 CrispStrobe. See [LICENSE](LICENSE) and
+MIT. Original emulator core copyright 2006/2022 Jari Komppa. STC12/15/89
+extensions copyright 2024-2026 CrispStrobe. See [LICENSE](LICENSE) and
 [THIRD-PARTY.md](THIRD-PARTY.md).
 
 No code from copyleft sources (ucsim, QEMU, SimulIDE, circuitjs, Verilator)
-was used. SDCC (GPL-2+) is a build-time dependency for compiling test images
-only and is not linked into the emulator.
+was used. SDCC (GPL-2+) is a build-time dependency for test images and for
+the WASM compiler pipeline; it is not linked into the emulator.
