@@ -204,10 +204,14 @@ async function main() {
     // --c1mode reads preprocessed code from STDIN (not a file argument).
     // "warning 160: only standard input is compiled in c1 mode"
     // We feed it via Emscripten's stdin hook.
+    // --c1mode derives module name from -o path. Use bare 'test.asm'
+    // so .module is 'test' not '_work_test'. --obj-ext=.rel makes sdcc
+    // emit the 'O -mmcs51 --model-small' option record in the .asm.
     const sdccArgs = [
       '--c1mode',
       '-mmcs51', '--model-small',
-      '-o', '/work/test.asm',
+      '--obj-ext=.rel',
+      '-o', 'test.asm',
     ];
 
     // Build a stdin feeder from the preprocessed buffer
@@ -227,7 +231,7 @@ async function main() {
 
     let asmCode;
     try {
-      asmCode = vfsRead(ccMod, '/work/test.asm');
+      asmCode = vfsRead(ccMod, '/test.asm');
     } catch(e) {
       // Check what files were created
       const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
