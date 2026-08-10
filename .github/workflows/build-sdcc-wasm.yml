@@ -136,6 +136,7 @@ jobs:
           # Build with Emscripten. SINGLE-THREADED: no -pthread.
           # Pass WASM flags only at link time via LDFLAGS.
           emmake make -j4 \
+            EXEEXT=.js \
             CXXFLAGS="-O2 -Wno-error" \
             LDFLAGS="-sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM \
                      -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 \
@@ -151,21 +152,30 @@ jobs:
         run: |
           mkdir -p dist/sdcc-wasm
 
-          # Copy WASM binaries
-          for tool in sdcc sdcpp; do
-            if [ -f sdcc-emcc/src/$tool.js ]; then
-              cp sdcc-emcc/src/$tool.js sdcc-emcc/src/$tool.wasm dist/sdcc-wasm/
-            fi
-          done
+          echo "=== Finding WASM artifacts ==="
+          find sdcc-emcc -name '*.js' -o -name '*.wasm' | grep -v node_modules | sort
 
-          # Assembler and linker
-          for tool in sdas8051 sdld; do
-            for dir in sdcc-emcc/sdas/as8051 sdcc-emcc/sdas/linksrc sdcc-emcc/support/sdbinutils/binutils; do
+          # Copy WASM binaries — with EXEEXT=.js, tools are name.js + name.wasm
+          for tool in sdcc sdcpp; do
+            for dir in sdcc-emcc/src sdcc-emcc/bin; do
               if [ -f "$dir/$tool.js" ]; then
-                cp "$dir/$tool.js" "$dir/$tool.wasm" dist/sdcc-wasm/
+                cp "$dir/$tool.js" dist/sdcc-wasm/
+                [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
+                echo "Copied $tool from $dir"
                 break
               fi
             done
+          done
+
+          # Assembler and linker from sdas/
+          for tool in sdas8051 sdld; do
+            found=$(find sdcc-emcc -name "$tool.js" -not -path '*/node_modules/*' | head -1)
+            if [ -n "$found" ]; then
+              dir=$(dirname "$found")
+              cp "$dir/$tool.js" dist/sdcc-wasm/
+              [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
+              echo "Copied $tool from $dir"
+            fi
           done
 
           # Minimum headers for mcs51
@@ -187,12 +197,17 @@ jobs:
 
           # Report sizes
           echo "=== Artifact sizes ==="
-          ls -lh dist/sdcc-wasm/*.js dist/sdcc-wasm/*.wasm 2>/dev/null || echo "No WASM artifacts found"
+          ls -lh dist/sdcc-wasm/*.js dist/sdcc-wasm/*.wasm 2>/dev/null || {
+            echo "::error::No WASM artifacts found in dist/sdcc-wasm/"
+            echo "Contents:"
+            ls -la dist/sdcc-wasm/
+            exit 1
+          }
           echo ""
           echo "=== Gzipped total ==="
-          tar czf /tmp/sdcc-emcc.tar.gz -C dist sdcc-emcc
-          ls -lh /tmp/sdcc-emcc.tar.gz
-          GZIP_SIZE=$(stat -c%s /tmp/sdcc-emcc.tar.gz)
+          tar czf /tmp/sdcc-wasm.tar.gz -C dist sdcc-wasm
+          ls -lh /tmp/sdcc-wasm.tar.gz
+          GZIP_SIZE=$(stat -c%s /tmp/sdcc-wasm.tar.gz)
           echo "Gzipped transfer size: $GZIP_SIZE bytes ($(echo "scale=1; $GZIP_SIZE / 1048576" | bc) MB)"
 
       # ── Step 3: Byte-identity test ──
