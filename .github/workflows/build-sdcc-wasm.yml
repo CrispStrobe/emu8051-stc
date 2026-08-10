@@ -370,24 +370,20 @@ jobs:
             echo "::warning::Pipeline exited with code $PIPELINE_EXIT"
           fi
 
-          if [ -f /tmp/byte-test/wasm.ihx ]; then
-            echo ""
-            echo "=== Byte-identity diff ==="
-            if diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx > /dev/null 2>&1; then
-              echo "BYTE-IDENTICAL: native and WASM produce the same .ihx"
-              echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
-              echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
-            else
-              echo "::error::MISMATCH: native and WASM .ihx differ"
-              echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
-              echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
-              diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx || true
-              exit 1
-            fi
-          else
+          if [ ! -f /tmp/byte-test/wasm.ihx ]; then
             echo "::error::WASM compile did not produce output file"
             exit 1
           fi
+
+          echo ""
+          echo "=== Byte-identity comparison ==="
+          echo "  Native .ihx: $(wc -c < /tmp/byte-test/native.ihx) bytes"
+          echo "  WASM .ihx:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
+
+          # Compare decoded memory images, not HEX text.
+          # Record boundaries may differ; the image is what matters.
+          python3 sdcc-wasm/compare-ihx.py \
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx
 
       - name: Write BUILD-INFO
         run: |
