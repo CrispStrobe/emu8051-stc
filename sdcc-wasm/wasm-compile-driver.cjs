@@ -57,10 +57,7 @@ console.log(`  Source: ${srcFile} (${sourceCode.length} bytes)`);
 console.log(`  Headers: ${headerFiles.length} top-level, ${mcs51Headers.length} mcs51`);
 console.log(`  Lib files: ${libFiles.length}`);
 
-// ── Startup checks: verify all tools load and libs are present ──
-// Accept both modularized (factory function) and non-modularized (object)
-// but warn loudly when a tool is not modularized, since that means
-// the build flags did not propagate.
+// ── Startup checks: all tools must be modularized factory functions ──
 const TOOLS = ['sdcc', 'sdcpp', 'sdas8051', 'sdld'];
 const toolFactories = {};
 for (const tool of TOOLS) {
@@ -70,16 +67,13 @@ for (const tool of TOOLS) {
     process.exit(1);
   }
   const mod = require(p);
-  if (typeof mod === 'function') {
-    toolFactories[tool] = mod;
-    console.log(`  ${tool}.js: OK (factory function)`);
-  } else if (typeof mod === 'object' && mod !== null) {
-    console.warn(`  WARNING: ${tool}.js is not modularized (typeof=object). Using it directly.`);
-    toolFactories[tool] = () => Promise.resolve(mod);
-  } else {
-    console.error(`FATAL: ${tool}.js exports unexpected type: ${typeof mod}`);
+  if (typeof mod !== 'function') {
+    console.error(`FATAL: ${tool}.js is not modularized (typeof=${typeof mod}). All tools must be linked with -sMODULARIZE=1.`);
     process.exit(1);
   }
+  // Probe exported methods by instantiating briefly
+  toolFactories[tool] = mod;
+  console.log(`  ${tool}.js: OK (factory function)`);
 }
 if (libFiles.length === 0) {
   console.error('FATAL: No library files found. sdld will fail at stage 4.');
