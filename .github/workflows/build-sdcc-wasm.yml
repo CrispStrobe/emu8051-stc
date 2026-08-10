@@ -247,42 +247,105 @@ jobs:
             exit 1
           fi
 
-          # WASM compile — invoke via node with callMain
+          # WASM compile — preload VFS with headers/libs, then compile
           echo "=== WASM compile ==="
+          INSTALLED="$(pwd)/sdcc-installed"
+
+          # Write a Node.js driver that:
+          # 1. Loads the WASM sdcc module
+          # 2. Populates the Emscripten VFS with headers and libs
+          # 3. Writes the source file into the VFS
+          # 4. Calls callMain with the same flags as native
+          cat > /tmp/byte-test/wasm-compile.mjs << 'DRIVER'
+          import { createRequire } from 'module';
+          import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+          import { join, basename, dirname } from 'path';
+          const require = createRequire(import.meta.url);
+
+          const sdccPath = process.argv[2];
+          const installedDir = process.argv[3];
+          const srcFile = process.argv[4];
+          const outFile = process.argv[5];
+
+          // Recursively add files to Emscripten FS
+          function addDirToFS(m, hostDir, vfsDir) {
+            try { m.FS.mkdir(vfsDir); } catch(e) {}
+            for (const name of readdirSync(hostDir)) {
+              const hostPath = join(hostDir, name);
+              const vfsPath = vfsDir + '/' + name;
+              const st = statSync(hostPath);
+              if (st.isDirectory()) {
+                addDirToFS(m, hostPath, vfsPath);
+              } else {
+                const data = readFileSync(hostPath);
+                m.FS.writeFile(vfsPath, data);
+              }
+            }
+          }
+
+          const createModule = require(sdccPath);
+          const m = await createModule();
+
+          // Populate VFS with installed SDCC's share/sdcc tree
+          const shareDir = join(installedDir, 'share', 'sdcc');
+          addDirToFS(m, join(shareDir, 'include'), '/share/sdcc/include');
+          addDirToFS(m, join(shareDir, 'lib'), '/share/sdcc/lib');
+
+          // Write source file
+          const src = readFileSync(srcFile);
+          m.FS.writeFile('/test.c', src);
+
+          // Compile
+          try {
+            m.callMain([
+              '-mmcs51', '--model-small',
+              '--no-std-crt0',
+              '-I/share/sdcc/include',
+              '-L/share/sdcc/lib/small-mcs51-stack-auto',
+              '-o', '/out.ihx',
+              '/test.c'
+            ]);
+          } catch(e) {
+            // callMain may throw on exit(0)
+          }
+
+          // Read output
+          try {
+            const ihx = m.FS.readFile('/out.ihx', { encoding: 'utf8' });
+            writeFileSync(outFile, ihx);
+            console.log('WASM compile: OK (' + ihx.length + ' bytes)');
+          } catch(e) {
+            console.error('WASM compile: output not found (' + e.message + ')');
+            process.exit(1);
+          }
+          DRIVER
+
           if [ -f "$WASM_SDCC" ]; then
-            # WASM sdcc needs headers and libs in its virtual FS.
-            # For now, test that it runs at all.
-            node -e "
-              const createModule = require('$WASM_SDCC');
-              createModule().then(m => {
-                console.log('WASM sdcc loaded, calling --version');
-                try { m.callMain(['--version']); } catch(e) {}
-              }).catch(e => console.error('Load failed:', e.message));
-            " 2>&1 || true
+            node /tmp/byte-test/wasm-compile.mjs \
+              "$WASM_SDCC" "$INSTALLED" \
+              /tmp/byte-test/test.c /tmp/byte-test/wasm.ihx \
+              2>&1 || true
 
-            echo ""
-            echo "WASM sdcc loads. Full byte-identity test requires"
-            echo "virtual filesystem setup for headers and libraries."
-            echo "That is the next step — this run proves the binary runs."
-            SKIP=1
+            if [ -f /tmp/byte-test/wasm.ihx ]; then
+              echo ""
+              echo "=== Byte-identity diff ==="
+              if diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx > /dev/null 2>&1; then
+                echo "BYTE-IDENTICAL: native and WASM produce the same .ihx"
+                echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
+                echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
+              else
+                echo "::error::MISMATCH: native and WASM .ihx differ"
+                echo "  Native: $(wc -c < /tmp/byte-test/native.ihx) bytes"
+                echo "  WASM:   $(wc -c < /tmp/byte-test/wasm.ihx) bytes"
+                diff /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx || true
+                exit 1
+              fi
+            else
+              echo "::warning::WASM compile did not produce output"
+            fi
           else
-            echo "::warning::WASM sdcc not found at $WASM_SDCC"
-            SKIP=1
-          fi
-
-          echo ""
-          echo "=== Summary ==="
-          echo "Native compile: PASS"
-          echo "WASM loads: $([ -f "$WASM_SDCC" ] && echo 'PASS' || echo 'SKIP')"
-          echo "Byte-identity: NOT YET IMPLEMENTED (needs VFS for headers/libs)"
-          echo ""
-          echo "The byte-identity assertion is not yet made."
-          echo "This step verifies the WASM binary loads and runs."
-          echo "Full test: compile 9 examples with both, diff .hex output."
-
-          # Do NOT exit 0 silently — make the gap visible
-          if [ $SKIP -gt 0 ]; then
-            echo "::warning::Byte-identity test not yet implemented — WASM binary loads but has not compiled anything"
+            echo "::error::WASM sdcc not found at $WASM_SDCC"
+            exit 1
           fi
 
       - name: Write BUILD-INFO
