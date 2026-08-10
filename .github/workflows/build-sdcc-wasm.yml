@@ -287,57 +287,54 @@ jobs:
       - name: Write BUILD-INFO
         run: |
           EMCC_VER=$(emcc --version | head -1)
+          BINFO=dist/sdcc-wasm/BUILD-INFO.md
 
           # Collect artifact sizes
-          SIZES=""
-          GZIP_TOTAL=""
-          for tool in sdcc sdcpp sdas8051 sdld; do
-            if [ -f "dist/sdcc-wasm/$tool.wasm" ]; then
-              SZ=$(ls -lh "dist/sdcc-wasm/$tool.wasm" | awk '{print $5}')
-              SIZES="${SIZES}| ${tool}.wasm | ${SZ} |\n"
-            fi
-          done
-          tar czf /tmp/sdcc-wasm-all.tar.gz -C dist sdcc-wasm
-          GZIP_TOTAL=$(ls -lh /tmp/sdcc-wasm-all.tar.gz | awk '{print $5}')
-
-          cat > dist/sdcc-wasm/BUILD-INFO.md << BUILDEOF
-# SDCC WASM build provenance
-
-**SDCC version:** ${{ env.SDCC_VERSION }}
-**Source tarball:** ${{ env.SDCC_URL }}
-**Source SHA-256:** ${{ env.SDCC_SHA256 }}
-**Emscripten:** ${EMCC_VER}
-**Ports:** mcs51 only
-**Threading:** single-threaded (no -pthread, no SharedArrayBuffer)
-**Architecture:** four-stage MEMFS pipeline (no fork/exec)
-**Patches applied:** psignal libiberty conflict (#define HAVE_PSIGNAL 1)
-
-## Artifact sizes
-
-| File | Size |
-|------|------|
-$(printf "$SIZES")
-| **gzipped total** | **${GZIP_TOTAL}** |
-
-## Pipeline
-
-\`sdcpp\` (preprocess) → \`sdcc --c1mode\` (codegen) →
-\`sdas8051\` (assemble) → \`sdld\` (link)
-
-Each tool runs as a separate WASM module instance with its own MEMFS.
-Intermediate files are passed through JS. No fork, no exec, no
-SharedArrayBuffer. Works identically in Node and in the browser.
-
-## Licence
-
-SDCC is GPL-2+. This WASM build is a distribution of SDCC.
-The corresponding source is the tarball above, plus the patch listed.
-No modifications beyond build-system changes for Emscripten.
-
-## Scope
-
-8051/mcs51 only. AVR (avr-gcc) is NOT included and stays server-side.
-BUILDEOF
+          {
+            echo "# SDCC WASM build provenance"
+            echo ""
+            echo "SDCC version: ${{ env.SDCC_VERSION }}"
+            echo "Source tarball: ${{ env.SDCC_URL }}"
+            echo "Source SHA-256: ${{ env.SDCC_SHA256 }}"
+            echo "Emscripten: $EMCC_VER"
+            echo "Ports: mcs51 only"
+            echo "Threading: single-threaded (no -pthread, no SharedArrayBuffer)"
+            echo "Architecture: four-stage MEMFS pipeline (no fork/exec)"
+            echo "Patches: psignal libiberty conflict (HAVE_PSIGNAL)"
+            echo ""
+            echo "## Artifact sizes"
+            echo ""
+            echo "| File | Size |"
+            echo "|------|------|"
+            for tool in sdcc sdcpp sdas8051 sdld; do
+              if [ -f "dist/sdcc-wasm/$tool.wasm" ]; then
+                SZ=$(ls -lh "dist/sdcc-wasm/$tool.wasm" | awk '{print $5}')
+                echo "| ${tool}.wasm | ${SZ} |"
+              fi
+            done
+            tar czf /tmp/sdcc-wasm-all.tar.gz -C dist sdcc-wasm
+            GZIP_SZ=$(ls -lh /tmp/sdcc-wasm-all.tar.gz | awk '{print $5}')
+            echo "| gzipped total | ${GZIP_SZ} |"
+            echo ""
+            echo "## Pipeline"
+            echo ""
+            echo "sdcpp (preprocess) -> sdcc --c1mode (codegen) ->"
+            echo "sdas8051 (assemble) -> sdld (link)"
+            echo ""
+            echo "Each tool runs as a separate WASM module with its own MEMFS."
+            echo "No fork, no exec, no SharedArrayBuffer."
+            echo ""
+            echo "## Licence"
+            echo ""
+            echo "SDCC is GPL-2+. This WASM build is a distribution of SDCC."
+            echo "Corresponding source: tarball above plus patch listed."
+            echo ""
+            echo "## Scope"
+            echo ""
+            echo "8051/mcs51 only. AVR (avr-gcc) stays server-side."
+          } > "$BINFO"
+          echo "BUILD-INFO written:"
+          cat "$BINFO"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
