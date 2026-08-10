@@ -177,13 +177,13 @@ jobs:
               -sMODULARIZE=1 -sEXPORT_NAME=createSdcpp \
               -sEXPORTED_RUNTIME_METHODS=FS \
               -sALLOW_MEMORY_GROWTH=1 \
-              -o ../bin/sdcpp.js \
+              -o bin/sdcpp.js \
               2>&1 || {
                 echo "::warning::sdcpp re-link failed, trying alternative approach"
                 # Alternative: link from the a.out.js that exists
                 if [ -f "$CPP_DIR/a.out.js" ]; then
-                  cp "$CPP_DIR/a.out.js" ../bin/sdcpp.js
-                  cp "$CPP_DIR/a.out.wasm" ../bin/sdcpp.wasm 2>/dev/null || true
+                  cp "$CPP_DIR/a.out.js" bin/sdcpp.js
+                  cp "$CPP_DIR/a.out.wasm" bin/sdcpp.wasm 2>/dev/null || true
                   echo "Copied a.out.js as sdcpp.js (may lack MODULARIZE)"
                 fi
               }
@@ -194,7 +194,7 @@ jobs:
             # Try to build sdcpp from scratch using the native-installed version as reference
             # for what source files are needed. Skip for now.
           fi
-          ls -lh ../bin/sdcpp.* 2>/dev/null || echo "sdcpp NOT available"
+          ls -lh bin/sdcpp.* 2>/dev/null || echo "sdcpp NOT available"
 
       - name: Package WASM artifacts
         run: |
