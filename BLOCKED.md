@@ -31,13 +31,25 @@ Known benign: version comment says (UNIX) vs (Linux).
 
 3. `.optsdcc` directive missing from WASM `--c1mode` output (2044aa9).
    Native sdcc 4.2.0 `--c1mode -mmcs51 --model-small` DOES emit
-   `.optsdcc` — verified locally. The WASM 4.5.0 build does not, for
-   unknown reasons (possibly a WASM-specific omission). The injection
-   is faithful driver reconstruction: it supplies what the compiler
-   should emit but doesn't under WASM. If byte-identity passes, the
-   claim is "WASM SDCC with driver-equivalent pipeline produces
-   identical firmware", not "WASM SDCC produces identical firmware
-   unassisted."
+   `.optsdcc` — verified locally. This means emitting it is the
+   **compiler's** job, not the driver's. The WASM 4.5.0 build omits
+   it, which is a **defect in our WASM build**, and the injection is
+   a **workaround**, not faithful driver reconstruction.
+   NOTE: the evidence is from 4.2.0; the comparison is 4.5.0 vs 4.5.0.
+   Needs version-matched confirmation: run native 4.5.0 `--c1mode` in
+   the CI job and check whether it also emits `.optsdcc`. If it does,
+   the WASM defect is confirmed. If it does not, 4.5.0 changed the
+   behaviour and injection is driver reconstruction after all.
+   If byte-identity passes, the claim is "WASM SDCC with
+   driver-equivalent pipeline produces identical firmware", not
+   "WASM SDCC produces identical firmware unassisted."
+
+## Open: WASM build may silently omit other directives
+
+`.optsdcc` was caught only because it changed a byte we were comparing.
+No audit has been done of what else the WASM `--c1mode` build omits.
+A WASM build that silently drops one directive is not proven to emit
+all the others.
 
 ## Cycle-count fix (done, downstream pending)
 
