@@ -29,6 +29,16 @@ shift remains: native image at 0000-00B0, WASM at 0001-00B1.
    Moved to `/work/test.c` so module name matches native's `test`.
 Known benign: version comment says (UNIX) vs (Linux).
 
+3. `.optsdcc` directive missing from WASM `--c1mode` output (2044aa9).
+   Native sdcc 4.2.0 `--c1mode -mmcs51 --model-small` DOES emit
+   `.optsdcc` — verified locally. The WASM 4.5.0 build does not, for
+   unknown reasons (possibly a WASM-specific omission). The injection
+   is faithful driver reconstruction: it supplies what the compiler
+   should emit but doesn't under WASM. If byte-identity passes, the
+   claim is "WASM SDCC with driver-equivalent pipeline produces
+   identical firmware", not "WASM SDCC produces identical firmware
+   unassisted."
+
 ## Cycle-count fix (done, downstream pending)
 
 `6cb9bc7`: CLR/SETB/CPL/MOV-C bit took 2 MC, should be 1 MC (MCS-51 spec).
