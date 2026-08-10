@@ -124,7 +124,46 @@ for working examples.
 The emulator is a transparent byte pipe. It does not interpret frames.
 The host builds and parses frames; the emulator delivers bytes.
 
-## 7. What is NOT modelled
+## 7. SFR story — what is honoured, what is accepted-and-ignored
+
+Cited against `stc/docs/STC12-PERIPHERAL-MODEL.md` §8 (out of scope) and
+the datasheet (Ch. 8 UART, Ch. 9 BRT).
+
+| SFR | Address | Honoured | Notes |
+|-----|---------|----------|-------|
+| SBUF | 0x99 | **Yes** — TX write triggers callback + TI; RX inject writes here + sets RI | Shared address for TX/RX per 8051 convention |
+| SCON | 0x98 | **Partially** — SM0/SM1 stored but mode is always "8-bit UART". REN stored but not enforced (RX inject works regardless). TI/RI set by model, cleared by firmware. TB8/RB8 stored, not used. | Mode 1 (SM0=0, SM1=1) is the only mode that matters for generated code |
+| PCON | 0x87 | **SMOD bit (bit 7) stored, not used.** Baud doubling has no effect because baud timing is not modelled. IDL/PD bits handled by core (idle/power-down). | SMOD would double baud rate on real silicon |
+| BRT | 0x9C | **Counter runs, does NOT gate timing.** The reload register is writable and readable; the counter increments on schedule. But TX/RX are instant regardless. | Read BRT to compute baud: `FOSC / (32 * (256 - BRT))` with BRTx12 |
+| AUXR | 0x8E | **S1BRS (bit 0) stored.** Selects BRT vs Timer 1 as baud source — honoured for the counter but irrelevant since timing is not gated. BRTx12 (bit 2) stored. | |
+| S2CON | 0x9A | **Same model as SCON** for UART2. S2TI/S2RI set/cleared. | |
+| S2BUF | 0x9B | **Yes** — same instant model as SBUF. | |
+
+**Divergence from the peripheral model:** `STC12-PERIPHERAL-MODEL.md` §8
+lists UART as "out of scope — add when something needs it." This
+implementation exists because the monitor protocol and serial DebugTarget
+need it. The timing gap (instant vs baud-gated) is the divergence:
+the peripheral model would require bit-level timing for full conformance.
+
+## 8. Buffer ownership and concurrency
+
+**TX callback:** The `byte` argument is a value, not a reference. The
+callback owns the byte from the moment it receives it. The callback fires
+synchronously during `emu_run()`/`emu_tick()`/`emu_advance_to_ns()`, so
+it must not re-enter the emulator.
+
+**RX inject:** `emu_serial_write(byte)` writes to SBUF and sets RI
+immediately. If RI is already set (firmware has not read the previous
+byte), the new byte **overwrites** the previous one — there is no
+hardware FIFO. The host must wait for RI to clear before injecting the
+next byte, or accept that bytes will be lost. For the monitor protocol,
+inject one byte, run enough ticks for the ISR to clear RI, then inject
+the next.
+
+**Ring buffer (`serial_out[]`):** 18 bytes, wraps. Legacy; use the TX
+callback. The emulator owns this buffer and may overwrite it at any time.
+
+## 9. What is NOT modelled — and the trap this creates
 
 - **Baud-rate timing.** TX and RX are instant.
 - **Framing errors.** No start/stop bit checking.
@@ -132,3 +171,19 @@ The host builds and parses frames; the emulator delivers bytes.
 - **Multi-processor communication.** SM2/TB8/RB8 bits are stored but
   not used for address filtering.
 - **UART mode 0 (synchronous).** Not implemented.
+- **P3.0/P3.1 ISP contention.** P3.0 (RxD) and P3.1 (TxD) are also the
+  ISP programming pins. On real silicon, serial traffic during ISP
+  entry can trigger unintended resets. The emulator does not model this.
+- **Real UART timing** has never been tested on silicon.
+
+**The trap, stated plainly:** A serial DebugTarget that passes all its
+tests against this emulator has demonstrated that the protocol logic is
+correct — bytes arrive in the right order, frames parse, commands
+execute. It has NOT demonstrated that the wire works. An idle-timeout
+resync path (which the monitor protocol's framed codec has) is
+unreachable in emulation because bytes arrive instantly and never
+experience the inter-byte gaps that trigger it. A passing test against
+an untimed UART model says nothing about baud mismatch, framing errors,
+or timing-sensitive recovery on real hardware. Say so when reporting
+results: this is evidence category 2b (model agreement), not category 1
+(independent measurement).
