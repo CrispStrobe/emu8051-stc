@@ -58,10 +58,9 @@ console.log(`  Headers: ${headerFiles.length} top-level, ${mcs51Headers.length} 
 console.log(`  Lib files: ${libFiles.length}`);
 
 // ── Startup checks: all tools must be modularized factory functions ──
-// cpp is the preprocessor — make names it 'cpp', not 'sdcpp'.
-// The wasm filename is baked into the JS loader at link time,
-// so the names must match what make produced.
-const TOOLS = ['sdcc', 'cpp', 'sdas8051', 'sdld'];
+// cc1 is the self-contained preprocessor (libcpp + main, no fork).
+// 'cpp' is a driver that spawns cc1 — same fork wall as sdcc.
+const TOOLS = ['sdcc', 'cc1', 'sdas8051', 'sdld'];
 const toolFactories = {};
 for (const tool of TOOLS) {
   const p = join(distDir, tool + '.js');
@@ -148,12 +147,16 @@ async function main() {
     // ── Stage 1: Preprocess with sdcpp ──
     console.log('\n=== Stage 1: sdcpp (preprocess) ===');
 
-    // Flags copied from native sdcc 4.5.0 --verbose output.
-    // These must match exactly for byte-identity; verify against
-    // the CI log's "Native compile (--verbose)" step if they drift.
-    const sdcppArgs = [
-      '-nostdinc', '-Wall', '-std=c11',
-      '-obj-ext=.rel',
+    // cc1 is GCC's frontend — it takes -E to preprocess only.
+    // Flags adapted from native sdcc 4.5.0 --verbose output (what
+    // sdcpp/cpp passes to cc1 internally). Verify against the CI
+    // log's "Native compile (--verbose)" step if they drift.
+    const cc1Args = [
+      '-E',                     // preprocess only
+      '-quiet',
+      '-nostdinc',
+      '-Wall',
+      '-std=c11',
       '-D__SDCC_CHAR_UNSIGNED',
       '-D__SDCC_MODEL_SMALL',
       '-D__SDCC_FLOAT_REENT',
@@ -178,7 +181,7 @@ async function main() {
       '/test.c'
     ];
 
-    const cppMod = await runTool('cpp', sdcppArgs, function(M) {
+    const cppMod = await runTool('cc1', cc1Args, function(M) {
       populateVFS(M);
       M.FS.writeFile('/test.c', sourceCode);
     });
@@ -272,7 +275,7 @@ async function main() {
     console.log(`\nWASM compile: OK (${ihxOutput.length} bytes written to ${outFile})`);
 
   } catch(err) {
-    console.error('\nPipeline failed:', err.message);
+    console.error('\nPipeline failed:', err && err.message ? err.message : err);
     process.exit(1);
   }
 }

@@ -163,19 +163,32 @@ jobs:
           # make builds cpp in support/cpp/gcc/ with correct flags (LDFLAGS
           # from configure propagate). Output is 'cpp' not 'cpp.js' because
           # EXEEXT doesn't reach the sub-make. Just copy and rename.
-          # make links to 'cpp' (no .js) — emscripten produces cpp (JS) + cpp.wasm.
-          # Keep original names: the wasm filename is baked into the JS loader.
+          # 'cpp' is a DRIVER that spawns cc1 — hits the same fork wall.
+          # 'cc1' is the self-contained preprocessor (libcpp + main).
+          # Ship cc1 as sdcpp. Keep its original names for the wasm reference.
           CPP_DIR=support/cpp/gcc
-          if [ -f "$CPP_DIR/cpp" ] && [ -f "$CPP_DIR/cpp.wasm" ]; then
-            cp "$CPP_DIR/cpp" bin/cpp.js
-            cp "$CPP_DIR/cpp.wasm" bin/cpp.wasm
-            echo "sdcpp (cpp.js + cpp.wasm) installed:"
-            ls -lh bin/cpp.js bin/cpp.wasm
+          if [ -f "$CPP_DIR/cc1" ] && [ -f "$CPP_DIR/cc1.wasm" ]; then
+            cp "$CPP_DIR/cc1" bin/cc1.js
+            cp "$CPP_DIR/cc1.wasm" bin/cc1.wasm
+            echo "sdcpp = cc1 (self-contained preprocessor):"
+            ls -lh bin/cc1.js bin/cc1.wasm
           else
-            echo "::error::make did not produce cpp + cpp.wasm in $CPP_DIR"
+            echo "::error::make did not produce cc1 + cc1.wasm in $CPP_DIR"
             ls -la "$CPP_DIR"/ 2>/dev/null | head -20
             exit 1
           fi
+
+          # Smoke test: each tool must start without attempting fork/exec
+          echo "=== Smoke test: all tools respond to --version ==="
+          for tool in sdcc sdas8051 sdld; do
+            T="bin/$tool.js"
+            [ -f "$T" ] || T="src/$tool.js"
+            if [ -f "$T" ]; then
+              timeout 10 node "$T" --version 2>&1 | head -1 || echo "$tool: no --version"
+            fi
+          done
+          # cc1 uses -E for preprocessing; --version should still work
+          timeout 10 node bin/cc1.js --version 2>&1 | head -1 || echo "cc1: no --version"
 
       - name: Verify all WASM tools are modularized
         run: |
@@ -184,9 +197,9 @@ jobs:
           # Catches flag propagation failures in one run, not one per run.
           node -e "
             const tools = ['sdcc', 'sdas8051', 'sdld'];
-            // Preprocessor is named cpp.js (make's output name)
-            const sdcppPath = require('fs').existsSync('bin/cpp.js')
-              ? 'bin/cpp.js' : null;
+            // Preprocessor is cc1 (self-contained, no fork)
+            const sdcppPath = require('fs').existsSync('bin/cc1.js')
+              ? 'bin/cc1.js' : null;
             let ok = true;
             for (const t of tools) {
               const p = 'bin/' + t + '.js';
@@ -237,9 +250,9 @@ jobs:
           echo "=== Finding WASM artifacts ==="
           find sdcc-emcc -name '*.js' -o -name '*.wasm' | grep -v node_modules | sort
 
-          # Copy all four WASM tools: sdcc, cpp, sdas8051, sdld
-          # cpp is the preprocessor (make names it 'cpp', not 'sdcpp').
-          for tool in sdcc cpp sdas8051 sdld; do
+          # Copy all four WASM tools: sdcc, cc1, sdas8051, sdld
+          # cc1 is the self-contained preprocessor (not cpp, which is a driver).
+          for tool in sdcc cc1 sdas8051 sdld; do
             # Try known locations first, then fall back to find
             FOUND=""
             for dir in sdcc-emcc/src sdcc-emcc/bin sdcc-emcc/support/cpp; do
@@ -314,14 +327,14 @@ jobs:
           echo ""
 
           # Verify all four WASM tools are present
-          for tool in sdcc cpp sdas8051 sdld; do
+          for tool in sdcc cc1 sdas8051 sdld; do
             if [ ! -f "$DIST/$tool.js" ]; then
               echo "::error::Missing WASM tool: $DIST/$tool.js"
               ls -la "$DIST/" 2>/dev/null
               exit 1
             fi
           done
-          echo "All WASM tools present: sdcc cpp sdas8051 sdld"
+          echo "All WASM tools present: sdcc cc1 sdas8051 sdld"
 
           # Compile a minimal test program with both toolchains.
           mkdir -p /tmp/byte-test
@@ -393,7 +406,7 @@ jobs:
             echo ""
             echo "| File | Size |"
             echo "|------|------|"
-            for tool in sdcc cpp sdas8051 sdld; do
+            for tool in sdcc cc1 sdas8051 sdld; do
               if [ -f "dist/sdcc-wasm/$tool.wasm" ]; then
                 SZ=$(ls -lh "dist/sdcc-wasm/$tool.wasm" | awk '{print $5}')
                 echo "| ${tool}.wasm | ${SZ} |"
