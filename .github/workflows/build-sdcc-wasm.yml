@@ -149,6 +149,53 @@ jobs:
               exit 1
             }
 
+      - name: Build sdcpp WASM
+        run: |
+          cd sdcc-emcc
+          # sdcpp is GCC's cpp, built in support/cpp/gcc/.
+          # Its sub-configure fails under emconfigure (can't find native
+          # build compiler), so the make produces .wasm but no .js glue.
+          # Re-link the object files with proper emscripten flags.
+          echo "=== Checking for sdcpp build artifacts ==="
+          CPP_DIR=support/cpp/gcc
+          if [ -f "$CPP_DIR/cpp.wasm" ]; then
+            echo "Found cpp.wasm — re-linking with proper flags"
+            # Find all .o files that went into cpp
+            O_FILES=$(find "$CPP_DIR" -name '*.o' | sort)
+            LIB_FILES=""
+            for lib in support/cpp/libcpp/libcpp.a support/cpp/libbacktrace/.libs/libbacktrace.a \
+                       support/sdbinutils/libiberty/libiberty.a; do
+              [ -f "$lib" ] && LIB_FILES="$LIB_FILES $lib"
+            done
+            echo "Object files: $(echo $O_FILES | wc -w)"
+            echo "Libraries: $LIB_FILES"
+
+            # Re-link with Emscripten MODULARIZE flags
+            emcc -O2 \
+              $O_FILES $LIB_FILES \
+              -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM \
+              -sMODULARIZE=1 -sEXPORT_NAME=createSdcpp \
+              -sEXPORTED_RUNTIME_METHODS=FS \
+              -sALLOW_MEMORY_GROWTH=1 \
+              -o ../bin/sdcpp.js \
+              2>&1 || {
+                echo "::warning::sdcpp re-link failed, trying alternative approach"
+                # Alternative: link from the a.out.js that exists
+                if [ -f "$CPP_DIR/a.out.js" ]; then
+                  cp "$CPP_DIR/a.out.js" ../bin/sdcpp.js
+                  cp "$CPP_DIR/a.out.wasm" ../bin/sdcpp.wasm 2>/dev/null || true
+                  echo "Copied a.out.js as sdcpp.js (may lack MODULARIZE)"
+                fi
+              }
+          else
+            echo "::warning::No cpp.wasm found — sdcpp was not built"
+            echo "Contents of $CPP_DIR:"
+            ls -la "$CPP_DIR/" 2>/dev/null || echo "(dir not found)"
+            # Try to build sdcpp from scratch using the native-installed version as reference
+            # for what source files are needed. Skip for now.
+          fi
+          ls -lh ../bin/sdcpp.* 2>/dev/null || echo "sdcpp NOT available"
+
       - name: Package WASM artifacts
         run: |
           mkdir -p dist/sdcc-wasm
@@ -178,7 +225,9 @@ jobs:
                 [ -f "$dir/$tool.wasm" ] && cp "$dir/$tool.wasm" dist/sdcc-wasm/
                 echo "Copied $tool from $dir (via find)"
               else
-                echo "::warning::Tool $tool.js not found in build tree"
+                echo "::error::Tool $tool.js not found anywhere in build tree"
+                find sdcc-emcc -name "$tool*" 2>/dev/null || echo "  (no files matching $tool*)"
+                exit 1
               fi
             fi
           done
