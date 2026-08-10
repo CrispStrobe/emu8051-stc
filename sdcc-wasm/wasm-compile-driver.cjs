@@ -252,20 +252,27 @@ async function main() {
     // ── Stage 4: Link with sdld ──
     console.log('\n=== Stage 4: sdld (link) ===');
 
-    // sdld uses a linker script (.lk file)
+    // Linker script — must match what native sdcc --verbose produces.
+    // Captured from native 4.5.0: sdld -nf /tmp/byte-test/native.lk
+    // Key: -b HOME = 0x0000 places crt0/reset vector at address 0.
+    // User .rel comes AFTER -l lines (libraries provide crt0).
     const lkContent = [
       '-muwx',
       '-i /out.ihx',
-      '-b _CODE = 0x0000',
-      '-b _DATA = 0x0030',
-      '-b _XDATA = 0x0000',
+      '-M',
+      '-b HOME = 0x0000',
+      '-b XSEG = 0x0001',
+      '-b PSEG = 0x0001',
+      '-b ISEG = 0x0000',
+      '-b BSEG = 0x0000',
       '-k /lib',
       '-l mcs51',
       '-l libsdcc',
-      '-l liblong',
       '-l libint',
+      '-l liblong',
       '-l libfloat',
       '/test.rel',
+      '',
       '-e'
     ].join('\n') + '\n';
 

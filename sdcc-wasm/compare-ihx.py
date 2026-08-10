@@ -47,14 +47,31 @@ print("WASM image:   %d bytes at %04X-%04X" % (len(wasm), min(wasm), max(wasm)))
 
 if not diffs:
     print("IMAGE-IDENTICAL: same bytes at every address.")
-    print("Record layout differs but the firmware is the same.")
     sys.exit(0)
-else:
-    print("MISMATCH: %d byte(s) differ:" % len(diffs))
-    for a, nb, wb in diffs[:20]:
-        ns = "0x%02X" % nb if nb is not None else "absent"
-        ws = "0x%02X" % wb if wb is not None else "absent"
-        print("  %04X: native=%s  wasm=%s" % (a, ns, ws))
-    if len(diffs) > 20:
-        print("  ... and %d more" % (len(diffs) - 20))
-    sys.exit(1)
+
+# Check for uniform address shift before reporting mismatch.
+# A pure link-layout difference shifts all addresses by the same offset.
+native_bytes = sorted(native.items())
+wasm_bytes = sorted(wasm.items())
+if len(native_bytes) == len(wasm_bytes):
+    offsets = set()
+    data_match = True
+    for (na, nb), (wa, wb) in zip(native_bytes, wasm_bytes):
+        offsets.add(wa - na)
+        if nb != wb:
+            data_match = False
+    if len(offsets) == 1 and data_match:
+        shift = offsets.pop()
+        print("LINK-SHIFT: all addresses shifted by %+d (0x%X)." % (shift, shift & 0xFFFF))
+        print("Code generation matches. Link layout differs.")
+        print("This is a linker invocation difference, not a compiler difference.")
+        sys.exit(1)  # still a failure — link must match too
+
+print("MISMATCH: %d byte(s) differ:" % len(diffs))
+for a, nb, wb in diffs[:20]:
+    ns = "0x%02X" % nb if nb is not None else "absent"
+    ws = "0x%02X" % wb if wb is not None else "absent"
+    print("  %04X: native=%s  wasm=%s" % (a, ns, ws))
+if len(diffs) > 20:
+    print("  ... and %d more" % (len(diffs) - 20))
+sys.exit(1)
