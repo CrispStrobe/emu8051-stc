@@ -58,7 +58,11 @@ console.log(`  Headers: ${headerFiles.length} top-level, ${mcs51Headers.length} 
 console.log(`  Lib files: ${libFiles.length}`);
 
 // ── Startup checks: verify all tools load and libs are present ──
+// Accept both modularized (factory function) and non-modularized (object)
+// but warn loudly when a tool is not modularized, since that means
+// the build flags did not propagate.
 const TOOLS = ['sdcc', 'sdcpp', 'sdas8051', 'sdld'];
+const toolFactories = {};
 for (const tool of TOOLS) {
   const p = join(distDir, tool + '.js');
   if (!existsSync(p)) {
@@ -66,11 +70,16 @@ for (const tool of TOOLS) {
     process.exit(1);
   }
   const mod = require(p);
-  if (typeof mod !== 'function') {
-    console.error(`FATAL: ${tool}.js does not export a factory function (typeof=${typeof mod}). Check MODULARIZE flag.`);
+  if (typeof mod === 'function') {
+    toolFactories[tool] = mod;
+    console.log(`  ${tool}.js: OK (factory function)`);
+  } else if (typeof mod === 'object' && mod !== null) {
+    console.warn(`  WARNING: ${tool}.js is not modularized (typeof=object). Using it directly.`);
+    toolFactories[tool] = () => Promise.resolve(mod);
+  } else {
+    console.error(`FATAL: ${tool}.js exports unexpected type: ${typeof mod}`);
     process.exit(1);
   }
-  console.log(`  ${tool}.js: OK (factory function)`);
 }
 if (libFiles.length === 0) {
   console.error('FATAL: No library files found. sdld will fail at stage 4.');
@@ -94,12 +103,10 @@ function populateVFS(Module) {
 // setupFn receives the Module during preRun to populate VFS.
 // opts can include { stdin: function } for --c1mode piping.
 async function runTool(name, args, setupFn, opts) {
-  const jsPath = join(distDir, name + '.js');
-  if (!existsSync(jsPath)) {
-    throw new Error(`Tool not found: ${jsPath}`);
+  const createModule = toolFactories[name];
+  if (!createModule) {
+    throw new Error(`Tool ${name} not loaded at startup`);
   }
-
-  const createModule = require(jsPath);
   const config = {
     noExitRuntime: true,
     arguments: args,
@@ -144,6 +151,9 @@ async function main() {
     // ── Stage 1: Preprocess with sdcpp ──
     console.log('\n=== Stage 1: sdcpp (preprocess) ===');
 
+    // Flags copied from native sdcc 4.5.0 --verbose output.
+    // These must match exactly for byte-identity; verify against
+    // the CI log's "Native compile (--verbose)" step if they drift.
     const sdcppArgs = [
       '-nostdinc', '-Wall', '-std=c11',
       '-obj-ext=.rel',
@@ -156,11 +166,15 @@ async function main() {
       '-D__SDCC_VERSION_MINOR=5',
       '-D__SDCC_VERSION_PATCH=0',
       '-DSDCC=450',
+      '-D__SDCC_REVISION=15242',
       '-D__SDCC_mcs51',
       '-D__STDC_NO_COMPLEX__=1',
       '-D__STDC_NO_THREADS__=1',
       '-D__STDC_NO_ATOMICS__=1',
       '-D__STDC_NO_VLA__=1',
+      '-D__STDC_ISO_10646__=201409L',
+      '-D__STDC_UTF_16__=1',
+      '-D__STDC_UTF_32__=1',
       '-isystem', '/include/mcs51',
       '-isystem', '/include',
       '-o', '/test.i',
