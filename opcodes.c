@@ -990,7 +990,7 @@ static uint8_t mov_c_bitaddr(struct em8051 *aCPU)
     }
 
     PC += 2;
-    return 2; /* 2 machine cycles (MCS-51) */
+    return 0; /* MOV C,bit = 1 machine cycle (MCS-51 spec) */
 }
 
 static uint8_t inc_dptr(struct em8051 *aCPU)
@@ -1085,7 +1085,7 @@ static uint8_t cpl_bitaddr(struct em8051 *aCPU)
         aCPU->mLowerData[address] ^= bitmask;
     }
     PC += 2;
-    return 2; /* 2 machine cycles (MCS-51) */
+    return 0; /* CPL bit = 1 machine cycle (MCS-51 spec) */
 }
 
 static uint8_t cpl_c(struct em8051 *aCPU)
@@ -1202,7 +1202,7 @@ static uint8_t clr_bitaddr(struct em8051 *aCPU)
         aCPU->mLowerData[address] &= ~bitmask;
     }
     PC += 2;
-    return 2; /* CLR bit = 2 machine cycles (MCS-51 spec) */
+    return 0; /* CLR bit = 1 machine cycle (MCS-51 spec) */
 }
 
 static uint8_t clr_c(struct em8051 *aCPU)
@@ -1273,7 +1273,7 @@ static uint8_t setb_bitaddr(struct em8051 *aCPU)
         aCPU->mLowerData[address] |= bitmask;
     }
     PC += 2;
-    return 2; /* SETB bit = 2 machine cycles (MCS-51 spec) */
+    return 0; /* SETB bit = 1 machine cycle (MCS-51 spec) */
 }
 
 static uint8_t setb_c(struct em8051 *aCPU)

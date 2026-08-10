@@ -178,9 +178,13 @@ int main(void) {
     { uint8_t p[] = {0x90, 0x12, 0x34}; c = measure_cycles(p, 3);
       CHECK_CYCLES("MOV DPTR,#imm16", c, 2); }
     { uint8_t p[] = {0xD2, 0x00}; c = measure_cycles(p, 2);
-      CHECK_CYCLES("SETB bit", c, 2); }
+      CHECK_CYCLES("SETB bit", c, 1); }
     { uint8_t p[] = {0xC2, 0x00}; c = measure_cycles(p, 2);
-      CHECK_CYCLES("CLR bit", c, 2); }
+      CHECK_CYCLES("CLR bit", c, 1); }
+    { uint8_t p[] = {0xB2, 0x00}; c = measure_cycles(p, 2);
+      CHECK_CYCLES("CPL bit", c, 1); }
+    { uint8_t p[] = {0xA2, 0x00}; c = measure_cycles(p, 2);
+      CHECK_CYCLES("MOV C,bit", c, 1); }
     { /* JZ (not taken) */
       setup(); cpu.mSFR[REG_ACC] = 0x01; /* A != 0, JZ not taken */
       cpu.mCodeMem[0]=0x60; cpu.mCodeMem[1]=0x10; /* JZ +16 */
