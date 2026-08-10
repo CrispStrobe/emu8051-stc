@@ -3,20 +3,18 @@
  *
  * Usage: node wasm-compile-driver.cjs <sdcc.js> <installed-dir> <src.c> <out.ihx>
  *
- * Populates Emscripten's virtual filesystem with SDCC headers and
- * libraries from <installed-dir>/share/sdcc/, writes the source file,
- * and calls sdcc via callMain. Output .ihx is written to <out.ihx>.
- *
- * This is the VFS recipe bw-bundle needs for the browser compile path.
- *
  * EXPORTED_RUNTIME_METHODS dependency: the WASM build uses
  *   -sEXPORTED_RUNTIME_METHODS=callMain,FS
  * This driver uses: m.callMain(), m.FS.writeFile(), m.FS.readFile(),
  * m.FS.mkdir(), m.FS.readdir(). All are under the FS export.
- * File data is written via TextEncoder (standard API, no Emscripten
- * helpers needed).
+ * File data is written as plain strings — FS.writeFile accepts them
+ * directly, no TextEncoder or heap views needed.
+ *
+ * IMPORTANT: FS.writeFile must not be called before the runtime is
+ * initialized. Without MODULARIZE, require() returns the Module but
+ * HEAPU8 may not exist yet. Use onRuntimeInitialized to wait.
  */
-const { readFileSync, readdirSync, statSync, writeFileSync } = require('fs');
+const { readFileSync, readdirSync, statSync, writeFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
 const sdccPath = process.argv[2];
@@ -28,6 +26,8 @@ if (!sdccPath || !installedDir || !srcFile || !outFile) {
   console.error('Usage: node wasm-compile-driver.cjs <sdcc.js> <installed-dir> <src.c> <out.ihx>');
   process.exit(1);
 }
+
+let skipCount = 0;
 
 function mkdirp(m, path) {
   const parts = path.split('/').filter(Boolean);
@@ -48,93 +48,108 @@ function addDirToFS(m, hostDir, vfsDir) {
       addDirToFS(m, hostPath, vfsPath);
     } else {
       try {
-        // Convert to Uint8Array via TextEncoder — works in all environments
-        const content = readFileSync(hostPath, 'utf8');
-        const encoded = new TextEncoder().encode(content);
-        m.FS.writeFile(vfsPath, encoded);
+        // FS.writeFile accepts a plain string — no conversion needed
+        m.FS.writeFile(vfsPath, readFileSync(hostPath, 'utf8'));
       } catch(e) {
-        console.log('  skip:', vfsPath, e.message);
+        console.error('  FAIL:', vfsPath, e.message);
+        skipCount++;
       }
     }
   }
 }
 
-async function main() {
-  console.log('Loading WASM sdcc from', sdccPath);
-  const factory = require(sdccPath);
-  let m;
-  if (typeof factory === 'function') {
-    m = await factory();
-  } else {
-    m = factory;
+function doCompile(m) {
+  console.log('Runtime initialized, populating VFS...');
+
+  // Populate VFS with mcs51 headers and libs ONLY
+  const shareDir = join(installedDir, 'share', 'sdcc');
+  const incDir = join(shareDir, 'include');
+
+  // Top-level headers
+  mkdirp(m, '/share/sdcc/include');
+  for (const f of readdirSync(incDir)) {
+    const p = join(incDir, f);
+    if (statSync(p).isFile()) {
+      try {
+        m.FS.writeFile('/share/sdcc/include/' + f, readFileSync(p, 'utf8'));
+      } catch(e) {
+        console.error('  FAIL:', f, e.message);
+        skipCount++;
+      }
+    }
   }
 
-  if (!m || !m.callMain) {
-    console.error('WASM module loaded but missing callMain');
-    console.error('  typeof m:', typeof m);
-    if (m) console.error('  keys:', Object.keys(m).slice(0, 20).join(', '));
+  // mcs51 sub-headers
+  const mcs51Inc = join(incDir, 'mcs51');
+  if (existsSync(mcs51Inc)) addDirToFS(m, mcs51Inc, '/share/sdcc/include/mcs51');
+
+  // asm/mcs51 sub-headers
+  const asmMcs51 = join(incDir, 'asm', 'mcs51');
+  if (existsSync(asmMcs51)) addDirToFS(m, asmMcs51, '/share/sdcc/include/asm/mcs51');
+
+  // asm/default (needed by some headers)
+  const asmDefault = join(incDir, 'asm', 'default');
+  if (existsSync(asmDefault)) addDirToFS(m, asmDefault, '/share/sdcc/include/asm/default');
+
+  // mcs51 model-small library
+  const libDir = join(shareDir, 'lib', 'small-mcs51-stack-auto');
+  if (existsSync(libDir)) addDirToFS(m, libDir, '/share/sdcc/lib/small-mcs51-stack-auto');
+
+  if (skipCount > 0) {
+    console.error(skipCount, 'files failed to write — aborting');
     process.exit(1);
   }
 
-  // Debug FS state
-  console.log('  FS exists:', !!m.FS);
-  console.log('  FS.writeFile:', typeof (m.FS && m.FS.writeFile));
-  console.log('  FS.mkdir:', typeof (m.FS && m.FS.mkdir));
-  console.log('  FS.readdir /:', m.FS ? m.FS.readdir('/').join(',') : 'no FS');
+  console.log('VFS populated. Writing source...');
+  m.FS.writeFile('/test.c', readFileSync(srcFile, 'utf8'));
 
-  if (!m.FS || !m.FS.writeFile) {
-    console.error('FS module not available — FORCE_FILESYSTEM may not have taken effect');
-    process.exit(1);
-  }
-
-  console.log('WASM sdcc loaded, mounting NODEFS...');
-
-  // Mount the real filesystem via NODEFS — avoids the FS.writeFile
-  // buffer bug entirely. SDCC reads headers/libs from real paths.
-  mkdirp(m, '/host');
-  m.FS.mount(m.FS.filesystems.NODEFS, { root: '/' }, '/host');
-
-  // Copy source to a temp location SDCC can read
-  const { mkdtempSync } = require('fs');
-  const { tmpdir } = require('os');
-  const workDir = mkdtempSync(join(tmpdir(), 'sdcc-'));
-  const { copyFileSync } = require('fs');
-  copyFileSync(srcFile, join(workDir, 'test.c'));
-
-  // Use /host paths so SDCC reads from the real filesystem via NODEFS
-  const hostInc = '/host' + join(installedDir, 'share', 'sdcc', 'include');
-  const hostLib = '/host' + join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
-  const hostSrc = '/host' + join(workDir, 'test.c');
-  const hostOut = '/host' + join(workDir, 'out.ihx');
-
-  console.log('Compiling via NODEFS...');
-  console.log('  -I', hostInc);
-  console.log('  -L', hostLib);
-  console.log('  src:', hostSrc);
-
-  // Compile
+  console.log('Compiling...');
   try {
     m.callMain([
       '-mmcs51', '--model-small',
-      '-I' + hostInc,
-      '-L' + hostLib,
-      '-o', hostOut, hostSrc
+      '-I/share/sdcc/include',
+      '-L/share/sdcc/lib/small-mcs51-stack-auto',
+      '-o', '/out.ihx', '/test.c'
     ]);
   } catch(e) {
+    // callMain throws on exit() — check if output was produced
     console.log('callMain exited:', e.message || e);
   }
 
-  // Read output from real filesystem
-  const outPath = join(workDir, 'out.ihx');
+  // Read output
   try {
-    const ihx = readFileSync(outPath, 'utf8');
+    const ihx = m.FS.readFile('/out.ihx', { encoding: 'utf8' });
     writeFileSync(outFile, ihx);
     console.log('WASM compile: OK (' + ihx.length + ' bytes)');
   } catch(e) {
-    console.error('WASM compile: output not found at', outPath);
-    try { console.error('  workDir:', readdirSync(workDir).join(', ')); } catch(e2) {}
+    console.error('WASM compile: output not found');
+    try { console.error('  FS root:', m.FS.readdir('/').join(', ')); } catch(e2) {}
     process.exit(1);
   }
 }
 
-main().catch(e => { console.error('Driver error:', e); process.exit(1); });
+// --- Load and wait for runtime initialization ---
+
+console.log('Loading WASM sdcc from', sdccPath);
+const exported = require(sdccPath);
+
+if (typeof exported === 'function') {
+  // MODULARIZE: factory returns a promise
+  exported().then(m => {
+    doCompile(m);
+  }).catch(e => {
+    console.error('Module factory failed:', e);
+    process.exit(1);
+  });
+} else if (exported && exported.onRuntimeInitialized !== undefined) {
+  // Not modularized: Module is returned, wait for runtime
+  exported.onRuntimeInitialized = () => doCompile(exported);
+} else if (exported && exported.FS && exported.callMain) {
+  // Already initialized (unlikely but handle it)
+  doCompile(exported);
+} else {
+  console.error('Cannot determine module type');
+  console.error('  typeof:', typeof exported);
+  if (exported) console.error('  keys:', Object.keys(exported).slice(0, 20).join(', '));
+  process.exit(1);
+}
