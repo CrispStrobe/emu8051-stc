@@ -293,9 +293,10 @@ jobs:
 
           # mcs51 library (model-small)
           mkdir -p dist/sdcc-wasm/lib/small
-          # SDCC 4.5.0 uses small-stack-auto; older uses small-mcs51-stack-auto
-          LIB_BUILD=sdcc-native/device/lib/build/small-stack-auto
-          [ -d "$LIB_BUILD" ] || LIB_BUILD=sdcc-native/device/lib/build/small-mcs51-stack-auto
+          # Native sdcc --model-small uses lib/small (not small-stack-auto).
+          # small-stack-auto has different crt0 and produces a 1-byte origin shift.
+          LIB_BUILD=sdcc-native/device/lib/build/small
+          [ -d "$LIB_BUILD" ] || LIB_BUILD=sdcc-native/device/lib/build/small-stack-auto
           cp "$LIB_BUILD"/*.rel dist/sdcc-wasm/lib/small/ 2>/dev/null || true
           cp "$LIB_BUILD"/*.lib dist/sdcc-wasm/lib/small/ 2>/dev/null || true
           echo "Lib files: $(ls dist/sdcc-wasm/lib/small/ 2>/dev/null | wc -l) from $LIB_BUILD"

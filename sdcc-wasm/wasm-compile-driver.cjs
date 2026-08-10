@@ -28,9 +28,10 @@ if (!distDir || !installedDir || !srcFile || !outFile) {
 
 const incDir = join(installedDir, 'share', 'sdcc', 'include');
 const mcs51IncDir = join(incDir, 'mcs51');
-// SDCC 4.5.0 uses 'small-stack-auto', older versions 'small-mcs51-stack-auto'
-const libDir = join(installedDir, 'share', 'sdcc', 'lib', 'small-stack-auto');
-const libDirAlt = join(installedDir, 'share', 'sdcc', 'lib', 'small-mcs51-stack-auto');
+// Native sdcc --model-small uses lib/small (not small-stack-auto).
+// small-stack-auto is a different library set with different crt0.
+const libDir = join(installedDir, 'share', 'sdcc', 'lib', 'small');
+const libDirAlt = join(installedDir, 'share', 'sdcc', 'lib', 'small-stack-auto');
 
 // Collect files from a directory
 function collectFiles(dir) {
