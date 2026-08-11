@@ -268,19 +268,41 @@ async function main() {
     });
 
     let relCode = vfsRead(asMod, '/work/test.rel');
-    // WASM sdas8051 ignores .optsdcc and does not emit the O record.
-    // Without it, the linker produces different area tables and a +1
-    // origin shift. Inject the O record directly into the .rel.
-    // This is a workaround for a defect in the WASM-compiled assembler.
+    // WASM sdas8051 ignores .optsdcc and does not produce the O record
+    // or model-specific area declarations (RSEG, REG_BANK_0, DSEG, SSEG).
+    // Without them the linker produces a +1 origin shift.
+    // Workaround: inject the O record and the missing area declarations.
+    // These are the areas that native sdas8051 --model-small produces.
     let relText = relCode.toString('utf8');
     if (!relText.includes('\nO -mmcs51')) {
-      // Insert after the M (module) line
       relText = relText.replace(
         /^(M .+)$/m,
         '$1\nO -mmcs51 --model-small'
       );
+      console.log('  Injected O record into .rel');
+    }
+    // Inject model-small area declarations before the first A line
+    // if they are missing. These come from the O record processing.
+    const modelAreas = [
+      'A _CODE size 0 flags 0 addr 0',
+      'A RSEG size 0 flags 8 addr 0',
+      'A RSEG0 size 0 flags 8 addr 0',
+      'A RSEG1 size 0 flags 8 addr 0',
+      'A REG_BANK_0 size 8 flags 4 addr 0',
+      'A DSEG size 0 flags 0 addr 0',
+      'A SSEG size 1 flags 0 addr 0',
+    ];
+    if (!relText.includes('\nA RSEG ')) {
+      // Insert the model areas before the first existing A line
+      const areaBlock = modelAreas.join('\n');
+      relText = relText.replace(
+        /^(A [A-Z_])/m,
+        areaBlock + '\n$1'
+      );
       relCode = Buffer.from(relText, 'utf8');
-      console.log('  Injected O record into .rel (WASM sdas8051 defect workaround)');
+      console.log('  Injected model-small area declarations into .rel');
+    } else {
+      relCode = Buffer.from(relText, 'utf8');
     }
     // Also grab .lst and .sym if the assembler produced them —
     // sdld expects /test.lst beside /test.rel

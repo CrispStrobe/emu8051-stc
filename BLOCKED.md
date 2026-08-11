@@ -127,3 +127,15 @@ image carries an extra leading byte in its first data record, or simply
 declares a different load address. Those are different bugs — an emitted byte
 too many, versus a placement directive. The decoded address maps say "real +1
 shift", which points at the first; the record itself will say plainly.
+
+## Spec-update scan (2026-08-11)
+
+Adopting bw-parts a6f9240 convention. Scanned sibling repos' spec-updates/.
+
+| Source | Number | Status |
+|--------|--------|--------|
+| ucsim-stc | 005 (cycle count bug) | Handled (6cb9bc7, retracted by ucsim) |
+| ucsim-stc | 012 (emu_trace -part flag) | Already implemented in trace.c |
+| bw-parts | 006 (stale gearmotor refs) | For bw-circuit-ui, not us |
+
+Last scanned number: ucsim-stc/017, bw-parts/006, bw-board/vsource-current-limit.
