@@ -373,8 +373,8 @@ jobs:
             fi
             echo "=== Native .lk file ==="
             cat /tmp/byte-test/native.lk 2>/dev/null || echo "(not found)"
-            echo "=== Native .map (segment bases) ==="
-            grep -E "^(Area|HOME|GSINIT|CSEG|_CODE)" /tmp/byte-test/native.map 2>/dev/null | head -20 || echo "(no map)"
+            echo "=== Native .map (all areas) ==="
+            grep "bytes (" /tmp/byte-test/native.map 2>/dev/null | head -25 || echo "(no map)"
           else
             echo "::error::Native SDCC failed to compile test.c"
             exit 1

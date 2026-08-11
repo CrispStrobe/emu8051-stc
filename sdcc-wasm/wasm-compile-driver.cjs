@@ -375,6 +375,13 @@ async function main() {
       const mapText = mapData.toString('utf8');
       // Show ALL lines that contain addresses (not just named areas)
       const mapLines = mapText.split('\n');
+      // Print ALL area lines (name + addr + size) not just first 40
+      console.log('  Area table:');
+      for (let i = 0; i < mapLines.length; i++) {
+        if (mapLines[i].match(/bytes \(/) || mapLines[i].match(/User Base/)) {
+          console.log('    ' + mapLines[i]);
+        }
+      }
       console.log('  First 40 map lines:');
       for (let i = 0; i < Math.min(40, mapLines.length); i++) {
         console.log('    ' + mapLines[i]);
