@@ -7,22 +7,30 @@
 shift remains: native image at 0000-00B0, WASM at 0001-00B1.
 
 **One problem remains: +1 origin shift.**
-WASM image at 0001-00B1, native at 0000-00B0. Under the +1 shift,
-166/172 bytes match and the 6 that differ are ALL relocated address
-operands with delta=+1 (LJMP/LCALL targets). Code generation is
-identical. Fixing the origin fixes all 6.
+WASM image at 0001-00B1, native at 0000-00B0.
 
-Root cause: two WASM-build defects, both workarounds:
-1. WASM sdcc --c1mode does not emit `.optsdcc` (native 4.5.0 does).
-   Workaround: inject `.optsdcc` into the .asm after codegen.
-2. WASM sdas8051 ignores `.optsdcc` and does not emit the `O` record.
-   Workaround: inject `O -mmcs51 --model-small` into the .rel.
+**The six shifted-diff bytes are ALL relocated address operands
+with delta=+1.** This is one bug, not six:
 
-**The claim, stated precisely:** "Native and WASM SDCC 4.5.0 produce
-byte-identical firmware once we inject two records the WASM-compiled
-tools fail to emit." This is not "produce identical firmware
-unassisted." Both injections compensate for defects in how SDCC was
-cross-compiled to WASM, not for missing driver logic.
+    native[0002]=0x4C  wasm[0003]=0x4D  (LJMP target, +1)
+    native[004B]=0xA8  wasm[004C]=0xA9  (+1)
+    native[0051]=0xAD  wasm[0052]=0xAE  (+1)
+    native[0058]=0x49  wasm[0059]=0x4A  (+1)
+    native[0064]=0xB1  wasm[0065]=0xB2  (+1)
+    native[00A7]=0x49  wasm[00A8]=0x4A  (+1)
+
+Code generation is identical. Fix the origin, all 6 vanish.
+
+**The three injections (.optsdcc, O record, area declarations) are
+irrelevant to the origin.** They did not change the offset on any
+run. They compensate for WASM-build defects (confirmed: native 4.5.0
+--c1mode DOES emit .optsdcc), but they are not the cause of the +1
+shift and removing them would not change the image placement.
+
+**Next step:** diff the native and WASM .map area tables. An earlier
+run showed native has `A SSEG size 1 flags 0 addr 0` — a one-byte
+area. If the WASM link places a size-1 area into CODE space at
+0x0000, HOME starts at 0x0001. That is exactly the shape of this bug.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
