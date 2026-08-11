@@ -480,10 +480,11 @@ jobs:
             fi
           fi
 
-          # 2. Image comparison — capture exit code WITHOUT || true
+          # 2. Image comparison — write to file to preserve formatting
           set +e
-          IHX_RESULT=$(python3 sdcc-wasm/compare-ihx.py \
-            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx 2>&1)
+          python3 sdcc-wasm/compare-ihx.py \
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm.ihx \
+            > /tmp/byte-test/ihx-compare.txt 2>&1
           IHX_EXIT=$?
           set -e
 
@@ -495,8 +496,7 @@ jobs:
           echo "flags:   $FLAGS_STATUS"
           echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
-          echo "$IHX_RESULT" | grep -E "^(Native|WASM|shifted|origin-delta|IMAGE|CODE-IDENT|MISMATCH)" | head -5
-          echo "$IHX_RESULT" | grep "^  native" | head -8
+          cat /tmp/byte-test/ihx-compare.txt
           if [ "$IHX_EXIT" -eq 0 ]; then
             echo "verdict: PASS"
           else
@@ -529,8 +529,14 @@ jobs:
             fi
             if [ "$REL_STATUS" = "differ" ]; then
               echo ""
-              echo "First .rel difference:"
-              diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -15
+              echo "=== .rel area lines (A records) ==="
+              echo "Native:"
+              grep "^A " /tmp/byte-test/native.rel 2>/dev/null || echo "(none)"
+              echo "WASM:"
+              grep "^A " /tmp/byte-test/wasm.rel 2>/dev/null || echo "(none)"
+              echo ""
+              echo "Full .rel diff:"
+              diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -25
             fi
             echo ""
             echo "::error::Byte-identity test FAILED"

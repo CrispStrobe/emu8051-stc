@@ -27,29 +27,29 @@ run. They compensate for WASM-build defects (confirmed: native 4.5.0
 --c1mode DOES emit .optsdcc), but they are not the cause of the +1
 shift and removing them would not change the image placement.
 
-**Root cause found: injection 3 used wrong SSEG flags.**
+**RETRACTED (a2c68b3): injection 3 wrong SSEG flags was NOT the cause.**
+Run 93d95ea reverted injections 2+3 entirely. Shift unchanged at +1.
+The SSEG OVR/CON mechanism is real (OVR does not consume CODE space,
+CON does) but it is not what produces the +1 here — the shift
+predates the injection and persists without it.
 
-Native 4.5.0 area table:
-  SSEG  00000008  248 bytes (REL,**OVR**)  ← overlay, does not consume CODE space
-  HOME  00000000   76 bytes (REL,CON,CODE)
+**What has been eliminated:**
+- .optsdcc injection (no effect on origin)
+- O record injection (no effect on origin)
+- Area declaration injection (no effect on origin — reverted, shift persists)
+- Linker script segment bases (tried multiple times, no effect)
+- Library set (lib/small vs small-stack-auto, no effect)
+- Preprocessor defines (no effect)
 
-WASM area table (with injection 3):
-  SSEG  00000008    1 bytes (REL,**CON**)  ← concatenated, consumes 1 byte of CODE
-  HOME  00000001   76 bytes (REL,CON,CODE) ← pushed by 1
+**What has NOT been eliminated:**
+- The .rel files themselves (WASM assembler output vs native)
+- The sdld binary (WASM-compiled vs native)
+- The library .rel files shipped with the WASM pipeline
 
-Injection 3 added `A SSEG size 1 flags 0` (flags 0 = CON). Native
-has `A SSEG size 1 flags 8` (flags 8 = OVR, overlay). The wrong
-flags made SSEG consume 1 byte of CODE space, pushing HOME to 0x0001.
-
-**This is NOT an sdld bug. It is our injection using wrong flags.**
-Also: native SSEG is 248 bytes (OVR), not 1. And native has DSEG
-(128 bytes) which WASM lacks entirely. The injected area declarations
-were a rough approximation, not a faithful reproduction.
-
-**sdld itself is exonerated.** Same sdld, given the right flags,
-would produce HOME at 0x0000. The fix is to correct the SSEG flags
-in the injection, or better: get the assembler to produce the right
-areas natively (which is the real defect).
+**Next step: diff the actual .rel inputs to sdld.** If the user .rel
+and library .rel files are byte-identical between native and WASM,
+only the sdld binary differs and the Emscripten build is the answer
+by elimination. If they differ, the difference names the cause.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
