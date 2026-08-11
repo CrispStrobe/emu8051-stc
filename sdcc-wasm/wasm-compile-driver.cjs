@@ -104,8 +104,13 @@ async function runTool(name, args, setupFn, opts) {
   if (!createModule) {
     throw new Error(`Tool ${name} not loaded at startup`);
   }
+  // thisProgram sets argv[0]. Critical for sdas8051: sdas_init() checks
+  // whether argv[0] starts with "sdas" to enable sdas-specific behaviour
+  // (addr field in A records, O record from .optsdcc). Without it,
+  // is_sdas() returns false and the assembler acts as generic ASxxxx.
   const config = {
     noExitRuntime: true,
+    thisProgram: name,
     arguments: args,
     preRun: [function(M) {
       if (setupFn) setupFn(M);
@@ -269,32 +274,14 @@ async function main() {
 
     let relCode = vfsRead(asMod, '/work/test.rel');
 
-    // EXPERIMENT: WASM sdas8051 omits 'addr 0' from A records that native
-    // sdas8051 includes. Hypothesis: the missing addr field causes sdld to
-    // place HOME at 0x0001 instead of 0x0000.
-    // If origin-delta goes to 0: the missing field is the cause.
-    // If origin-delta stays +1: the field is a red herring.
-    //
-    // This is a WORKAROUND for a defect in the WASM-compiled sdas8051,
-    // NOT a normal build step. It compensates for the assembler omitting
-    // the addr field on A records. Remove this when WASM sdas8051 is fixed
-    // to emit addr fields natively (check: grep '^A.*addr' in the .rel).
-    let relText = relCode.toString('utf8');
-    const aRecordsWithAddr = (relText.match(/^A .* addr /gm) || []).length;
-    const aRecordsWithout = (relText.match(/^A (?!.* addr )/gm) || []).length;
-    if (aRecordsWithAddr > 0 && aRecordsWithout === 0) {
-      // All A records already have addr — the upstream defect is fixed.
-      // Do NOT apply the workaround; it would corrupt good input.
-      console.log('  .rel A records already carry addr field — workaround skipped');
-    } else if (aRecordsWithout > 0 && aRecordsWithAddr === 0) {
-      // No A records have addr — apply the workaround
-      relText = relText.replace(/^(A \S+ size \S+ flags \S+)$/gm, '$1 addr 0');
-      relCode = Buffer.from(relText, 'utf8');
-      console.log('  WORKAROUND: appended addr 0 to %d A records (WASM sdas8051 defect)', aRecordsWithout);
-    } else if (aRecordsWithAddr > 0 && aRecordsWithout > 0) {
-      // Mixed — some have addr, some don't. Something unexpected. Fail loudly.
-      console.error('  ERROR: mixed A records — %d with addr, %d without. Not patching.', aRecordsWithAddr, aRecordsWithout);
-    }
+    // Check whether is_sdas() was active (addr field present in A records).
+    // If thisProgram: 'sdas8051' worked, addr should be present and the
+    // O record should be in the .rel from .optsdcc processing.
+    const relText = relCode.toString('utf8');
+    const hasAddr = relText.match(/^A .* addr /m);
+    const hasO = relText.includes('\nO -mmcs51');
+    console.log('  is_sdas() indicators: addr=%s, O-record=%s',
+      hasAddr ? 'present' : 'MISSING', hasO ? 'present' : 'MISSING');
     // Also grab .lst and .sym if the assembler produced them —
     // sdld expects /test.lst beside /test.rel
     let lstCode = null, symCode = null;
