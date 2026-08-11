@@ -41,15 +41,22 @@ predates the injection and persists without it.
 - Library set (lib/small vs small-stack-auto, no effect)
 - Preprocessor defines (no effect)
 
-**What has NOT been eliminated:**
-- The .rel files themselves (WASM assembler output vs native)
-- The sdld binary (WASM-compiled vs native)
-- The library .rel files shipped with the WASM pipeline
+**First genuine input difference found (run 31453814448):**
+Native .rel A records have `addr 0` on every line. WASM .rel A
+records omit the `addr` field entirely. Same areas, same sizes,
+same flags, same order — only the trailing `addr` field differs.
 
-**Next step: diff the actual .rel inputs to sdld.** If the user .rel
-and library .rel files are byte-identical between native and WASM,
-only the sdld binary differs and the Emscripten build is the answer
-by elimination. If they differ, the difference names the cause.
+    Native: A _CODE size 0 flags 0 addr 0
+    WASM:   A _CODE size 0 flags 0
+
+This is a WASM sdas8051 defect: the assembler omits the addr field.
+When sdld parses an A record without `addr`, it may default the
+area address differently, producing the +1 placement.
+
+The fix is either: patch the WASM sdas8051 to emit `addr`, or
+post-process the .rel to add `addr 0` to every A record that
+lacks it. The latter is a text substitution, not a structural
+injection.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
