@@ -44,11 +44,12 @@ Known benign: version comment says (UNIX) vs (Linux).
    **compiler's** job, not the driver's. The WASM 4.5.0 build omits
    it, which is a **defect in our WASM build**, and the injection is
    a **workaround**, not faithful driver reconstruction.
-   NOTE: the evidence is from 4.2.0; the comparison is 4.5.0 vs 4.5.0.
-   Needs version-matched confirmation: run native 4.5.0 `--c1mode` in
-   the CI job and check whether it also emits `.optsdcc`. If it does,
-   the WASM defect is confirmed. If it does not, 4.5.0 changed the
-   behaviour and injection is driver reconstruction after all.
+   Version-matched confirmation (run 31448759565): native 4.5.0
+   `--c1mode -mmcs51 --model-small` DOES emit `.optsdcc`. The WASM
+   omission is confirmed as a defect in our WASM-compiled sdcc.
+   Additionally, WASM sdas8051 appears to ignore `.optsdcc` even when
+   injected into the .asm — the O record is still missing from the
+   .rel. This is a second WASM-build defect in the assembler.
    If byte-identity passes, the claim is "WASM SDCC with
    driver-equivalent pipeline produces identical firmware", not
    "WASM SDCC produces identical firmware unassisted."
