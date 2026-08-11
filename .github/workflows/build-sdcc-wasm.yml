@@ -486,7 +486,7 @@ jobs:
           echo "flags:   $FLAGS_STATUS"
           echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
-          echo "$IHX_RESULT" | grep -E "^(Native|WASM|IMAGE|LINK-SHIFT|MISMATCH)" | head -5
+          echo "$IHX_RESULT" | grep -E "^(Native|WASM|shifted|origin-delta|IMAGE|CODE-IDENT|MISMATCH)" | head -7
           if [ "$IHX_EXIT" -eq 0 ]; then
             echo "verdict: PASS"
           else
@@ -496,6 +496,12 @@ jobs:
 
           # 4. On mismatch: show detail, then fail
           if [ "$IHX_EXIT" -ne 0 ]; then
+            echo ""
+            echo "=== Raw .ihx first 3 records ==="
+            echo "Native:"
+            head -3 /tmp/byte-test/native.ihx
+            echo "WASM:"
+            head -3 /tmp/byte-test/wasm.ihx
             if [ "$FLAGS_STATUS" = "differ" ]; then
               echo ""
               echo "=== Flag differences (native vs WASM) ==="
