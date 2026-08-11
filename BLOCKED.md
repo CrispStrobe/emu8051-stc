@@ -20,11 +20,32 @@ Demonstrated in run 31464841382: same .rel, two linkers, different
 HOME address. This bug survives our fix — it is no longer reachable
 from our pipeline but exists in sdld's source. Worth reporting upstream.
 
-**If run 31466174965 shows origin-delta: 0, the claim becomes:**
-"Native and WASM SDCC 4.5.0 produce byte-identical firmware, with
-no injections." Unqualified. The `.optsdcc` injection in the .asm
-remains as a workaround for WASM sdcc --c1mode not emitting it, but
-with is_sdas() true the assembler processes it correctly.
+**Confirmed (run 31466174965):**
+
+    is_sdas() indicators: addr=present, O-record=present
+    Native image: 172 bytes at 0000-00B0
+    WASM image:   172 bytes at 0000-00B0
+    origin-delta: 0
+    verdict: PASS
+
+Native SDCC 4.5.0 and the WASM four-stage pipeline produce
+**byte-identical** firmware for this source (`#include <8051.h>;
+void main(void) { P1 = 0xAA; while(1); }`) — same 172 bytes,
+same origin, **no injected records**. The `.optsdcc` injection
+in the .asm remains (WASM sdcc --c1mode still omits it) but the
+assembler processes it correctly now that is_sdas() is true.
+
+Evidence category: 2b (two builds of same compiler, no silicon).
+One test program; not yet a general result.
+
+**Upstream defect (unreported, latent):** sdld's `newarea()`
+(lkarea.c:156) calls `eval()` on an optional `addr` field without
+checking whether it exists. When absent, `eval()` reads past the
+line end — undefined behaviour. On native x86-64 the UB yielded 0
+(correct by accident); on WASM it yielded 1 (the +1 shift).
+Reproducible with the direct test in run 31464841382. Our fix
+(thisProgram) makes the field present so the UB is no longer
+reachable, but the bug survives in sdld's source.
 
 ## SDCC WASM byte-identity (the main open item)
 

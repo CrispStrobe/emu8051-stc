@@ -504,7 +504,24 @@ jobs:
           fi
           echo "=== END BYTE-IDENTITY SUMMARY ==="
 
-          # 4. On mismatch: show detail, then fail
+          # 4. Gate verification: corrupt one byte and confirm FAIL.
+          # This gate went inert three times. A green result is precisely
+          # when that matters — prove the gate can still fail.
+          cp /tmp/byte-test/wasm.ihx /tmp/byte-test/wasm-corrupt.ihx
+          python3 -c "d=open('/tmp/byte-test/wasm-corrupt.ihx','rb').read();open('/tmp/byte-test/wasm-corrupt.ihx','wb').write(d[:20]+bytes([d[20]^0xFF])+d[21:])"
+          set +e
+          python3 sdcc-wasm/compare-ihx.py \
+            /tmp/byte-test/native.ihx /tmp/byte-test/wasm-corrupt.ihx \
+            > /dev/null 2>&1
+          GATE_CHECK=$?
+          set -e
+          if [ "$GATE_CHECK" -eq 0 ]; then
+            echo "::error::GATE BROKEN — comparison returned PASS on corrupted input"
+            exit 1
+          fi
+          echo "Gate verified: corrupted input → exit $GATE_CHECK (FAIL)"
+
+          # 5. On mismatch: show detail, then fail
           if [ "$IHX_EXIT" -ne 0 ]; then
             echo ""
             echo "=== Raw .ihx first 3 records ==="
