@@ -28,18 +28,26 @@ run. They compensate for WASM-build defects (confirmed: native 4.5.0
 shift and removing them would not change the image placement.
 
 **Root cause found:** Both native and WASM sdld receive `.ABS.` size 0
-at address 0. Native sdld places HOME at 0x0000 (correct). WASM sdld
-places HOME at 0x0001 (off-by-one). Verified locally: native 4.2.0
-map shows `.ABS. 00000000 size 0` followed by `HOME 00000000`.
+at address 0. Native 4.5.0 sdld places HOME at 0x0000 (from CI run
+log: `HOME 00000000 0000004C = 76. bytes`). WASM sdld places HOME
+at 0x0001. Same input, different placement.
 
-This is a **real bug in the WASM-compiled sdld binary** — an off-by-one
-in area placement when a zero-size absolute area precedes a relocatable
-area. No injection can fix it; the linker itself computes the wrong
-address. The fix would be either patching sdld's placement code before
-the WASM build, or post-processing the .ihx to shift addresses by -1.
+This is a bug in the **WASM-compiled sdld binary**, not in our
+pipeline or injections. The three injections are unrelated — they
+did not affect the origin on any run.
 
-The three injections (.optsdcc, O record, area declarations) are
-unrelated to this bug and did not affect the origin on any run.
+**Open question: miscompilation or different build?**
+- If the same source, built through Emscripten, computes differently
+  (signed/unsigned, pointer size, undefined behaviour), this is an
+  Emscripten miscompilation and upstream-reportable.
+- If different build flags produce a legitimately different program,
+  this is ours to fix.
+The `wasm-ld: warning: function signature mismatch` warnings that
+have appeared in every run (gt_pch_restore_stringpool,
+dwarf2out_do_cfi_asm, ggc_mark_stringpool) are a plausible mechanism
+— a linker binary whose own link reports signature mismatches could
+produce arithmetic that differs by one. Worth checking whether any
+mismatched symbol is on the area-placement path in sdld's source.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
