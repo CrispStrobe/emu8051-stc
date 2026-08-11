@@ -1,4 +1,4 @@
-# Where this repo stands — 2026-08-11 (post byte-identity)
+# Where this repo stands — 2026-08-11 (lane closed)
 
 ## SDCC WASM: two defects found, one ours, one upstream (hypothesis, pending run 31466174965)
 
@@ -194,6 +194,33 @@ limits.
 
 `spec-updates/010-sdld-eval-ub-upstream-defect.md` is written and
 ready for the owner to file with SDCC maintainers. Not filed by us.
+
+## NeoPixel cross-check (done by ucsim-stc, not us)
+
+ucsim-stc `564825d` ran neo_v3.ihx through both stc12_trace and
+our emu_trace (post-6cb9bc7). All four WS2812 windows pass on both
+emulators, 144 intervals edge-by-edge, max difference 1 ns from
+clock-period rounding. Runnable test: `tests/rung_neopixel_cross.sh`.
+Ledger row raised to category 1 in stc `38352d6`. Our emulator was
+the second half; nothing left for us to run.
+
+## Lane status: closed
+
+All open items in this repo are either done or hardware-blocked:
+- Byte-identity: 10/10 pass, category 2, gate verified (ea918a3)
+- Cycle-count fix: done, corpus traces generated (6cb9bc7)
+- NeoPixel cross-check: done by ucsim-stc (564825d)
+- PCA interrupt: done (2ab1865)
+- UART contract: done (aa59b33)
+- README: done (bdeb438)
+- Path sweep: done (dcda2fb)
+- Upstream defect report: ready (010)
+
+Remaining items are blocked on hardware (silicon verification,
+ADC on real chip, UART timing on wire) or on coordination with
+other agents (corpus sweep needs ucsim traces, `-inject` flag
+needs ucsim-stc implementation). Nothing in this lane is
+actionable without external input.
 
 ## The 169-byte figure is the shift, not the content divergence
 
