@@ -16,10 +16,13 @@ assembler processes it natively and produces identical `.rel` output.
 
 ## Category
 
-**2b** — two builds of the same compiler (native gcc vs Emscripten),
-same SDCC 4.5.0 source (pinned, SHA-256 verified), same test input.
-The cross-check is native SDCC itself, not a second independent
-implementation. No silicon involved.
+**2** (same-source) — two builds of the same compiler (native gcc vs
+Emscripten), same SDCC 4.5.0 source (pinned, SHA-256 verified), same
+test input. The cross-check is the compiler against itself via a
+different build route, which tests the pipeline and cross-compilation
+rather than the compiler's correctness. Not category 1 (the two sides
+are not independent). Not category 3 (two distinct binaries do
+produce the same output). No silicon involved.
 
 ## What this does NOT cover
 
