@@ -27,27 +27,29 @@ run. They compensate for WASM-build defects (confirmed: native 4.5.0
 --c1mode DOES emit .optsdcc), but they are not the cause of the +1
 shift and removing them would not change the image placement.
 
-**Root cause found:** Both native and WASM sdld receive `.ABS.` size 0
-at address 0. Native 4.5.0 sdld places HOME at 0x0000 (from CI run
-log: `HOME 00000000 0000004C = 76. bytes`). WASM sdld places HOME
-at 0x0001. Same input, different placement.
+**Root cause found: injection 3 used wrong SSEG flags.**
 
-This is a bug in the **WASM-compiled sdld binary**, not in our
-pipeline or injections. The three injections are unrelated — they
-did not affect the origin on any run.
+Native 4.5.0 area table:
+  SSEG  00000008  248 bytes (REL,**OVR**)  ← overlay, does not consume CODE space
+  HOME  00000000   76 bytes (REL,CON,CODE)
 
-**Open question: miscompilation or different build?**
-- If the same source, built through Emscripten, computes differently
-  (signed/unsigned, pointer size, undefined behaviour), this is an
-  Emscripten miscompilation and upstream-reportable.
-- If different build flags produce a legitimately different program,
-  this is ours to fix.
-The `wasm-ld: warning: function signature mismatch` warnings that
-have appeared in every run (gt_pch_restore_stringpool,
-dwarf2out_do_cfi_asm, ggc_mark_stringpool) are a plausible mechanism
-— a linker binary whose own link reports signature mismatches could
-produce arithmetic that differs by one. Worth checking whether any
-mismatched symbol is on the area-placement path in sdld's source.
+WASM area table (with injection 3):
+  SSEG  00000008    1 bytes (REL,**CON**)  ← concatenated, consumes 1 byte of CODE
+  HOME  00000001   76 bytes (REL,CON,CODE) ← pushed by 1
+
+Injection 3 added `A SSEG size 1 flags 0` (flags 0 = CON). Native
+has `A SSEG size 1 flags 8` (flags 8 = OVR, overlay). The wrong
+flags made SSEG consume 1 byte of CODE space, pushing HOME to 0x0001.
+
+**This is NOT an sdld bug. It is our injection using wrong flags.**
+Also: native SSEG is 248 bytes (OVR), not 1. And native has DSEG
+(128 bytes) which WASM lacks entirely. The injected area declarations
+were a rough approximation, not a faithful reproduction.
+
+**sdld itself is exonerated.** Same sdld, given the right flags,
+would produce HOME at 0x0000. The fix is to correct the SSEG flags
+in the injection, or better: get the assembler to produce the right
+areas natively (which is the real defect).
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
