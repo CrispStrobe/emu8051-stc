@@ -295,9 +295,9 @@ async function main() {
     writeFileSync(wasmRelPath, relCode);
     console.log(`  .rel written to ${wasmRelPath} for comparison`);
     // Show first 5 lines
-    const relText = relCode.toString('utf8');
+    const relTextForLog = relCode.toString('utf8');
     console.log('  .rel first 5 lines:');
-    for (const line of relText.split('\n').slice(0, 5)) {
+    for (const line of relTextForLog.split('\n').slice(0, 5)) {
       console.log('    ' + line);
     }
 
