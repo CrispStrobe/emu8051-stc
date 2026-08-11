@@ -1,4 +1,4 @@
-# Where this repo stands — 2026-08-11
+# Where this repo stands — 2026-08-11 (post byte-identity)
 
 ## SDCC WASM: two defects found, one ours, one upstream (hypothesis, pending run 31466174965)
 
@@ -172,6 +172,28 @@ PCA uses CCAPMn.ECCF not IE.6. Datasheet Ch. 6 p. 138. Servo confirmed.
 ## Path sweep (done)
 
 0 `/mnt/volume1` references remaining (grep verified). `../X` relative paths.
+
+## Unexplained: `(Linux)` vs `(UNIX)` banner
+
+Native sdcc reports `Version 4.5.0 #15242 (Linux)`, WASM reports
+`(UNIX)`. The `-D` flags for sdcc match (`-DUNIX` on both sides for
+sdld; sdas8051 has no platform define). The difference is likely
+configure-time platform detection, not compile flags. Lands in an
+.asm comment, does not affect the binary. Not blocking anything.
+
+## Byte-identity: what is NOT covered
+
+One source file (`#include <8051.h>; void main(void) { P1 = 0xAA;
+while(1); }`), one memory model (`--model-small`), one SDCC version
+(4.5.0 #15242). Larger programs, `--model-large`, `--stack-auto`,
+other SDCC releases, and programs that exercise more of the C runtime
+are all untested. The ledger row and spec-update 009 state the same
+limits.
+
+## Upstream defect report ready
+
+`spec-updates/010-sdld-eval-ub-upstream-defect.md` is written and
+ready for the owner to file with SDCC maintainers. Not filed by us.
 
 ## The 169-byte figure is the shift, not the content divergence
 
