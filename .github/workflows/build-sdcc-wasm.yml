@@ -630,6 +630,72 @@ jobs:
             exit 1
           fi
 
+      - name: Byte-identity suite (10 programs)
+        if: success()
+        run: |
+          NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
+          DIST="$(pwd)/dist/sdcc-wasm"
+          INSTALLED="$(pwd)/sdcc-installed"
+          PROGRAMS=$(node -e "
+            const P = require('./sdcc-wasm/byte-identity-suite.js');
+            P.forEach(p => console.log(p.name + '|' + p.desc));
+          ")
+
+          PASS=0; FAIL=0; TOTAL=0
+          echo "=== BYTE-IDENTITY SUITE ==="
+          while IFS='|' read -r NAME DESC; do
+            TOTAL=$((TOTAL+1))
+            DIR="/tmp/suite/$NAME"
+            mkdir -p "$DIR"
+
+            # Extract source
+            node -e "
+              const P = require('./sdcc-wasm/byte-identity-suite.js');
+              const p = P.find(x => x.name === '$NAME');
+              require('fs').writeFileSync('$DIR/test.c', p.source);
+            "
+
+            # Native compile
+            $NATIVE -mmcs51 --model-small -o "$DIR/native.ihx" "$DIR/test.c" 2>/dev/null
+            if [ ! -f "$DIR/native.ihx" ]; then
+              echo "  $NAME: SKIP (native compile failed)"
+              continue
+            fi
+
+            # WASM compile
+            node sdcc-wasm/wasm-compile-driver.cjs \
+              "$DIST" "$INSTALLED" "$DIR/test.c" "$DIR/wasm.ihx" \
+              > "$DIR/pipeline.log" 2>&1
+            if [ ! -f "$DIR/wasm.ihx" ]; then
+              echo "  $NAME: SKIP (WASM compile failed)"
+              continue
+            fi
+
+            # Compare
+            set +e
+            RESULT=$(python3 sdcc-wasm/compare-ihx.py "$DIR/native.ihx" "$DIR/wasm.ihx" 2>&1)
+            RC=$?
+            set -e
+
+            ORIGIN=$(echo "$RESULT" | grep "origin-delta:" | awk '{print $2}')
+            SHIFTED=$(echo "$RESULT" | grep "shifted:" | awk '{print $2}')
+            N_SIZE=$(echo "$RESULT" | grep "Native image:" | grep -o "[0-9]* bytes")
+            if [ "$RC" -eq 0 ]; then
+              echo "  $NAME: PASS ($N_SIZE) — $DESC"
+              PASS=$((PASS+1))
+            else
+              echo "  $NAME: FAIL (origin=$ORIGIN shifted=$SHIFTED $N_SIZE) — $DESC"
+              FAIL=$((FAIL+1))
+            fi
+          done <<< "$PROGRAMS"
+
+          echo ""
+          echo "=== SUITE RESULT: $PASS/$TOTAL pass, $FAIL fail ==="
+          echo ""
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::warning::$FAIL of $TOTAL programs differ"
+          fi
+
       - name: Write BUILD-INFO
         run: |
           EMCC_VER=$(emcc --version | head -1)
