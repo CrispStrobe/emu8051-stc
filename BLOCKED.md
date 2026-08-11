@@ -12,11 +12,17 @@ WASM image at 0001-00B1, native at 0000-00B0. Under the +1 shift,
 operands with delta=+1 (LJMP/LCALL targets). Code generation is
 identical. Fixing the origin fixes all 6.
 
-Root cause: WASM sdas8051 ignores `.optsdcc` and does not emit the
-`O -mmcs51 --model-small` record. Without it, the linker produces
-different area tables and places HOME at 0x0001. Fix: inject the
-O record directly into the `.rel` file (workaround for WASM
-assembler defect).
+Root cause: two WASM-build defects, both workarounds:
+1. WASM sdcc --c1mode does not emit `.optsdcc` (native 4.5.0 does).
+   Workaround: inject `.optsdcc` into the .asm after codegen.
+2. WASM sdas8051 ignores `.optsdcc` and does not emit the `O` record.
+   Workaround: inject `O -mmcs51 --model-small` into the .rel.
+
+**The claim, stated precisely:** "Native and WASM SDCC 4.5.0 produce
+byte-identical firmware once we inject two records the WASM-compiled
+tools fail to emit." This is not "produce identical firmware
+unassisted." Both injections compensate for defects in how SDCC was
+cross-compiled to WASM, not for missing driver logic.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
