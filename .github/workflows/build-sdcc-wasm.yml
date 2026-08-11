@@ -547,6 +547,68 @@ jobs:
             echo "WASM .lk (from driver):"
             grep "Linker script:" -A20 /tmp/byte-test/wasm-pipeline.log 2>/dev/null | head -15 || echo "(see pipeline output)"
             echo ""
+            echo "=== DIRECT TEST: same .rel, both linkers ==="
+            # Feed the NATIVE .rel to both sdld binaries with identical .lk
+            # If native sdld → HOME 0x0000 and WASM sdld → HOME 0x0001,
+            # the linker binary is the cause, proven by observation.
+            cp /tmp/byte-test/native.lk /tmp/byte-test/direct.lk
+            # Rewrite paths in .lk to use the native .rel
+            sed -i "s|/tmp/byte-test/native|/tmp/byte-test/direct|" /tmp/byte-test/direct.lk
+            cp /tmp/byte-test/native.rel /tmp/byte-test/direct.rel
+            cp /tmp/byte-test/native.lst /tmp/byte-test/direct.lst 2>/dev/null || true
+
+            echo "-- Native sdld on native .rel:"
+            $INSTALLED/bin/sdld -nf /tmp/byte-test/direct.lk 2>&1 || true
+            grep "HOME" /tmp/byte-test/direct.map 2>/dev/null | head -1 || echo "(no map)"
+
+            # Now WASM sdld on the same .rel
+            sed "s|direct\.ihx|direct-wasm.ihx|;s|direct\.lk|direct-wasm.lk|" \
+              /tmp/byte-test/direct.lk > /tmp/byte-test/direct-wasm.lk
+            sed -i "s|-M|-M\n-m|" /tmp/byte-test/direct-wasm.lk 2>/dev/null || true
+            echo "-- WASM sdld on same native .rel (via MEMFS):"
+            node -e "
+              const fs = require('fs');
+              const createSDCC = require('$DIST/sdld.js');
+              const rel = fs.readFileSync('/tmp/byte-test/direct.rel');
+              const lk = fs.readFileSync('/tmp/byte-test/direct.lk', 'utf8')
+                .replace(/native/g, 'wdirect')
+                .replace(/direct/g, 'wdirect');
+              const lst = fs.existsSync('/tmp/byte-test/direct.lst')
+                ? fs.readFileSync('/tmp/byte-test/direct.lst') : null;
+              createSDCC({
+                noExitRuntime: true,
+                arguments: ['-nf', '/wdirect.lk'],
+                preRun: [function(M) {
+                  M.FS.writeFile('/wdirect.rel', rel);
+                  M.FS.writeFile('/wdirect.lk', lk);
+                  if (lst) M.FS.writeFile('/wdirect.lst', lst);
+                  // Also need the libraries
+                  const libDir = '/tmp/byte-test/../../sdcc-installed/share/sdcc/lib/small';
+                  try {
+                    M.FS.mkdir('/lib');
+                    for (const f of fs.readdirSync(libDir)) {
+                      M.FS.writeFile('/lib/' + f, fs.readFileSync(libDir + '/' + f));
+                    }
+                  } catch(e) {}
+                }],
+                print: function(t) {},
+                printErr: function(t) { process.stderr.write(t + '\n'); },
+              }).then(function(M) {
+                try {
+                  const map = M.FS.readFile('/wdirect.map', {encoding:'utf8'});
+                  const home = map.split('\n').find(l => l.match(/HOME.*bytes/));
+                  console.log(home ? home.trim() : '(HOME not found in map)');
+                } catch(e) { console.log('(no map: ' + e.message + ')'); }
+              }).catch(function(e) { console.log('(sdld failed: ' + e + ')'); });
+            " 2>&1 || echo "(WASM sdld test failed)"
+
+            echo ""
+            echo "=== (Linux) vs (UNIX) ==="
+            echo "Native sdcc version string:"
+            grep "^sdcc:" /tmp/byte-test/native-verbose.log 2>/dev/null | head -1
+            echo "The banner difference is configure-time, not compile-flag."
+
+            echo ""
             echo "::error::Byte-identity test FAILED"
             exit 1
           fi
