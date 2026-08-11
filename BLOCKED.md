@@ -41,22 +41,25 @@ predates the injection and persists without it.
 - Library set (lib/small vs small-stack-auto, no effect)
 - Preprocessor defines (no effect)
 
-**First genuine input difference found (run 31453814448):**
-Native .rel A records have `addr 0` on every line. WASM .rel A
-records omit the `addr` field entirely. Same areas, same sizes,
-same flags, same order — only the trailing `addr` field differs.
+**Eliminated by experiment (run 31463763972):**
+- Missing `addr 0` on A records: appended it, shift unchanged. Not the cause.
+- The `addr` field IS a real input difference (WASM sdas8051 omits it,
+  native includes it) but sdld handles both formats identically.
 
-    Native: A _CODE size 0 flags 0 addr 0
-    WASM:   A _CODE size 0 flags 0
+**Build flags match (from build log):**
+- sdas8051: `-DSDCDB -DNOICE -DINDEXLIB` — identical native vs WASM
+- sdld: `-DINDEXLIB -DUNIX` — identical native vs WASM
+- The `(Linux)` vs `(UNIX)` version string is in sdcc, not sdas/sdld.
 
-This is a WASM sdas8051 defect: the assembler omits the addr field.
-When sdld parses an A record without `addr`, it may default the
-area address differently, producing the +1 placement.
-
-The fix is either: patch the WASM sdas8051 to emit `addr`, or
-post-process the .rel to add `addr 0` to every A record that
-lacks it. The latter is a text substitution, not a structural
-injection.
+**What remains after elimination:**
+Every input we can compare matches (preprocessed code, flags, area
+names/sizes/flags). The `.rel` differs in two ways: missing `O` record
+and missing `addr` field — both confirmed NOT to cause the shift.
+The only remaining variable is the **sdld binary itself**: same source,
+same `-D` flags, native gcc vs Emscripten. If the binary differs in
+behaviour, it is an Emscripten miscompilation — and that is now the
+only hypothesis left standing, reached by elimination rather than
+assertion.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
