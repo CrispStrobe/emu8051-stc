@@ -362,6 +362,15 @@ jobs:
           if [ -f /tmp/byte-test/native.ihx ]; then
             echo "Native: OK ($(wc -c < /tmp/byte-test/native.ihx) bytes)"
             # Dump native .lk and .map for comparison
+            # Version-matched .optsdcc check: does 4.5.0 --c1mode emit it?
+            echo "=== Native 4.5.0 --c1mode .optsdcc check ==="
+            $NATIVE -E -mmcs51 --model-small /tmp/byte-test/test.c 2>/dev/null \
+              | $NATIVE --c1mode -mmcs51 --model-small -o /tmp/byte-test/c1mode-check.asm 2>/dev/null
+            if grep -q '\.optsdcc' /tmp/byte-test/c1mode-check.asm 2>/dev/null; then
+              echo "4.5.0 --c1mode DOES emit .optsdcc (WASM omission is a defect)"
+            else
+              echo "4.5.0 --c1mode does NOT emit .optsdcc (injection is driver reconstruction)"
+            fi
             echo "=== Native .lk file ==="
             cat /tmp/byte-test/native.lk 2>/dev/null || echo "(not found)"
             echo "=== Native .map (segment bases) ==="
