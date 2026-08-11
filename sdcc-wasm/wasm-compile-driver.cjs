@@ -267,7 +267,21 @@ async function main() {
       M.FS.writeFile('/work/test.asm', asmCode);
     });
 
-    const relCode = vfsRead(asMod, '/work/test.rel');
+    let relCode = vfsRead(asMod, '/work/test.rel');
+    // WASM sdas8051 ignores .optsdcc and does not emit the O record.
+    // Without it, the linker produces different area tables and a +1
+    // origin shift. Inject the O record directly into the .rel.
+    // This is a workaround for a defect in the WASM-compiled assembler.
+    let relText = relCode.toString('utf8');
+    if (!relText.includes('\nO -mmcs51')) {
+      // Insert after the M (module) line
+      relText = relText.replace(
+        /^(M .+)$/m,
+        '$1\nO -mmcs51 --model-small'
+      );
+      relCode = Buffer.from(relText, 'utf8');
+      console.log('  Injected O record into .rel (WASM sdas8051 defect workaround)');
+    }
     // Also grab .lst and .sym if the assembler produced them —
     // sdld expects /test.lst beside /test.rel
     let lstCode = null, symCode = null;
