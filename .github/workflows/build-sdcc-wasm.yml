@@ -539,6 +539,14 @@ jobs:
               diff /tmp/byte-test/native.rel /tmp/byte-test/wasm.rel | head -25
             fi
             echo ""
+            echo "=== Link command lines ==="
+            echo "Native:"
+            grep "sdld" /tmp/byte-test/native-verbose.log 2>/dev/null || echo "(not captured)"
+            echo "Native .lk:"
+            cat /tmp/byte-test/native.lk 2>/dev/null || echo "(not found)"
+            echo "WASM .lk (from driver):"
+            grep "Linker script:" -A20 /tmp/byte-test/wasm-pipeline.log 2>/dev/null | head -15 || echo "(see pipeline output)"
+            echo ""
             echo "::error::Byte-identity test FAILED"
             exit 1
           fi

@@ -268,10 +268,33 @@ async function main() {
     });
 
     let relCode = vfsRead(asMod, '/work/test.rel');
-    // Injections 2 and 3 (O record and area declarations) REMOVED.
-    // The +1 shift predates these injections (existed in run 31417955011
-    // before any injection). Removing them to test whether sdld produces
-    // the shift from the assembler's native output alone.
+
+    // EXPERIMENT: WASM sdas8051 omits 'addr 0' from A records that native
+    // sdas8051 includes. Hypothesis: the missing addr field causes sdld to
+    // place HOME at 0x0001 instead of 0x0000.
+    // If origin-delta goes to 0: the missing field is the cause.
+    // If origin-delta stays +1: the field is a red herring.
+    //
+    // This is a WORKAROUND for a defect in the WASM-compiled sdas8051,
+    // NOT a normal build step. It compensates for the assembler omitting
+    // the addr field on A records. Remove this when WASM sdas8051 is fixed
+    // to emit addr fields natively (check: grep '^A.*addr' in the .rel).
+    let relText = relCode.toString('utf8');
+    const aRecordsWithAddr = (relText.match(/^A .* addr /gm) || []).length;
+    const aRecordsWithout = (relText.match(/^A (?!.* addr )/gm) || []).length;
+    if (aRecordsWithAddr > 0 && aRecordsWithout === 0) {
+      // All A records already have addr — the upstream defect is fixed.
+      // Do NOT apply the workaround; it would corrupt good input.
+      console.log('  .rel A records already carry addr field — workaround skipped');
+    } else if (aRecordsWithout > 0 && aRecordsWithAddr === 0) {
+      // No A records have addr — apply the workaround
+      relText = relText.replace(/^(A \S+ size \S+ flags \S+)$/gm, '$1 addr 0');
+      relCode = Buffer.from(relText, 'utf8');
+      console.log('  WORKAROUND: appended addr 0 to %d A records (WASM sdas8051 defect)', aRecordsWithout);
+    } else if (aRecordsWithAddr > 0 && aRecordsWithout > 0) {
+      // Mixed — some have addr, some don't. Something unexpected. Fail loudly.
+      console.error('  ERROR: mixed A records — %d with addr, %d without. Not patching.', aRecordsWithAddr, aRecordsWithout);
+    }
     // Also grab .lst and .sym if the assembler produced them —
     // sdld expects /test.lst beside /test.rel
     let lstCode = null, symCode = null;
