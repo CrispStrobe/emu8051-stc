@@ -27,10 +27,19 @@ run. They compensate for WASM-build defects (confirmed: native 4.5.0
 --c1mode DOES emit .optsdcc), but they are not the cause of the +1
 shift and removing them would not change the image placement.
 
-**Next step:** diff the native and WASM .map area tables. An earlier
-run showed native has `A SSEG size 1 flags 0 addr 0` — a one-byte
-area. If the WASM link places a size-1 area into CODE space at
-0x0000, HOME starts at 0x0001. That is exactly the shape of this bug.
+**Root cause found:** Both native and WASM sdld receive `.ABS.` size 0
+at address 0. Native sdld places HOME at 0x0000 (correct). WASM sdld
+places HOME at 0x0001 (off-by-one). Verified locally: native 4.2.0
+map shows `.ABS. 00000000 size 0` followed by `HOME 00000000`.
+
+This is a **real bug in the WASM-compiled sdld binary** — an off-by-one
+in area placement when a zero-size absolute area precedes a relocatable
+area. No injection can fix it; the linker itself computes the wrong
+address. The fix would be either patching sdld's placement code before
+the WASM build, or post-processing the .ihx to shift addresses by -1.
+
+The three injections (.optsdcc, O record, area declarations) are
+unrelated to this bug and did not affect the origin on any run.
 
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
