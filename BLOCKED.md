@@ -1,14 +1,30 @@
 # Where this repo stands — 2026-08-11
 
-## SDCC WASM: demonstrated sdld placement bug (run 31464841382)
+## SDCC WASM: two defects found, one ours, one upstream (hypothesis, pending run 31466174965)
 
-Same `.rel` files, same `.lk`, two sdld binaries:
+**Defect 1 (ours, fixed in 3d2b3b1):** `thisProgram` not set under
+Emscripten MODULARIZE. `sdas_init()` (sdas.c:84) checks `argv[0]`
+starts with `"sdas"` to enable sdas-specific behaviour. Without it,
+`is_sdas()` returns false and the assembler:
+- omits `addr` field from A records (asout.c:1023 vs 1027)
+- ignores `.optsdcc` directive (no `O` record in .rel)
+All three injections (.optsdcc, O record, area declarations) were
+compensating for disabled sdas mode. `thisProgram: name` fixes it.
 
-    native sdld:  HOME  00000000  0000004C = 76. bytes (REL,CON,CODE)
-    wasm   sdld:  HOME  00000001  0000004C = 76. bytes (REL,CON,CODE)
+**Defect 2 (upstream, latent):** sdld's `newarea()` (lkarea.c:156)
+calls `eval()` on the `addr` field unconditionally for 8051 targets.
+When the field is absent (from a non-sdas assembler), `eval()` reads
+past the line end — undefined behaviour. Native sdld: UB yields 0
+(correct by accident). WASM sdld: UB yields 1 (the +1 shift).
+Demonstrated in run 31464841382: same .rel, two linkers, different
+HOME address. This bug survives our fix — it is no longer reachable
+from our pipeline but exists in sdld's source. Worth reporting upstream.
 
-Identical input, identical arguments, different placement. This is a
-bug in the Emscripten-compiled sdld binary, proven by observation.
+**If run 31466174965 shows origin-delta: 0, the claim becomes:**
+"Native and WASM SDCC 4.5.0 produce byte-identical firmware, with
+no injections." Unqualified. The `.optsdcc` injection in the .asm
+remains as a workaround for WASM sdcc --c1mode not emitting it, but
+with is_sdas() true the assembler processes it correctly.
 
 ## SDCC WASM byte-identity (the main open item)
 
