@@ -495,7 +495,7 @@ jobs:
           echo "flags:   $FLAGS_STATUS"
           echo "asm:     $ASM_STATUS"
           echo "rel:     $REL_STATUS"
-          echo "$IHX_RESULT" | grep -E "^(Native|WASM|shifted|origin-delta|IMAGE|CODE-IDENT|MISMATCH)" | head -7
+          echo "$IHX_RESULT" | grep -E "^(Native|WASM|shifted|origin-delta|IMAGE|CODE-IDENT|MISMATCH|  native)" | head -15
           if [ "$IHX_EXIT" -eq 0 ]; then
             echo "verdict: PASS"
           else

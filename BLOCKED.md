@@ -6,6 +6,15 @@
 4.5.0 (verified by content comparison under address shift). A 1-byte origin
 shift remains: native image at 0000-00B0, WASM at 0001-00B1.
 
+**Two separate problems remain:**
+1. A +1 origin shift (WASM image at 0001-00B1, native at 0000-00B0)
+2. 6 bytes differ under the shift (166 of 172 match, 6 do not)
+
+The earlier claim "code generation matches under address shift" was
+not quite true — 6 real bytes differ. Their offsets and values will
+show whether they are address operands (same root cause as the shift)
+or genuine codegen differences.
+
 **What is ruled out (each tested, none moved the offset):**
 - Linker script segment bases (`-b HOME = 0x0000` matches native)
 - Missing 4.5.0 preprocessor defines (added, no change)

@@ -69,8 +69,22 @@ for addr in sorted(native.keys()):
 
 shifted_status = "identical" if shifted_diffs == 0 and shifted_total == len(native) else "differ (%d)" % shifted_diffs
 
+# Collect the shifted-diff details
+shifted_diff_list = []
+for addr in sorted(native.keys()):
+    shifted_addr = addr + origin_delta
+    if shifted_addr in wasm and native[addr] != wasm[shifted_addr]:
+        shifted_diff_list.append((addr, native[addr], wasm[shifted_addr]))
+
 print("shifted:       %s" % shifted_status)
 print("origin-delta:  %+d" % origin_delta)
+
+# Print shifted-diff details (always, even if few)
+if shifted_diff_list:
+    print("shifted-diffs:")
+    for addr, nb, wb in shifted_diff_list:
+        print("  native[%04X]=0x%02X  wasm[%04X]=0x%02X  (delta=%+d)" % (
+            addr, nb, addr + origin_delta, wb, wb - nb))
 
 if origin_delta != 0 and shifted_diffs == 0 and shifted_total == len(native):
     print("CODE-IDENTICAL under +%d shift. Only the origin address differs." % origin_delta)
