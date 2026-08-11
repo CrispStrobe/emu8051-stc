@@ -1,4 +1,14 @@
-# Where this repo stands — 2026-08-10 session end
+# Where this repo stands — 2026-08-11
+
+## SDCC WASM: demonstrated sdld placement bug (run 31464841382)
+
+Same `.rel` files, same `.lk`, two sdld binaries:
+
+    native sdld:  HOME  00000000  0000004C = 76. bytes (REL,CON,CODE)
+    wasm   sdld:  HOME  00000001  0000004C = 76. bytes (REL,CON,CODE)
+
+Identical input, identical arguments, different placement. This is a
+bug in the Emscripten-compiled sdld binary, proven by observation.
 
 ## SDCC WASM byte-identity (the main open item)
 
