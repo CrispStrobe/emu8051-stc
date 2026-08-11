@@ -9,10 +9,15 @@ sdcc --c1mode codegen, sdas8051 assemble, sdld link) produce
     #include <8051.h>
     void main(void) { P1 = 0xAA; while(1); }
 
-172 bytes, address range 0x0000-0x00B0, same origin, no injected
-records. The `.optsdcc` directive is injected into the `.asm`
-(WASM sdcc `--c1mode` omits it), but with `is_sdas()` true the
-assembler processes it natively and produces identical `.rel` output.
+Verified across 10 programs (172-356 bytes), all byte-identical,
+same origin, no injected records. Programs exercise: timer ISR,
+ADC polling, UART, switch/case jump table, unsigned long library
+calls, code-memory arrays, function pointers, multi-interrupt,
+xdata struct pointer arithmetic.
+
+The `.optsdcc` directive is injected into the `.asm` (WASM sdcc
+`--c1mode` omits it), but with `is_sdas()` true the assembler
+processes it natively and produces identical `.rel` output.
 
 ## Category
 
@@ -26,7 +31,7 @@ produce the same output). No silicon involved.
 
 ## What this does NOT cover
 
-- Only one source file. Larger programs, different memory models
+- 10 programs, 172-356 bytes each. Larger programs, different memory models
   (`--model-large`, `--stack-auto`), or programs that exercise
   more of the C runtime are untested.
 - Only SDCC 4.5.0. A different release may diverge.
@@ -64,10 +69,13 @@ exists in sdld's source. Worth reporting upstream.
 ## Verification
 
 - Run 31466174965: `origin-delta: 0`, `verdict: PASS`, `is_sdas()`
-  indicators both present.
+  indicators both present. Single program.
 - Gate positive control (run 31466945986): corrupted one byte of the
   WASM `.ihx`, comparison returned exit 1 (FAIL). Gate verified.
-  `Gate verified: corrupted input → exit 1 (FAIL)`
+- Suite (run 31516634687): 10/10 programs pass, 0 fail. Programs
+  range from 172 to 356 bytes, exercising timer ISRs, ADC, UART,
+  jump tables, long arithmetic, code arrays, function pointers,
+  multi-interrupt, and xdata structs. Gate verified on same run.
 
 ## History
 
