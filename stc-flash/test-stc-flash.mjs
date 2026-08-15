@@ -9,6 +9,7 @@
 
 import { flashStc12, parseIntelHex, buildPacket, readPacket, computeBaud } from './stc-flash.js';
 import { createMockBootloader } from './mock-bootloader.js';
+import * as fs from 'fs';
 
 let pass = 0, fail = 0;
 function check(name, ok, detail) {
@@ -157,6 +158,81 @@ function check(name, ok, detail) {
     check('flashStc12 unknown part: model is null', result.model === null);
   } catch (e) {
     check('flashStc12 unknown part: completed', false, e.message);
+  }
+}
+
+// ── Test 9: Flash multiple hex files (batch consistency) ──
+{
+  const fs = await import('fs');
+  const path = await import('path');
+  const dir = new URL('../test_images/', import.meta.url);
+  const hexFiles = ['05-scheduler.hex', '07-buzzer.hex', '09-shift-register.hex'];
+  let allOk = true;
+  for (const name of hexFiles) {
+    try {
+      const hex = fs.readFileSync(new URL(name, dir), 'utf8');
+      const { hostTransport, bootloader } = createMockBootloader({ magic: 0xD17E, clockHz: 11059200 });
+      const result = await flashStc12(null, hex, {
+        transport: hostTransport, handshakeBaud: 2400, transferBaud: 115200, log: () => {},
+      });
+      const parsed = parseIntelHex(hex);
+      let match = true;
+      for (let i = 0; i < parsed.image.length; i++) {
+        if (bootloader.written[i] !== parsed.image[i]) { match = false; break; }
+      }
+      if (!match || !result.bytes) { allOk = false; check(`flash ${name}`, false, 'image mismatch'); }
+    } catch (e) {
+      allOk = false;
+      check(`flash ${name}`, false, e.message);
+    }
+  }
+  check('flashStc12 batch: 3 additional hex files', allOk);
+}
+
+// ── Test 10: Packet round-trip (build + parse) ──
+{
+  const payload = [0x84, 0xFF, 0x00, 0x02, 0x00, 0x00, 0x04];
+  const pkt = buildPacket(payload);
+  // Simulate reading it back as an MCU packet by swapping direction
+  const mcuPkt = new Uint8Array(pkt);
+  mcuPkt[2] = 0x68; // change DIR to MCU
+  // Recompute checksum
+  const body = Array.from(mcuPkt.subarray(2, mcuPkt.length - 3));
+  const sum = body.reduce((a, b) => (a + b) & 0xFFFF, 0);
+  mcuPkt[mcuPkt.length - 3] = (sum >> 8) & 0xFF;
+  mcuPkt[mcuPkt.length - 2] = sum & 0xFF;
+
+  let pos = 0;
+  const mockIo = {
+    async read(n) {
+      const slice = mcuPkt.subarray(pos, pos + n);
+      pos += n;
+      return slice;
+    }
+  };
+  try {
+    const got = await readPacket(mockIo);
+    check('packet round-trip: payload matches',
+      got.length === payload.length && got.every((b, i) => b === payload[i]));
+  } catch (e) {
+    check('packet round-trip: payload matches', false, e.message);
+  }
+}
+
+// ── Test 11: STC12C5A16S2 model identification ──
+{
+  const { hostTransport, bootloader } = createMockBootloader({
+    magic: 0xD168, clockHz: 11059200, flashSize: 16384,
+  });
+  const hex = fs.readFileSync(new URL('../test_images/01-blink.hex', import.meta.url), 'utf8');
+  try {
+    const result = await flashStc12(null, hex, {
+      transport: hostTransport, handshakeBaud: 2400, transferBaud: 115200, log: () => {},
+    });
+    check('flashStc12 STC12C5A16S2: model name', result.model === 'STC12C5A16S2',
+      `got ${result.model}`);
+  } catch (e) {
+    check('flashStc12 STC12C5A16S2: completed', false, e.message);
   }
 }
 

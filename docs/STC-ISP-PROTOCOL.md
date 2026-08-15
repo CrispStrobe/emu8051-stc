@@ -161,7 +161,33 @@ bytes 20-21 that identifies the chip model:
 Source: wire observation (the magic appears in the status packet and
 is echoed back in several commands).
 
-## 9. What is NOT covered
+## 9. STC15 protocol variant (not implemented)
+
+The STC15 family (STC15F2K60S2, STC15W408AS, etc.) uses a **different
+ISP protocol**, not a dialect of STC12. The differences are structural:
+
+- Different command bytes for several operations
+- Different status packet format and length
+- Additional protocol phases (RC oscillator trimming)
+- Higher native baud rate support (up to 115200 default)
+- Different baud-rate counter format in the status packet
+
+These differences are confirmed by the existence of separate protocol
+handlers in every known STC programming tool, and by the STC15 series
+datasheets which describe a distinct ISP interface.
+
+**This module refuses STC15 parts by name** (`MODELS` table, `isp: 'stc15'`)
+rather than speaking to them in a protocol they do not understand. The
+symptom of speaking STC12 to an STC15 is a successful handshake (the
+0x7F pulse and the status packet use the same framing) followed by
+failures in the baud negotiation or erase phase.
+
+A future `flashStc15()` function would share packet framing and Intel
+HEX parsing with the STC12 path, but would need its own command set
+and status parser. The STC15 datasheet's ISP chapter is the primary
+source; no clean-room spec exists here yet.
+
+## 10. What is NOT covered
 
 - **STC15 protocol.** Different packet format, different commands,
   different baud negotiation. A separate specification.
@@ -179,7 +205,7 @@ is echoed back in several commands).
   (BENCH-FLASHING.md: "None of the three has ever programmed a
   real board").
 
-## 10. Licence note
+## 11. Licence note
 
 This specification documents PROTOCOL FACTS: byte values, packet
 formats, and timing observable on a serial line. It was written
