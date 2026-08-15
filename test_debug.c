@@ -300,6 +300,72 @@ static void test_time(void) {
     teardown();
 }
 
+/* ================================================================== */
+/* Test: write watchpoint                                              */
+/* ================================================================== */
+static void test_write_watchpoint(void) {
+    printf("--- test_write_watchpoint ---\n");
+    setup();
+
+    /* Program: MOV 30h,#00; MOV 30h,#42; SJMP $ */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x30; cpu.mCodeMem[2] = 0x00;
+    cpu.mCodeMem[3] = 0x75; cpu.mCodeMem[4] = 0x30; cpu.mCodeMem[5] = 0x42;
+    cpu.mCodeMem[6] = 0x80; cpu.mCodeMem[7] = 0xFE;
+
+    /* Set write watchpoint on IRAM 0x30 */
+    cpu.mLowerData[0x30] = 0x00; /* pre-set so first write (0x00) is no-change */
+    struct dbg_breakpoint wbp = {
+        .kind = BP_WRITE, .addr = 0x30,
+        .watch = { .space = SPACE_IRAM, .len = 1 }
+    };
+    int id = dbg_set_breakpoint(&dbg, &wbp);
+    CHECK(id >= 0, "write watchpoint: set OK");
+
+    /* Run — should halt when 0x30 changes from 0x00 to 0x42 */
+    dbg_run(&dbg);
+    for (int i = 0; i < 200 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+        dbg_tick(&dbg);
+
+    CHECK(dbg_get_state(&dbg) == DBG_HALTED, "write watchpoint: halted");
+    CHECK(cpu.mLowerData[0x30] == 0x42, "write watchpoint: value changed to 0x42");
+
+    teardown();
+}
+
+/* ================================================================== */
+/* Test: step over with nested call (LCALL calls LCALL calls RET)      */
+/* ================================================================== */
+static void test_step_over_nested(void) {
+    printf("--- test_step_over_nested ---\n");
+    setup();
+
+    /* main:  LCALL outer; MOV A,#99; SJMP $
+     * outer: LCALL inner; MOV A,#55; RET
+     * inner: MOV A,#33; RET */
+    cpu.mCodeMem[0] = 0x12; cpu.mCodeMem[1] = 0x00; cpu.mCodeMem[2] = 0x06; /* LCALL 0006 */
+    cpu.mCodeMem[3] = 0x74; cpu.mCodeMem[4] = 0x99;                          /* MOV A,#99 */
+    cpu.mCodeMem[5] = 0x80; cpu.mCodeMem[6] = 0xFE;                          /* SJMP $ */
+    /* outer at 0x06: */
+    cpu.mCodeMem[6] = 0x12; cpu.mCodeMem[7] = 0x00; cpu.mCodeMem[8] = 0x0C; /* LCALL 000C */
+    cpu.mCodeMem[9] = 0x74; cpu.mCodeMem[10] = 0x55;                         /* MOV A,#55 */
+    cpu.mCodeMem[11] = 0x22;                                                  /* RET */
+    /* inner at 0x0C: */
+    cpu.mCodeMem[12] = 0x74; cpu.mCodeMem[13] = 0x33;                        /* MOV A,#33 */
+    cpu.mCodeMem[14] = 0x22;                                                  /* RET */
+
+    /* Step over the LCALL outer — should execute both nested calls and return */
+    dbg_step(&dbg, STEP_OVER, 1);
+    for (int i = 0; i < 500 && dbg_get_state(&dbg) == DBG_RUNNING; i++)
+        dbg_tick(&dbg);
+
+    CHECK(dbg_get_state(&dbg) == DBG_HALTED, "step over nested: halted");
+    CHECK(dbg_get_pc(&dbg) == 3, "step over nested: PC = 3 (after outer returned)");
+    /* ACC should be 0x55 (last MOV in outer, after inner's 0x33) */
+    CHECK(dbg_get_acc(&dbg) == 0x55, "step over nested: ACC = 55 (outer executed)");
+
+    teardown();
+}
+
 int main(void) {
     printf("=== Debug control tests (boundary D) ===\n\n");
 
@@ -308,6 +374,8 @@ int main(void) {
     test_code_breakpoint();
     test_memory_access();
     test_step_over_out();
+    test_write_watchpoint();
+    test_step_over_nested();
     test_level1_position();
     test_time();
 
