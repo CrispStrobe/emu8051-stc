@@ -103,5 +103,62 @@ function check(name, ok, detail) {
   }
 }
 
+// ── Test 5: parseIntelHex rejects bad checksums ──
+{
+  let threw = false;
+  try { parseIntelHex(':03000000020006F4\n:00000001FF'); } catch { threw = true; }
+  check('parseIntelHex: rejects bad checksum', threw);
+}
+
+// ── Test 6: parseIntelHex rejects empty ──
+{
+  let threw = false;
+  try { parseIntelHex(':00000001FF'); } catch { threw = true; }
+  check('parseIntelHex: rejects empty (EOF only)', threw);
+}
+
+// ── Test 7: Flash a larger program (02-adc.hex) ──
+{
+  const fs = await import('fs');
+  const adcHex = fs.readFileSync(new URL('../test_images/02-adc.hex', import.meta.url), 'utf8');
+  const { hostTransport, bootloader } = createMockBootloader({ magic: 0xD17E, clockHz: 11059200 });
+  try {
+    const result = await flashStc12(null, adcHex, {
+      transport: hostTransport, handshakeBaud: 2400, transferBaud: 115200,
+      log: () => {},
+    });
+    check('flashStc12 02-adc: completed', true);
+    check('flashStc12 02-adc: bytes > 01-blink', result.bytes > 100, `got ${result.bytes}`);
+
+    const parsed = parseIntelHex(adcHex);
+    let match = true;
+    for (let i = 0; i < parsed.image.length; i++) {
+      if (bootloader.written[i] !== parsed.image[i]) { match = false; break; }
+    }
+    check('flashStc12 02-adc: written image matches', match);
+  } catch (e) {
+    check('flashStc12 02-adc: completed', false, e.message);
+  }
+}
+
+// ── Test 8: Unknown part magic still programs ──
+{
+  const { hostTransport, bootloader } = createMockBootloader({
+    magic: 0xBEEF, clockHz: 11059200, flashSize: 8192,
+  });
+  const simpleHex = ':03000000020006F5\n:00000001FF';
+  // Parse will give 3 bytes; mock should still work
+  try {
+    const result = await flashStc12(null, simpleHex, {
+      transport: hostTransport, handshakeBaud: 2400, transferBaud: 115200,
+      log: () => {},
+    });
+    check('flashStc12 unknown part: completed', true);
+    check('flashStc12 unknown part: model is null', result.model === null);
+  } catch (e) {
+    check('flashStc12 unknown part: completed', false, e.message);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
