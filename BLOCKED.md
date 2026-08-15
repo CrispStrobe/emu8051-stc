@@ -204,6 +204,19 @@ clock-period rounding. Runnable test: `tests/rung_neopixel_cross.sh`.
 Ledger row raised to category 1 in stc `38352d6`. Our emulator was
 the second half; nothing left for us to run.
 
+## STC WebSerial flash (done)
+
+`stc-flash/` — dependency-free ES module (MIT) speaking the STC12
+bootloader protocol over WebSerial. Protocol spec in
+`docs/STC-ISP-PROTOCOL.md` (clean-room from datasheet + wire obs).
+Mock bootloader peer for testing. 27/27 tests pass including full
+flash sessions with image byte verification (01-blink, 02-adc,
+unknown part). Demo page at `stc-flash/demo.html`.
+
+NOT verified on real silicon. The mock bootloader proves internal
+consistency of the spec; a real-chip session is the silicon proof.
+lite integration via a bundle brief is a separate deliverable.
+
 ## Lane status: closed
 
 All open items in this repo are either done or hardware-blocked:
