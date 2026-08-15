@@ -7,10 +7,12 @@
   body { font-family: monospace; max-width: 640px; margin: 2em auto; }
   button { font-size: 1.1em; padding: 0.4em 1em; margin: 0.3em; }
   button:disabled { opacity: 0.4; }
-  textarea { width: 100%; height: 10em; font-family: monospace; font-size: 0.9em; }
+  textarea { width: 100%; height: 8em; font-family: monospace; font-size: 0.9em; }
   #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 1em;
          height: 16em; overflow-y: auto; border-radius: 4px; }
   .warn { color: #fa0; }
+  .ok { color: #0f0; }
+  .sep { border-top: 1px solid #444; margin: 1em 0; padding-top: 0.5em; }
 </style>
 </head>
 <body>
@@ -27,25 +29,37 @@ Requires Chrome or Edge. The chip must be <strong>cold power-cycled</strong>
   Or paste hex: <textarea id="hexText" placeholder=":03000000020006F5&#10;..."></textarea>
 </div>
 <div style="margin-top:0.5em">
-  <button id="btnFlash" disabled>Flash</button>
-  <button id="btnStop" disabled>Stop</button>
+  <button id="btnFlash" disabled>Flash (WebSerial)</button>
+  <button id="btnTest">Test (Mock Peer)</button>
   <span id="status"></span>
 </div>
 <div id="log"></div>
 
 <script type="module">
 import { flashStc12, parseIntelHex } from './stc-flash.js';
+import { createMockBootloader } from './mock-bootloader.js';
 
 const logEl = document.getElementById('log');
 const statusEl = document.getElementById('status');
 const btnFlash = document.getElementById('btnFlash');
-const btnStop = document.getElementById('btnStop');
+const btnTest = document.getElementById('btnTest');
 const hexFileInput = document.getElementById('hexFile');
 const hexTextArea = document.getElementById('hexText');
 const fileInfo = document.getElementById('fileInfo');
 
+// Default test hex (minimal blink program)
+const DEFAULT_HEX = `:03000000020006F5
+:03005F0002000399
+:030003000200A256
+:200062005391FC439203D290D29122538E7FE58954F04401F589C28CC28D22AE82AF838E5B
+:20008200048F051EBEFF011FEC4D6013758A67758CFCC28DD28C308DFDC28CC28D80E02236
+:0600A200758990AA22DB
+:0500A80075920180CE
+:0100AD0032C0
+:0200AE0080FE73
+:00000001FF`;
+
 let hexContent = '';
-let abortCtrl = null;
 
 function log(msg) {
   logEl.textContent += msg + '\n';
@@ -57,59 +71,52 @@ function setStatus(msg, cls) {
   statusEl.className = cls || '';
 }
 
-// Load hex from file
-hexFileInput.addEventListener('change', async () => {
-  const file = hexFileInput.files[0];
-  if (!file) return;
-  hexContent = await file.text();
-  try {
-    const { image } = parseIntelHex(hexContent);
-    fileInfo.textContent = `${image.length} bytes`;
-    btnFlash.disabled = false;
-  } catch (e) {
-    fileInfo.textContent = `error: ${e.message}`;
-    btnFlash.disabled = true;
-  }
-});
-
-// Load hex from textarea
-hexTextArea.addEventListener('input', () => {
-  const text = hexTextArea.value.trim();
-  if (!text) { btnFlash.disabled = true; return; }
+function updateHex(text) {
   hexContent = text;
   try {
     const { image } = parseIntelHex(hexContent);
     fileInfo.textContent = `${image.length} bytes`;
-    btnFlash.disabled = false;
+    btnFlash.disabled = !navigator.serial;
+    return true;
   } catch (e) {
     fileInfo.textContent = `error: ${e.message}`;
     btnFlash.disabled = true;
+    return false;
   }
-});
-
-// Check WebSerial support
-if (!navigator.serial) {
-  log('WebSerial is not available in this browser.');
-  log('Use Chrome or Edge, and ensure the page is served over HTTPS.');
-  setStatus('not supported', 'warn');
-} else {
-  btnFlash.disabled = hexContent.length > 0 ? false : true;
 }
 
+hexFileInput.addEventListener('change', async () => {
+  const file = hexFileInput.files[0];
+  if (file) updateHex(await file.text());
+});
+
+hexTextArea.addEventListener('input', () => {
+  const text = hexTextArea.value.trim();
+  if (text) updateHex(text);
+  else { btnFlash.disabled = true; fileInfo.textContent = ''; }
+});
+
+if (!navigator.serial) {
+  log('WebSerial not available — use Chrome/Edge over HTTPS.');
+  log('The "Test (Mock Peer)" button works without WebSerial.\n');
+  btnFlash.disabled = true;
+}
+
+// ── Flash via WebSerial ──
 btnFlash.addEventListener('click', async () => {
   if (!hexContent) { log('no hex loaded'); return; }
   logEl.textContent = '';
   btnFlash.disabled = true;
-  btnStop.disabled = false;
+  btnTest.disabled = true;
   setStatus('connecting…');
 
   let port;
   try {
     port = await navigator.serial.requestPort();
-  } catch (e) {
+  } catch {
     log('port selection cancelled');
     btnFlash.disabled = false;
-    btnStop.disabled = true;
+    btnTest.disabled = false;
     setStatus('');
     return;
   }
@@ -117,19 +124,91 @@ btnFlash.addEventListener('click', async () => {
   try {
     const result = await flashStc12(port, hexContent, {
       log,
-      onPowerCycle: () => {
-        setStatus('power-cycle the board NOW', 'warn');
-      },
+      onPowerCycle: () => setStatus('power-cycle the board NOW', 'warn'),
     });
-    setStatus(`done: ${result.bytes} bytes`);
-    log(`\nFlash complete: ${result.bytes} bytes → ${result.model || 'unknown part'}`);
+    setStatus(`done: ${result.bytes} bytes`, 'ok');
+    log(`\nFlash complete: ${result.bytes} bytes -> ${result.model || 'unknown'}`);
   } catch (e) {
     log(`\nERROR: ${e.message}`);
     setStatus('failed', 'warn');
   } finally {
     btnFlash.disabled = false;
-    btnStop.disabled = true;
+    btnTest.disabled = false;
     try { await port.close(); } catch {}
+  }
+});
+
+// ── Test against mock bootloader (no WebSerial needed) ──
+btnTest.addEventListener('click', async () => {
+  const hex = hexContent || DEFAULT_HEX;
+  if (!hexContent) {
+    log('No hex loaded — using built-in blink program.\n');
+  }
+
+  logEl.textContent = '';
+  btnFlash.disabled = true;
+  btnTest.disabled = true;
+  setStatus('running mock test…');
+
+  let pass = 0, fail = 0;
+  function check(name, ok, detail) {
+    if (ok) { log(`PASS: ${name}`); pass++; }
+    else { log(`FAIL: ${name}${detail ? ' — ' + detail : ''}`); fail++; }
+  }
+
+  try {
+    // Parse hex
+    const parsed = parseIntelHex(hex);
+    check('parseIntelHex', parsed.image.length > 0, `${parsed.image.length} bytes`);
+
+    // Create mock bootloader
+    const { hostTransport, bootloader } = createMockBootloader({
+      magic: 0xD17E, clockHz: 11059200,
+    });
+
+    // Run full flash session
+    log('\n--- Full flash session against mock bootloader ---\n');
+    const result = await flashStc12(null, hex, {
+      transport: hostTransport,
+      handshakeBaud: 2400,
+      transferBaud: 115200,
+      log,
+    });
+
+    log('');
+    check('session completed', true);
+    check('model identified', result.model === 'STC12C5A60S2', `got ${result.model}`);
+    check('bytes > 0', result.bytes > 0, `${result.bytes}`);
+    check('bootloader erased', bootloader.erased);
+    check('bootloader state done', bootloader.state === 'done', bootloader.state);
+
+    // Verify written image
+    let mismatch = -1;
+    for (let i = 0; i < parsed.image.length; i++) {
+      if (bootloader.written[i] !== parsed.image[i]) { mismatch = i; break; }
+    }
+    check('written image matches hex', mismatch === -1,
+      mismatch >= 0 ? `first mismatch at 0x${mismatch.toString(16)}` : '');
+
+    // Test with unknown part
+    log('\n--- Unknown part test ---\n');
+    const { hostTransport: t2, bootloader: b2 } = createMockBootloader({
+      magic: 0xBEEF, clockHz: 11059200, flashSize: 8192,
+    });
+    const r2 = await flashStc12(null, hex, {
+      transport: t2, handshakeBaud: 2400, transferBaud: 115200, log: () => {},
+    });
+    check('unknown part: completed', true);
+    check('unknown part: model null', r2.model === null);
+
+    log(`\n=== ${pass} passed, ${fail} failed ===`);
+    setStatus(fail === 0 ? `ALL ${pass} PASS` : `${fail} FAILED`, fail === 0 ? 'ok' : 'warn');
+  } catch (e) {
+    log(`\nERROR: ${e.message}\n${e.stack || ''}`);
+    setStatus('test error', 'warn');
+  } finally {
+    btnFlash.disabled = !navigator.serial;
+    btnTest.disabled = false;
   }
 });
 </script>
