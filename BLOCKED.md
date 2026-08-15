@@ -217,6 +217,17 @@ NOT verified on real silicon. The mock bootloader proves internal
 consistency of the spec; a real-chip session is the silicon proof.
 lite integration via a bundle brief is a separate deliverable.
 
+## Tasklist complete (2026-08-15)
+
+1. Demo HTML with mock-peer test mode: done (e221e73)
+2. Full spec coverage tests: 71/71 (c728c9f, 2129b26)
+3. STC15 protocol variant: detection + refusal done, programming
+   blocked on STC15 datasheet (2129b26)
+4. Bench runbook + README reference: done (f051f5e, b2f7767)
+
+Next briefed item: DEBUG PARITY LANE — avr8js-debug and rp2040js-debug
+step-over/step-out via SP-depth stepping.
+
 ## Lane status: closed
 
 All open items in this repo are either done or hardware-blocked:
