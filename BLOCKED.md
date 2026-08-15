@@ -225,8 +225,10 @@ lite integration via a bundle brief is a separate deliverable.
    blocked on STC15 datasheet (2129b26)
 4. Bench runbook + README reference: done (f051f5e, b2f7767)
 
-Next briefed item: DEBUG PARITY LANE — avr8js-debug and rp2040js-debug
-step-over/step-out via SP-depth stepping.
+DEBUG PARITY (AVR side done): stepInsn/stepOver/stepOut via SP-depth
+in avr8js-adapter.mjs, 15/15 tests (073c056). capabilities() declares
+steps:[insn,over,out], debugTarget:true. RP2040 side is in bw-bundle
+(different repo, not mine to commit to — needs coordinator decision).
 
 ## Lane status: closed
 
