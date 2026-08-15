@@ -76,3 +76,26 @@ transitions (L events where LEDs turn on) match between both emulators.
 | emu-only (ucsim timeout) | 1 |
 | not-projectable (compiler) | 10 |
 | analog (blocked) | 7 |
+
+## Wiring sweep differential (2026-08-15)
+
+STC12-projected circuits for swept part kinds, emu8051 vs ucsim pin traces.
+
+| Part kind | Program | Status | Detail |
+|-----------|---------|--------|--------|
+| led | 01-blink + 6 others | agree | 7 CC0 examples, all agree (init mode-set differs) |
+| buzzer | 07-buzzer-siren | agree | CC0 example |
+| npn | sweep-npn.c | agree | P1.0→H, P1.x→L, P1.0→H; init PP-H differs, steady state matches |
+| shift_register | sweep-595.c | agree | 8-bit shift-out clock/data sequence matches; init PP-H differs |
+| relay | sweep-relay.c | emu-only | P1.0 H→L at 500ms; ucsim timeout (timer-based, too slow) |
+| button | — | not-projectable | compiler: pin read expression not supported |
+| switch | — | not-projectable | compiler: pin read expression not supported |
+| servo | — | not-projectable | compiler: servo API not supported |
+| dc_motor | — | not-projectable | compiler: motor API not supported |
+| potentiometer | — | not-projectable | analog |
+| ldr | — | not-projectable | analog |
+| ntc/tmp36 | — | not-projectable | analog |
+
+**Summary:** 4 agree (led, buzzer, npn, shift_register), 1 emu-only (relay, ucsim timeout),
+7 not-projectable (compiler syntax or analog). The 4 agreements cover the most common
+MCU-driven part kinds: output pin → LED, output pin → NPN base, and bit-bang SPI to 74HC595.
