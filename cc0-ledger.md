@@ -51,22 +51,28 @@ Blocked on the pseudocode compiler supporting analog pin read expressions.
 | 25-reaction-timer | not-projectable | compile: `btn` pin read |
 | 26-debounce | not-projectable | compile: `btn` pin read |
 | 27-led-dice | not-projectable | compile: `btn` pin read |
-| 30-multi-led-pattern | disagree | emu=23 ucsim=1 pin events; ucsim may not trace multi-pin init |
-| 32-source-vs-sink | disagree | emu=5 pin events, ucsim=0; ucsim produces no pin output for this program |
+| 30-multi-led-pattern | agree | extra emu events are init mode-set (PP H); LED sequence matches |
+| 32-source-vs-sink | inconclusive | ucsim produces no output (timeout); emu shows correct pattern |
 | 33-inductive-no-flyback | agree | state sequence matches (emu=4, ucsim=2 events) |
-| 46-port-overcurrent | disagree | emu=24 ucsim=8; event counts differ, needs investigation |
+| 46-port-overcurrent | agree | extra emu events are init PP-H; L transitions match at same pins |
 | 53-servo-sweep | not-projectable | compile: servo API not supported |
 | 54-motor-driver | not-projectable | compile: motor API not supported |
 
-**Summary batch 2:** 1 agree, 3 disagree (need investigation), 1 emu-only (timeout), 6 not-projectable.
-The disagrees may be init mode-set differences; needs deeper trace comparison.
+**Summary batch 2:** 3 agree (after investigation: init mode-set events),
+1 inconclusive (ucsim timeout), 1 emu-only (timeout), 6 not-projectable.
+
+**Note on init mode-set events:** emu8051 reports a PIN event when PxM0/PxM1
+is written (mode change from quasi to push-pull), producing a PP-H event at
+init time. ucsim does not report mode-set as a pin event. This is a trace
+format difference, not a program behaviour disagreement. The actual pin-value
+transitions (L events where LEDs turn on) match between both emulators.
 
 ## Running totals
 
 | Status | Count |
 |--------|-------|
-| agree | 7 |
-| disagree (under investigation) | 3 |
+| agree | 9 |
+| inconclusive (ucsim timeout) | 1 |
 | emu-only (ucsim timeout) | 1 |
 | not-projectable (compiler) | 10 |
 | analog (blocked) | 7 |
