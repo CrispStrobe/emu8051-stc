@@ -230,6 +230,14 @@ in avr8js-adapter.mjs, 15/15 tests (073c056). capabilities() declares
 steps:[insn,over,out], debugTarget:true. RP2040 side is in bw-bundle
 (different repo, not mine to commit to — needs coordinator decision).
 
+## Test totals (2026-08-15)
+
+- Emulator native: 425 (unit + integration + cycles + debug + mass)
+- stc-flash: 71 (protocol spec coverage)
+- AVR debug: 15 (step-insn/over/out with call/ret)
+- Total: 511, 0 failures
+- WASM binary: rebuilt 2026-08-15 (9c3ef31)
+
 ## Lane status: closed
 
 All open items in this repo are either done or hardware-blocked:
