@@ -53,10 +53,16 @@ the full contract including SFR story and the trap about untimed models.
 
 **SDCC 4.5.0 as WASM** (`.github/workflows/build-sdcc-wasm.yml`): four-stage
 pipeline (cc1 preprocess, sdcc --c1mode codegen, sdas8051 assemble, sdld
-link) running in MEMFS with no fork/exec. Code generation matches native
-SDCC 4.5.0 byte-for-byte; link-layout alignment is in progress (1-byte
-origin difference as of 2026-08-10, from library set mismatch). Specified
-and partially built, not yet shipping.
+link) running in MEMFS with no fork/exec. **Byte-identical** to native SDCC
+4.5.0 across 10 test programs (172-356 bytes), category 2, gate-verified.
+See `spec-updates/009-sdcc-wasm-byte-identity.md`.
+
+**STC12 WebSerial flash** (`stc-flash/`): dependency-free ES module (MIT)
+speaking the STC12 bootloader protocol over the WebSerial API. 0x7F pulse
+handshake, baud negotiation, erase, program, verify. 71 tests against a
+mock bootloader peer. STC15 detection supported; STC15 programming not
+yet implemented. Demo page at `stc-flash/demo.html`. Bench session
+runbook at `docs/BENCH-FLASH-RUNBOOK.md`. NOT verified on real silicon.
 
 What is verified
 ----------------
