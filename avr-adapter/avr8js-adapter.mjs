@@ -198,10 +198,59 @@ export function createAvrAdapter(opts) {
         /** Current time in nanoseconds */
         getTimeNs,
 
+        /** Read the 16-bit stack pointer. */
+        getSP() {
+            return cpu.dataView.getUint16(0x5D, true); // SPL=0x5D, SPH=0x5E in data space
+        },
+
+        /** Get the current PC (in words). */
+        getPC() {
+            return cpu.pc;
+        },
+
+        /** Step one instruction. */
+        stepInsn() {
+            tick();
+        },
+
+        /**
+         * Step over: execute one instruction; if it was a CALL, run until
+         * SP returns to its pre-call depth.
+         */
+        stepOver() {
+            const spBefore = this.getSP();
+            const pcBefore = cpu.pc;
+            tick(); // execute one instruction
+            const spAfter = this.getSP();
+            // If SP deepened (call pushed return address), run until it returns
+            if (spAfter < spBefore) {
+                const maxCycles = 1000000;
+                let i = 0;
+                while (this.getSP() < spBefore && i < maxCycles) {
+                    tick();
+                    i++;
+                }
+            }
+        },
+
+        /**
+         * Step out: run until SP is one frame shallower than current.
+         * This means running until the current function returns.
+         */
+        stepOut() {
+            const spBefore = this.getSP();
+            const maxCycles = 1000000;
+            let i = 0;
+            while (this.getSP() <= spBefore && i < maxCycles) {
+                tick();
+                i++;
+            }
+        },
+
         /** Capabilities (boundary D §7 shape) */
         capabilities() {
             return {
-                steps: [],           // no debug target for AVR yet
+                steps: ['insn', 'over', 'out'],
                 breakpoints: [],
                 spaces: ['code', 'sram'],
                 writable: ['sram'],
@@ -211,8 +260,7 @@ export function createAvrAdapter(opts) {
                 consumes: [],
                 part: part,
                 peripherals: ['timer0', 'timer1', 'timer2', 'adc', 'uart0'],
-                // Honest: no boundary-D debugger for AVR yet
-                debugTarget: false,
+                debugTarget: true,
             };
         },
 
