@@ -41,3 +41,32 @@ between the two emulators and is NOT a content disagreement.
 | 17-comparator | not-projectable | ANALOG pin |
 
 Blocked on the pseudocode compiler supporting analog pin read expressions.
+
+## Batch 2 (2026-08-15)
+
+| Example | Status | Detail |
+|---------|--------|--------|
+| 20-shift-register-binary | not-projectable | compile: `shiftleft` expression |
+| 24-pwm-fade | emu-only | ucsim timeout (PWM rapid toggling, too slow) |
+| 25-reaction-timer | not-projectable | compile: `btn` pin read |
+| 26-debounce | not-projectable | compile: `btn` pin read |
+| 27-led-dice | not-projectable | compile: `btn` pin read |
+| 30-multi-led-pattern | disagree | emu=23 ucsim=1 pin events; ucsim may not trace multi-pin init |
+| 32-source-vs-sink | disagree | emu=5 pin events, ucsim=0; ucsim produces no pin output for this program |
+| 33-inductive-no-flyback | agree | state sequence matches (emu=4, ucsim=2 events) |
+| 46-port-overcurrent | disagree | emu=24 ucsim=8; event counts differ, needs investigation |
+| 53-servo-sweep | not-projectable | compile: servo API not supported |
+| 54-motor-driver | not-projectable | compile: motor API not supported |
+
+**Summary batch 2:** 1 agree, 3 disagree (need investigation), 1 emu-only (timeout), 6 not-projectable.
+The disagrees may be init mode-set differences; needs deeper trace comparison.
+
+## Running totals
+
+| Status | Count |
+|--------|-------|
+| agree | 7 |
+| disagree (under investigation) | 3 |
+| emu-only (ucsim timeout) | 1 |
+| not-projectable (compiler) | 10 |
+| analog (blocked) | 7 |
