@@ -7,7 +7,7 @@
  * Usage: node test-stc-flash.mjs
  */
 
-import { flashStc12, parseIntelHex, buildPacket, readPacket, computeBaud } from './stc-flash.js';
+import { flashStc12, detectStc15, parseIntelHex, buildPacket, readPacket, computeBaud, MODELS } from './stc-flash.js';
 import { createMockBootloader } from './mock-bootloader.js';
 import * as fs from 'fs';
 
@@ -400,6 +400,67 @@ function check(name, ok, detail) {
   const { lowest: segLowest } = parseIntelHex(segHex);
   check('parseIntelHex: extended segment address (type 02)',
     segLowest === 0x10000, `lowest=0x${segLowest.toString(16)}`);
+}
+
+// ── §9: STC15 detection and refusal ──
+
+// STC15 part detected, flashStc12 refuses it
+{
+  const { hostTransport } = createMockBootloader({
+    magic: 0xF408, clockHz: 11059200, flashSize: 61440,
+  });
+  let threw = false;
+  let errMsg = '';
+  try {
+    await flashStc12(null, ':03000000020006F5\n:00000001FF', {
+      transport: hostTransport, handshakeBaud: 2400, transferBaud: 115200, log: () => {},
+    });
+  } catch (e) { threw = true; errMsg = e.message; }
+  check('§9 flashStc12: refuses STC15F2K60S2', threw);
+  check('§9 flashStc12: error names the part',
+    errMsg.includes('STC15F2K60S2'), errMsg);
+  check('§9 flashStc12: error names the protocol',
+    errMsg.includes('stc15'), errMsg);
+}
+
+// STC15 detection via detectStc15
+{
+  const { hostTransport } = createMockBootloader({
+    magic: 0xF408, clockHz: 11059200, flashSize: 61440,
+  });
+  try {
+    const result = await detectStc15(null, {
+      transport: hostTransport, handshakeBaud: 2400, timeoutMs: 5000, log: () => {},
+    });
+    check('§9 detectStc15: detected', result.detected);
+    check('§9 detectStc15: model STC15F2K60S2', result.model === 'STC15F2K60S2',
+      `got ${result.model}`);
+    check('§9 detectStc15: isp is stc15', result.isp === 'stc15');
+    check('§9 detectStc15: magic correct', result.magic === 0xF408);
+  } catch (e) {
+    check('§9 detectStc15: completed', false, e.message);
+  }
+}
+
+// STC12 part detected via detectStc15 (still works — shared handshake)
+{
+  const { hostTransport } = createMockBootloader({
+    magic: 0xD17E, clockHz: 11059200,
+  });
+  try {
+    const result = await detectStc15(null, {
+      transport: hostTransport, handshakeBaud: 2400, timeoutMs: 5000, log: () => {},
+    });
+    check('§9 detectStc15: detects STC12 too', result.isp === 'stc12');
+  } catch (e) {
+    check('§9 detectStc15: detects STC12 too', false, e.message);
+  }
+}
+
+// MODELS table has all documented parts
+{
+  check('§8 MODELS: STC15F2K60S2 listed', MODELS[0xF408]?.isp === 'stc15');
+  check('§8 MODELS: STC15W408AS listed', MODELS[0xF449]?.isp === 'stc15');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

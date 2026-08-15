@@ -173,10 +173,12 @@ function iapDelay(hz) {
 
 // ── Status packet parsing (from spec §5) ──
 
-/** Known STC12-family parts. */
+/** Known STC parts. `isp` identifies which protocol the bootloader speaks. */
 export const MODELS = {
-  0xD17E: { name: 'STC12C5A60S2', flash: 61440 },
-  0xD168: { name: 'STC12C5A16S2', flash: 16384 },
+  0xD17E: { name: 'STC12C5A60S2', flash: 61440, isp: 'stc12' },
+  0xD168: { name: 'STC12C5A16S2', flash: 16384, isp: 'stc12' },
+  0xF408: { name: 'STC15F2K60S2', flash: 61440, isp: 'stc15' },
+  0xF449: { name: 'STC15W408AS',  flash: 8192,  isp: 'stc15' },
 };
 
 /**
@@ -327,6 +329,13 @@ export async function flashStc12(port, hexText, {
     const model = MODELS[info.magic];
     if (model) {
       log(`part: ${model.name}, ${model.flash} bytes flash`);
+      if (model.isp && model.isp !== 'stc12') {
+        throw new Error(
+          `this is a ${model.name}, whose bootloader speaks the ${model.isp} ` +
+          `protocol. Only stc12 is implemented. Use flashStc15() for STC15 parts ` +
+          `or stcgal for other families.`
+        );
+      }
     } else {
       log(`unknown part (magic 0x${info.magic.toString(16)})`);
     }
@@ -373,6 +382,78 @@ export async function flashStc12(port, hexText, {
       bytes: parsed.image.length,
       padded: padded.length,
       model: model ? model.name : null,
+    };
+  } finally {
+    try { await io.close(); } catch {}
+    if (!transport) {
+      try { await port.close(); } catch {}
+    }
+  }
+}
+
+// ── STC15 protocol (detection + refusal, pending STC15 datasheet) ──
+
+/**
+ * Flash an STC15 chip. NOT YET IMPLEMENTED.
+ *
+ * The STC15 bootloader shares the same 0x7F handshake and packet
+ * framing as STC12, but uses different command bytes, a different
+ * status packet format, and an additional RC oscillator trimming
+ * phase. Implementation requires the STC15 datasheet for clean-room
+ * protocol facts.
+ *
+ * Currently: detects the part by magic number from the shared
+ * handshake and returns the part info without programming.
+ *
+ * @param {SerialPort|object} port
+ * @param {string} hexText
+ * @param {object} opts - same as flashStc12
+ * @returns {Promise<{ detected: boolean, model: string|null, magic: number, clockHz: number }>}
+ */
+export async function detectStc15(port, {
+  handshakeBaud = 2400,
+  log = () => {},
+  onPowerCycle = () => {},
+  timeoutMs = 30000,
+  transport = null,
+} = {}) {
+  if (!transport) {
+    await port.open({ baudRate: handshakeBaud });
+  }
+  const io = transport || serialTransport(port, { timeout: 4000 });
+
+  try {
+    log('waiting for bootloader — pull the power and reapply it');
+    onPowerCycle();
+
+    const deadline = Date.now() + timeoutMs;
+    let statusPayload = null;
+    while (!statusPayload) {
+      if (Date.now() > deadline) {
+        throw new Error('no bootloader greeting');
+      }
+      await io.write(Uint8Array.from([0x7F]));
+      try { statusPayload = await readPacket(io); } catch { /* keep pulsing */ }
+    }
+
+    const info = parseStatus(statusPayload, handshakeBaud);
+    const model = MODELS[info.magic];
+
+    log(`detected: magic 0x${info.magic.toString(16)}, ` +
+        `${(info.clockHz / 1e6).toFixed(3)} MHz` +
+        (model ? `, ${model.name} (${model.isp})` : ''));
+
+    if (model && model.isp === 'stc15') {
+      log('STC15 protocol: detection OK, programming not yet implemented');
+    }
+
+    return {
+      detected: true,
+      model: model ? model.name : null,
+      isp: model ? model.isp : 'unknown',
+      magic: info.magic,
+      clockHz: info.clockHz,
+      bslVersion: info.bslVersion,
     };
   } finally {
     try { await io.close(); } catch {}
