@@ -99,3 +99,12 @@ STC12-projected circuits for swept part kinds, emu8051 vs ucsim pin traces.
 **Summary:** 4 agree (led, buzzer, npn, shift_register), 1 emu-only (relay, ucsim timeout),
 7 not-projectable (compiler syntax or analog). The 4 agreements cover the most common
 MCU-driven part kinds: output pin → LED, output pin → NPN base, and bit-bang SPI to 74HC595.
+
+## Batch 3 (2026-08-15)
+
+| Example | Status | Detail |
+|---------|--------|--------|
+| 09-relay-clicker | agree | P1.0 (relay) + P1.1 (LED) toggle at 2s; init mode-set differs, sequence matches |
+| 10-motor-speed | not-projectable | compile: analog pin read (`read pot`) |
+
+**Running totals updated:** 10 agree, 1 inconclusive, 2 emu-only, 11 not-projectable, 7 analog-blocked.
