@@ -105,9 +105,13 @@ void emu_reset(int wipe) {
 EMSCRIPTEN_KEEPALIVE
 void emu_set_part(int part_id) {
     stc12_set_part(&stc, (uint8_t)part_id);
-    /* Set memory sizes for the part */
-    cpu.mCodeMemMaxIdx = stc12_flash_size((uint8_t)part_id) - 1;
-    cpu.mExtDataMaxIdx = stc12_xram_size((uint8_t)part_id) - 1;
+    /* Code memory is always 64K; the mask must be a power-of-2 - 1.
+     * stc12_flash_size returns the USABLE flash (e.g. 61440 for STC15)
+     * which is NOT a power of 2 and cannot be used as an address mask.
+     * Using it as a mask strips address bits and causes code fetch from
+     * wrong addresses (the pong wedge: 0x13A0 & 0xEFFF = 0x03A0). */
+    cpu.mCodeMemMaxIdx = 65535; /* always full 64K address space */
+    cpu.mExtDataMaxIdx = 65535; /* always full 64K */
     /* STC89: classic 8052, upstream tick() handles timers in 12T */
     cpu.skip_timers = (part_id != PART_STC89);
     cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
