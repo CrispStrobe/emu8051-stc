@@ -138,3 +138,45 @@ Real-world STC15F2K60S2 firmware from github rainbowpeee/STC15F2K60S2 (MIT).
 | Keil `code` keyword | 3 projects | `__code` in SDCC — flash lookup tables |
 | Keil `sbit` keyword | 1 project | `__sbit __at(addr)` in SDCC |
 | Keil port bit names (P10) | 1 project | P1_0 in SDCC |
+
+### Remaining multi-file projects (batch 3)
+
+All 16 remaining projects are Keil-only. Dominant Keil constructs:
+
+| Keil construct | SDCC equivalent | Projects |
+|----------------|-----------------|----------|
+| `code` (flash arrays) | `__code` | 9 |
+| `sbit` / `bit` | `__sbit __at()` / `__bit` | 4 |
+| `P_SW1`, `P42` etc. | need compat header | 2 |
+| local header resolution | concat + strip | 1 |
+
+### Final rainbowpeee totals
+
+| Status | Count |
+|--------|-------|
+| **boots under emu8051** | **2** (空程序, 流水灯) |
+| Keil-only (not SDCC-portable) | **29** |
+| wedges | **0** |
+
+**The Keil→SDCC syntax barrier is the dominant issue**, not peripheral
+model gaps. Every project that compiles with SDCC boots cleanly —
+zero wedges. The two that boot (empty program + LED chaser) exercise
+port I/O on P0/P2 under the STC15 config.
+
+**STC15 model completion roadmap (from real firmware):**
+
+The Keil-only projects, when eventually ported, would need:
+1. **P_SW1 (0xA2)** — UART pin switch (3 projects)
+2. **DS1302** — real-time clock via bit-bang I/O (2 projects)
+3. **PCF8591** — I2C ADC/DAC (1 project)
+4. **OLED/LCD12864** — I2C/SPI display (3 projects)
+5. **MFRC522** — SPI RFID reader (2 projects)
+6. **DS18B20** — 1-Wire temperature sensor (3 projects)
+7. **IR receiver** — infrared decode (2 projects)
+8. **Ultrasonic** — HC-SR04 timing (1 project)
+9. **Stepper motor** — GPIO sequencing (1 project)
+10. **16x16 LED matrix** — shift register cascade (2 projects)
+
+These are peripheral DEVICES, not missing SFRs. The emulator's
+STC15 port model is sufficient; what's missing is the external
+device simulation (I2C/SPI/1-Wire peripherals on the board side).
