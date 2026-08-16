@@ -29,6 +29,8 @@ static void test_exception(struct em8051 *aCPU, int aCode) {
 }
 
 static void test_i2c_pin_order(void);
+static void test_p5_stc15(void);
+static void test_p5_refused_stc12(void);
 
 #define PASS(msg) do { printf("PASS: %s\n", msg); pass_count++; } while(0)
 #define FAIL(msg) do { printf("FAIL: %s\n", msg); fail_count++; } while(0)
@@ -1021,6 +1023,8 @@ int main(int argc, char **argv) {
     test_stc15_spi();
     test_step_block();
     test_i2c_pin_order();
+    test_p5_stc15();
+    test_p5_refused_stc12();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1818,6 +1822,100 @@ static void test_i2c_pin_order(void) {
     CHECK(sda_fall >= 0, "I2C pin order: SDA fall event present");
     CHECK(scl_fall >= 0, "I2C pin order: SCL fall event present");
     CHECK(sda_fall < scl_fall, "I2C pin order: SDA falls BEFORE SCL (I2C START)");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test: P5 port on STC15 — latch, read, mode, pin events             *
+ * P5 at 0xC8, P5M1 at 0xC9, P5M0 at 0xCA. Only on STC15 family.     *
+ * On STC12, 0xC8 is T2CON and P5 must be refused.                    *
+ * ================================================================== */
+static int p5_event_count;
+static struct { int port; int bit; int mode; int drive; } p5_events[32];
+
+static void p5_pin_cb(int port, int bit, enum stc12_pin_mode mode, bool drive, void *ud) {
+    (void)ud;
+    if (p5_event_count < 32) {
+        p5_events[p5_event_count].port = port;
+        p5_events[p5_event_count].bit = bit;
+        p5_events[p5_event_count].mode = mode;
+        p5_events[p5_event_count].drive = drive ? 1 : 0;
+        p5_event_count++;
+    }
+}
+
+static void test_p5_stc15(void) {
+    printf("\n--- test_p5_stc15 ---\n");
+    setup();
+    stc12_set_part(&stc, PART_STC15);
+    p5_event_count = 0;
+    stc12_set_board_callbacks(&stc, p5_pin_cb, NULL, NULL, NULL, NULL);
+
+    /* P5 resets to 0xFF. Clear first, then set bits 4,5. */
+    cpu.mSFR[STC_REG_P5] = 0x00;
+    if (cpu.sfrwrite[STC_REG_P5]) cpu.sfrwrite[STC_REG_P5](&cpu, 0xC8);
+    p5_event_count = 0;
+    cpu.mSFR[STC_REG_P5] = 0x30;
+    if (cpu.sfrwrite[STC_REG_P5]) cpu.sfrwrite[STC_REG_P5](&cpu, 0xC8);
+    int p5_events_found = 0;
+    for (int i = 0; i < p5_event_count; i++) {
+        if (p5_events[i].port == 5) p5_events_found++;
+    }
+    CHECK(p5_events_found > 0, "P5 STC15: pin events fired on P5 write");
+    int p54_high = 0, p55_high = 0;
+    for (int i = 0; i < p5_event_count; i++) {
+        if (p5_events[i].port == 5 && p5_events[i].bit == 4 && p5_events[i].drive == 1) p54_high = 1;
+        if (p5_events[i].port == 5 && p5_events[i].bit == 5 && p5_events[i].drive == 1) p55_high = 1;
+    }
+    CHECK(p54_high, "P5 STC15: P5.4 driven high");
+    CHECK(p55_high, "P5 STC15: P5.5 driven high");
+
+    /* Set P5M0/P5M1 for push-pull on bits 4,5 */
+    p5_event_count = 0;
+    cpu.mSFR[STC_REG_P5M0] = 0x30;  /* bits 4,5 = push-pull */
+    cpu.mSFR[STC_REG_P5M1] = 0x00;
+    if (cpu.sfrwrite[STC_REG_P5M0])
+        cpu.sfrwrite[STC_REG_P5M0](&cpu, 0xCA);
+
+    /* Check mode change events */
+    int pp_events = 0;
+    for (int i = 0; i < p5_event_count; i++) {
+        if (p5_events[i].port == 5 && p5_events[i].mode == 1) pp_events++;  /* mode 1 = push-pull */
+    }
+    CHECK(pp_events > 0, "P5 STC15: push-pull mode events on P5M0 write");
+
+    /* Read P5 back — should return latch value in push-pull */
+    uint8_t readback = 0;
+    if (cpu.sfrread[STC_REG_P5])
+        readback = cpu.sfrread[STC_REG_P5](&cpu, 0xC8);
+    CHECK((readback & 0x30) == 0x30, "P5 STC15: read returns latch (push-pull)");
+
+    teardown();
+}
+
+static void test_p5_refused_stc12(void) {
+    printf("\n--- test_p5_refused_stc12 ---\n");
+    setup();
+    stc12_set_part(&stc, PART_STC12);
+
+    /* On STC12, 0xC8 should NOT be P5 — it's T2CON.
+     * Writing to 0xC8 should NOT trigger port 5 pin events. */
+    p5_event_count = 0;
+    stc12_set_board_callbacks(&stc, p5_pin_cb, NULL, NULL, NULL, NULL);
+
+    cpu.mSFR[STC_REG_P5] = 0xFF;
+    /* If sfrwrite for P5 is not registered, no callback fires */
+    int has_p5_write = (cpu.sfrwrite[STC_REG_P5] != NULL);
+
+    /* On STC12, the P5 write callback should NOT be registered */
+    CHECK(!has_p5_write, "P5 refused on STC12: no sfrwrite for 0xC8");
+
+    /* P5M0/P5M1 should also not be registered on STC12 */
+    int has_p5m0 = (cpu.sfrwrite[STC_REG_P5M0] != NULL);
+    int has_p5m1 = (cpu.sfrwrite[STC_REG_P5M1] != NULL);
+    CHECK(!has_p5m0, "P5 refused on STC12: no sfrwrite for P5M0");
+    CHECK(!has_p5m1, "P5 refused on STC12: no sfrwrite for P5M1");
 
     teardown();
 }

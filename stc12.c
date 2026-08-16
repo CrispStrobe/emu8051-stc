@@ -36,6 +36,7 @@
  * the SFR callbacks (which only receive em8051*) can reach it.
  * This limits us to one emulator instance, which is fine for our use. */
 static struct stc12_state *g_stc = NULL;
+static struct em8051 *g_cpu = NULL;
 
 /* ================================================================== *
  * Boundary A — pin change detection and board callbacks                *
@@ -887,6 +888,7 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     struct stc12_pin_event    *saved_hist   = aState->pin_history;
 
     g_stc = aState;
+    g_cpu = aCPU;
 
     memset(aState, 0, sizeof(*aState));
     aState->stc12_mode = true;
@@ -922,7 +924,6 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrread[REG_P2] = sfr_read_p2;
     aCPU->sfrread[REG_P3] = sfr_read_p3;
     aCPU->sfrread[STC_REG_P4] = sfr_read_p4;
-    aCPU->sfrread[STC_REG_P5] = sfr_read_p5;
 
     /* Port write callbacks — emit pin changes to the board */
     aCPU->sfrwrite[REG_P0] = sfr_write_port;
@@ -930,7 +931,14 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrwrite[REG_P2] = sfr_write_port;
     aCPU->sfrwrite[REG_P3] = sfr_write_port;
     aCPU->sfrwrite[STC_REG_P4] = sfr_write_port;
-    aCPU->sfrwrite[STC_REG_P5] = sfr_write_port;
+
+    /* P5 exists only on STC15 family. On STC12, 0xC8 is T2CON (8052 Timer 2).
+     * On STC89, 0xC8 is also T2CON. Registering P5 on those parts would
+     * shadow the Timer 2 control register. */
+    if (aState->part_id == PART_STC15 || aState->part_id == PART_STC15W) {
+        aCPU->sfrread[STC_REG_P5] = sfr_read_p5;
+        aCPU->sfrwrite[STC_REG_P5] = sfr_write_port;
+    }
 
     /* STC-specific peripherals — not present on the classic 8052 (STC89) */
     if (aState->part_id != PART_STC89) {
@@ -945,8 +953,12 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
         aCPU->sfrwrite[STC_REG_P3M1] = sfr_write_port_mode;
         aCPU->sfrwrite[STC_REG_P4M0] = sfr_write_port_mode;
         aCPU->sfrwrite[STC_REG_P4M1] = sfr_write_port_mode;
-        aCPU->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
-        aCPU->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
+        /* P5 mode registers only on STC15 (not STC12 — 0xC9/0xCA are
+         * unused on STC12, but P5 itself doesn't exist there) */
+        if (aState->part_id == PART_STC15 || aState->part_id == PART_STC15W) {
+            aCPU->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
+            aCPU->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
+        }
 
         /* ADC */
         aCPU->sfrread[STC_REG_ADC_CONTR] = sfr_read_adc_contr;
@@ -1129,7 +1141,22 @@ bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr)
 
 void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
 {
+    struct em8051 *cpu = g_cpu;
     aState->part_id = part_id;
+    if (!cpu) return;
+
+    /* P5 exists only on STC15 family. On STC12/STC89, 0xC8 is T2CON. */
+    if (part_id == PART_STC15 || part_id == PART_STC15W) {
+        cpu->sfrread[STC_REG_P5] = sfr_read_p5;
+        cpu->sfrwrite[STC_REG_P5] = sfr_write_port;
+        cpu->sfrwrite[STC_REG_P5M0] = sfr_write_port_mode;
+        cpu->sfrwrite[STC_REG_P5M1] = sfr_write_port_mode;
+    } else {
+        cpu->sfrread[STC_REG_P5] = NULL;
+        cpu->sfrwrite[STC_REG_P5] = NULL;
+        cpu->sfrwrite[STC_REG_P5M0] = NULL;
+        cpu->sfrwrite[STC_REG_P5M1] = NULL;
+    }
 }
 
 uint32_t stc12_flash_size(uint8_t part_id)
