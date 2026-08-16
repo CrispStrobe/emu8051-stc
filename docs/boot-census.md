@@ -77,3 +77,37 @@ curl -X POST https://stc-compiler.vercel.app/compile ... > example.hex
 ./emu_trace -fosc 11059200 -part <stc12|stc15> -until-ns 2000000000 example.hex
 # Check: PIN events > 0 and/or TMOD != 0
 ```
+
+## rainbowpeee STC15 corpus (2026-08-16)
+
+Real-world STC15F2K60S2 firmware from github rainbowpeee/STC15F2K60S2 (MIT).
+31 projects, compiled with SDCC via Keil→SDCC header translation.
+
+### Single-file projects
+
+| Project | Compile | Hex | Pins (2s) | Verdict |
+|---------|---------|-----|-----------|---------|
+| 空程序 (empty) | OK | 388 | 8 | boots |
+| 流水灯 (LED chaser) | OK | 476 | 219 | boots |
+| 定时器 (timer) | Keil-only | - | - | syntax error (encoding issue) |
+| 串行口 (serial) | Keil-only | - | - | needs P_SW1 (UART pin switch SFR) |
+| 串口转发 (serial fwd) | Keil-only | - | - | needs P_SW1 |
+| LOCKKeil4 | Keil-only | - | - | needs P_SW1 |
+| 17-频率采集 (freq capture) | Keil-only | - | - | Keil `code` keyword |
+| 11、PCF8591 数码管 | Keil-only | - | - | Keil syntax |
+| 19、LED1602 | Keil-only | - | - | Keil syntax |
+
+### STC15 peripheral gap notes (from Keil-only refusals)
+
+| SFR/Peripheral | Projects needing it | Notes |
+|----------------|-------------------|-------|
+| P_SW1 (0xA2) | 串行口, 串口转发, LOCKKeil4 | UART pin switch register — selects which pins carry UART1 |
+| `code` keyword | 17-频率采集 | Keil `code` = SDCC `__code` — lookup table in flash |
+
+### Running totals (rainbowpeee)
+
+| Status | Count |
+|--------|-------|
+| boots | 2 |
+| Keil-only (not SDCC-portable) | 7 |
+| not yet attempted | 22 (multi-file projects) |
