@@ -180,3 +180,35 @@ The Keil-only projects, when eventually ported, would need:
 These are peripheral DEVICES, not missing SFRs. The emulator's
 STC15 port model is sufficient; what's missing is the external
 device simulation (I2C/SPI/1-Wire peripherals on the board side).
+
+## mogoreanu/8x16 STC15 corpus (2026-08-10)
+
+Real-world STC15F2K60S2 firmware: 8×16 LED matrix pixel editor with
+button input, Timer 0 interrupt-driven display refresh, port-mode
+configuration (push-pull). Source: github mogoreanu/8x16 (MIT).
+
+Keil→SDCC translation required (`sfr`/`sbit`/`interrupt` syntax).
+
+| Project | Device | Compile | Hex bytes | TMOD | Pins (2s) | Verdict |
+|---------|--------|---------|-----------|------|-----------|---------|
+| 8x16 | STC15F2K60S2 | OK (SDCC 4.2.0) | 1589 | 0x01 | 71 | boots |
+
+Exercises: P0–P5 port writes, P0M0/P1M0/P2M0/P4M0/P5M0 push-pull config,
+Timer 0 mode 1 (16-bit), ET0+EA interrupt enable, SP above 0x7F (LCALL
+into interrupt handler). This program was the **root-cause witness for the
+PUSH/POP direct-addressing bug** (`f83ea4e`): SP=0x7F caused LCALL to
+write the return address to SFR P0 instead of upper IRAM, wedging the CPU
+in a restart loop.
+
+## Post PUSH/POP fix re-verification (2026-08-10)
+
+The PUSH/POP fix (`f83ea4e`) changes stack behavior for all firmware.
+Re-verified key programs from the catalog census:
+
+| Example | Post-fix pins | Status |
+|---------|---------------|--------|
+| 61-console-pong (STC15) | 5745 | OK (matches pre-fix ±2) |
+| 60-retro-console (STC15) | 2443 | OK (exact match) |
+| 01-blink (STC12) | 344 | OK |
+
+Full test suite: **39/39 pass** (436+ assertions). No regressions.
