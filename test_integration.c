@@ -28,6 +28,8 @@ static void test_exception(struct em8051 *aCPU, int aCode) {
     (void)aCPU; (void)aCode;
 }
 
+static void test_i2c_pin_order(void);
+
 #define PASS(msg) do { printf("PASS: %s\n", msg); pass_count++; } while(0)
 #define FAIL(msg) do { printf("FAIL: %s\n", msg); fail_count++; } while(0)
 #define CHECK(cond, msg) do { if (cond) PASS(msg); else FAIL(msg); } while(0)
@@ -1018,6 +1020,7 @@ int main(int argc, char **argv) {
     test_stc15_pca3();
     test_stc15_spi();
     test_step_block();
+    test_i2c_pin_order();
 
     printf("\n=== Results: %d passed, %d failed ===\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
@@ -1722,6 +1725,99 @@ static void test_step_block(void) {
 
     CHECK(dbg_get_state(&dbg) == DBG_HALTED, "STEP_BLOCK: halted on second change");
     CHECK(cpu.mLowerData[0x30] == 0x02, "STEP_BLOCK: state changed to 2");
+
+    teardown();
+}
+
+/* ================================================================== *
+ * Test: I2C bit-bang pin event ordering                                *
+ * Assert that SDA falls before SCL in an I2C START condition.         *
+ * The C core must preserve the program order of CLR P2.1 then CLR P2.2 *
+ * in the pin callback sequence, even with readPin returning pull-ups.  *
+ * ================================================================== */
+static int i2c_event_count;
+static struct { int port; int bit; int drive; } i2c_events[64];
+
+static void i2c_pin_cb(int port, int bit, enum stc12_pin_mode mode, bool drive, void *ud) {
+    (void)mode; (void)ud;
+    if (i2c_event_count < 64) {
+        i2c_events[i2c_event_count].port = port;
+        i2c_events[i2c_event_count].bit = bit;
+        i2c_events[i2c_event_count].drive = drive ? 1 : 0;
+        i2c_event_count++;
+    }
+}
+
+static int i2c_read_pin(int port, int bit, void *ud) {
+    (void)ud;
+    /* Simulate I2C pull-ups on P2.1 (SDA) and P2.2 (SCL) */
+    if (port == 2 && (bit == 1 || bit == 2)) return 1;
+    return 0;
+}
+
+static void test_i2c_pin_order(void) {
+    printf("\n--- test_i2c_pin_order ---\n");
+    setup();
+
+    i2c_event_count = 0;
+    stc12_set_board_callbacks(&stc, i2c_pin_cb, i2c_read_pin, NULL, NULL, NULL);
+
+    /* Program: set P2.1,P2.2 to open-drain, then i2c_start sequence:
+     * SETB P2.1 (SDA=1), SETB P2.2 (SCL=1), delay,
+     * CLR P2.1 (SDA=0), delay, CLR P2.2 (SCL=0)
+     *
+     * Opcodes: P2 is at 0xA0, bit-addressable.
+     * P2.1 = 0xA1, P2.2 = 0xA2
+     * ORL P2M1,#06  ORL P2M0,#06  (open-drain on bits 1,2)
+     * SETB 0xA1   SETB 0xA2   NOP NOP NOP NOP
+     * CLR  0xA1   NOP NOP NOP NOP   CLR 0xA2
+     * SJMP $
+     */
+    int pc = 0;
+    /* ORL P2M1,#06h → 43h <addr> #06 */
+    cpu.mCodeMem[pc++] = 0x43; cpu.mCodeMem[pc++] = 0x91 - 0x80 + 0x80; /* P2M1 = 0x91 */
+    /* Actually P2M1 is not directly addressable via ORL direct,#imm for
+     * non-standard SFRs. Use MOV instead. */
+    pc = 0;
+    /* MOV P2M1, #06h (75h addr imm) — P2M1 is at 0x95 */
+    cpu.mCodeMem[pc++] = 0x75; cpu.mCodeMem[pc++] = 0x95; cpu.mCodeMem[pc++] = 0x06;
+    /* MOV P2M0, #06h — P2M0 is at 0x96 */
+    cpu.mCodeMem[pc++] = 0x75; cpu.mCodeMem[pc++] = 0x96; cpu.mCodeMem[pc++] = 0x06;
+    /* SETB P2.1 (D2 A1) */
+    cpu.mCodeMem[pc++] = 0xD2; cpu.mCodeMem[pc++] = 0xA1;
+    /* SETB P2.2 (D2 A2) */
+    cpu.mCodeMem[pc++] = 0xD2; cpu.mCodeMem[pc++] = 0xA2;
+    /* NOP x4 (delay) */
+    cpu.mCodeMem[pc++] = 0x00; cpu.mCodeMem[pc++] = 0x00;
+    cpu.mCodeMem[pc++] = 0x00; cpu.mCodeMem[pc++] = 0x00;
+    /* CLR P2.1 (C2 A1) — SDA falls while SCL is still high */
+    cpu.mCodeMem[pc++] = 0xC2; cpu.mCodeMem[pc++] = 0xA1;
+    /* NOP x4 (delay) */
+    cpu.mCodeMem[pc++] = 0x00; cpu.mCodeMem[pc++] = 0x00;
+    cpu.mCodeMem[pc++] = 0x00; cpu.mCodeMem[pc++] = 0x00;
+    /* CLR P2.2 (C2 A2) — SCL falls */
+    cpu.mCodeMem[pc++] = 0xC2; cpu.mCodeMem[pc++] = 0xA2;
+    /* SJMP $ */
+    cpu.mCodeMem[pc++] = 0x80; cpu.mCodeMem[pc++] = 0xFE;
+
+    /* Run enough ticks */
+    for (int i = 0; i < 200; i++) {
+        tick(&cpu);
+        stc12_tick(&cpu, &stc);
+    }
+
+    /* Find SDA fall and SCL fall in the event log */
+    int sda_fall = -1, scl_fall = -1;
+    for (int i = 0; i < i2c_event_count; i++) {
+        if (i2c_events[i].port == 2 && i2c_events[i].bit == 1 && i2c_events[i].drive == 0 && sda_fall < 0)
+            sda_fall = i;
+        if (i2c_events[i].port == 2 && i2c_events[i].bit == 2 && i2c_events[i].drive == 0 && scl_fall < 0)
+            scl_fall = i;
+    }
+
+    CHECK(sda_fall >= 0, "I2C pin order: SDA fall event present");
+    CHECK(scl_fall >= 0, "I2C pin order: SCL fall event present");
+    CHECK(sda_fall < scl_fall, "I2C pin order: SDA falls BEFORE SCL (I2C START)");
 
     teardown();
 }
