@@ -213,3 +213,25 @@ This is the end-to-end verification: pseudocode → C → hex → emulator
 **Differential:** emu-only (ucsim too slow for I2C bit-bang at 6120
 events in 500ms). The I2C ordering test (47c04ff) provides the C-core
 correctness guard.
+
+## Pong console investigation (2026-08-16)
+
+**Verdict: NO emulator bug. Firmware runs correctly.**
+
+| Artifact | Emulator | PIN events (2s) | P5.5 buzzer |
+|----------|----------|-----------------|-------------|
+| console-pong.ihx (local sdcc) | emu8051 (stc15) | 5745 | fires at ~1.32s |
+| pong-hosted.ihx (hosted sdcc) | emu8051 (stc15) | 5747 | fires at ~1.32s |
+| console-pong.ihx | ucsim (stc15) | 30+ (timeout-limited) | fires |
+| console-selftest.ihx | emu8051 (stc15) | 493 (100ms) | n/a |
+
+Cross-emulator: AGREE. Both emulators run the pong firmware and
+produce port writes.
+
+The SDCC startup ram-clear loop (0x0084-0x0087: `MOV R0,#0xFF; CLR A;
+MOV @R0,A; DJNZ R0,-3`) takes 255 iterations = 510 cycles before any
+port writes happen. This was misread as a wedge in the earlier report.
+
+The "ZERO port writes" report was from the WASM/adapter path, not the
+emulator core. Likely cause: adapter not calling `emu_set_part(1)` for
+the STC15 device, or not advancing enough ticks past the init loop.
