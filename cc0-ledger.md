@@ -108,3 +108,31 @@ MCU-driven part kinds: output pin → LED, output pin → NPN base, and bit-bang
 | 10-motor-speed | not-projectable | compile: analog pin read (`read pot`) |
 
 **Running totals updated:** 10 agree, 1 inconclusive, 2 emu-only, 11 not-projectable, 7 analog-blocked.
+
+## Post-regen verification (2026-08-16, sb3-creator 0ed9f13)
+
+Catalog regenerated: power rails wired, packing changed, 17 dead wires fixed.
+
+**All 10 previously-agreed examples produce byte-identical hex after regen.**
+The regen was electrically neutral for program behavior. All agreements hold.
+
+| Example | Pre-regen | Post-regen | Hex changed? |
+|---------|-----------|------------|--------------|
+| 01-blink | agree | agree | no |
+| 06-active-low-high | agree | agree | no |
+| 07-buzzer-siren | agree | agree | no |
+| 09-relay-clicker | agree | agree | no |
+| 12-dual-blink | agree | agree | no |
+| 13-sos-morse | agree | agree | no |
+| 14-traffic-light | agree | agree | no |
+| 30-multi-led-pattern | agree | agree | no |
+| 33-inductive-no-flyback | agree | agree | no |
+| 46-port-overcurrent | agree | agree | no |
+
+**Reclassified:**
+
+| Example | Was | Now | Detail |
+|---------|-----|-----|--------|
+| 24-pwm-fade | not-projectable | emu-only | now compiles; ucsim timeout (PWM rapid toggle) |
+
+**Running totals:** 10 agree, 1 inconclusive, 3 emu-only, 10 not-projectable, 7 analog-blocked.
