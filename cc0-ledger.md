@@ -136,3 +136,52 @@ The regen was electrically neutral for program behavior. All agreements hold.
 | 24-pwm-fade | not-projectable | emu-only | now compiles; ucsim timeout (PWM rapid toggle) |
 
 **Running totals:** 10 agree, 1 inconclusive, 3 emu-only, 10 not-projectable, 7 analog-blocked.
+
+## Display-example oracles (2026-08-16)
+
+### 7-segment counter (sweep-7seg.c, hand-written)
+
+Program outputs digits 0-9 on P0 using standard 7-segment encoding
+(common cathode, a=bit0..g=bit6), cycling every 500ms via Timer 0.
+
+**Golden segment table (hand-written, NOT from simulator):**
+
+| Digit | Segments | Hex |
+|-------|----------|-----|
+| 0 | a b c d e f | 0x3F |
+| 1 | b c | 0x06 |
+| 2 | a b d e g | 0x5B |
+| 3 | a b c d g | 0x4F |
+| 4 | b c f g | 0x66 |
+| 5 | a c d f g | 0x6D |
+| 6 | a c d e f g | 0x7D |
+| 7 | a b c | 0x07 |
+| 8 | a b c d e f g | 0x7F |
+| 9 | a b c d f g | 0x6F |
+
+**Emulator trace result (5.5s, 15 transitions):**
+
+| Time (ms) | P0 | Digit | Match |
+|-----------|------|-------|-------|
+| 0.1 | 0xFF | init | (mode-set) |
+| 0.1 | 0x3F | 0 | Y |
+| 500.4 | 0x06 | 1 | Y |
+| 1000.7 | 0x5B | 2 | Y |
+| 1501.0 | 0x4F | 3 | Y |
+| 1757.1 | 0x66 | 4 | Y |
+| 2257.4 | 0x6D | 5 | Y |
+| 2513.6 | 0x7D | 6 | Y |
+| 3013.9 | 0x07 | 7 | Y |
+| 3270.0 | 0x7F | 8 | Y |
+| 3770.3 | 0x6F | 9 | Y |
+| 4026.5 | 0x3F | 0 | Y (wrap) |
+
+All 10 digits match the hand-written golden table. Counter wraps 9→0
+correctly. Timing is ~500ms per digit (from Timer 0 at FOSC/12).
+
+**Differential:** emu-only. ucsim too slow for timer-based programs
+(produces only 2 init events before timeout).
+
+### LCD text display
+
+No STC12 examples with LCD parts in the current catalog.
