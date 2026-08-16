@@ -111,3 +111,30 @@ Real-world STC15F2K60S2 firmware from github rainbowpeee/STC15F2K60S2 (MIT).
 | boots | 2 |
 | Keil-only (not SDCC-portable) | 7 |
 | not yet attempted | 22 (multi-file projects) |
+
+### Multi-file projects (batch 2)
+
+| Project | Compile | Verdict | Keil-only reason |
+|---------|---------|---------|-----------------|
+| 步进电机驱动 (stepper) | Keil-only | - | `code` keyword (lookup tables) |
+| 红外人体感应灯 (IR sensor) | Keil-only | - | P10/P11 Keil port bit names |
+| 数码管测试 (7-seg test) | Keil-only | - | `sbit` keyword |
+| 测试按键 (key test) | Keil-only | - | local header not resolved |
+| 开发板点阵测试 (LED matrix) | Keil-only | - | `code` keyword |
+
+### Updated totals (rainbowpeee)
+
+| Status | Count |
+|--------|-------|
+| boots | 2 |
+| Keil-only (not SDCC-portable) | 12 |
+| not yet attempted | 17 (remaining multi-file) |
+
+### STC15 peripheral gap notes (expanded)
+
+| SFR/Peripheral | Projects | Notes |
+|----------------|----------|-------|
+| P_SW1 (0xA2) | 3 projects | UART pin switch — selects UART1 pins |
+| Keil `code` keyword | 3 projects | `__code` in SDCC — flash lookup tables |
+| Keil `sbit` keyword | 1 project | `__sbit __at(addr)` in SDCC |
+| Keil port bit names (P10) | 1 project | P1_0 in SDCC |
