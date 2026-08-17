@@ -78,108 +78,94 @@ curl -X POST https://stc-compiler.vercel.app/compile ... > example.hex
 # Check: PIN events > 0 and/or TMOD != 0
 ```
 
-## rainbowpeee STC15 corpus (2026-08-16)
+## rainbowpeee STC15 corpus (2026-08-17, post Keil→SDCC translator)
 
 Real-world STC15F2K60S2 firmware from github rainbowpeee/STC15F2K60S2 (MIT).
-31 projects, compiled with SDCC via Keil→SDCC header translation.
+31 projects (33 buildable sub-projects), compiled with SDCC 4.2.0 via
+automated Keil→SDCC translation (`tools/keil2sdcc.py`).
 
-### Single-file projects
+### Results
 
-| Project | Compile | Hex | Pins (2s) | Verdict |
-|---------|---------|-----|-----------|---------|
+| Project | Compile | Hex bytes | Pins (2s) | Verdict |
+|---------|---------|-----------|-----------|---------|
 | 空程序 (empty) | OK | 388 | 8 | boots |
 | 流水灯 (LED chaser) | OK | 476 | 219 | boots |
-| 定时器 (timer) | Keil-only | - | - | syntax error (encoding issue) |
-| 串行口 (serial) | Keil-only | - | - | needs P_SW1 (UART pin switch SFR) |
-| 串口转发 (serial fwd) | Keil-only | - | - | needs P_SW1 |
-| LOCKKeil4 | Keil-only | - | - | needs P_SW1 |
-| 17-频率采集 (freq capture) | Keil-only | - | - | Keil `code` keyword |
-| 11、PCF8591 数码管 | Keil-only | - | - | Keil syntax |
-| 19、LED1602 | Keil-only | - | - | Keil syntax |
+| 10、DS1302-SEG | OK | 1600 | 238043 | boots |
+| 11、PCF8591 数码管 | OK | 1126 | 243890 | boots |
+| 1302数码管显示 | OK | 2055 | 463695 | boots |
+| 17-频率采集 | OK | 1228 | 106226 | boots |
+| 19、LED1602 | OK | 467 | 149 | boots |
+| GPSLCD自动授时 | OK | 1426 | 1 | boots |
+| LED汉字显示/01- | OK | 321 | 1473983 | boots |
+| LED汉字显示/01一 | OK | 349 | 1306900 | boots |
+| LED汉字显示/02- | OK | 365 | 1454362 | boots |
+| LED汉字显示/03- | OK | 558 | 1331872 | boots |
+| LOCKKeil4 | OK | 492 | 0 | boots (no pins) |
+| OLED12864 1.3寸遥控 | OK | 4252 | 1571984 | boots |
+| 串口转发/01 | OK | 360 | 0 | boots (no pins) |
+| 串行口/01 | OK | 360 | 0 | boots (no pins) |
+| 偏振子按摩 | OK | 719 | 1094696 | boots |
+| 定时器 | OK | 139 | 0 | boots (no pins) |
+| 开发板点阵测试 | OK | 1348 | 1257210 | boots |
+| 按键数码管测试 | OK | 259 | 0 | boots (no pins) |
+| 数码管按键测试/按键 | OK | 259 | 0 | boots (no pins) |
+| 数码管按键测试/函数 | OK | 266 | 169181 | boots |
+| 数码管测试 | OK | 1968 | 44833 | boots |
+| 步进电机驱动/正转 | OK | 239 | 8916 | boots |
+| 步进电机驱动/反转 | OK | 239 | 7451 | boots |
+| 测试按键 | OK | 852 | 2239383 | boots |
+| 温度 | OK | 1853 | 35315 | boots |
+| 温度计 | OK | 4167 | 114211 | boots |
+| 点阵测试-1616 | OK | 1083 | 1269541 | boots |
+| 红外人体感应灯 | OK | 543 | 30856 | boots |
+| 红外灯+温度注释点阵 | OK | 2014 | 85139 | boots |
+| 超声波_时间/4届 | OK | 4759 | 9206 | boots |
+| LCD12864 | link-fail | - | - | missing serial_one_init (source incomplete) |
+| MFRC522KEIL4 | cc-fail | - | - | idata→generic pointer type mismatch |
+| MFRC522OLEDKEIL4 | cc-fail | - | - | same as MFRC522KEIL4 |
 
-### STC15 peripheral gap notes (from Keil-only refusals)
-
-| SFR/Peripheral | Projects needing it | Notes |
-|----------------|-------------------|-------|
-| P_SW1 (0xA2) | 串行口, 串口转发, LOCKKeil4 | UART pin switch register — selects which pins carry UART1 |
-| `code` keyword | 17-频率采集 | Keil `code` = SDCC `__code` — lookup table in flash |
-
-### Running totals (rainbowpeee)
-
-| Status | Count |
-|--------|-------|
-| boots | 2 |
-| Keil-only (not SDCC-portable) | 7 |
-| not yet attempted | 22 (multi-file projects) |
-
-### Multi-file projects (batch 2)
-
-| Project | Compile | Verdict | Keil-only reason |
-|---------|---------|---------|-----------------|
-| 步进电机驱动 (stepper) | Keil-only | - | `code` keyword (lookup tables) |
-| 红外人体感应灯 (IR sensor) | Keil-only | - | P10/P11 Keil port bit names |
-| 数码管测试 (7-seg test) | Keil-only | - | `sbit` keyword |
-| 测试按键 (key test) | Keil-only | - | local header not resolved |
-| 开发板点阵测试 (LED matrix) | Keil-only | - | `code` keyword |
-
-### Updated totals (rainbowpeee)
-
-| Status | Count |
-|--------|-------|
-| boots | 2 |
-| Keil-only (not SDCC-portable) | 12 |
-| not yet attempted | 17 (remaining multi-file) |
-
-### STC15 peripheral gap notes (expanded)
-
-| SFR/Peripheral | Projects | Notes |
-|----------------|----------|-------|
-| P_SW1 (0xA2) | 3 projects | UART pin switch — selects UART1 pins |
-| Keil `code` keyword | 3 projects | `__code` in SDCC — flash lookup tables |
-| Keil `sbit` keyword | 1 project | `__sbit __at(addr)` in SDCC |
-| Keil port bit names (P10) | 1 project | P1_0 in SDCC |
-
-### Remaining multi-file projects (batch 3)
-
-All 16 remaining projects are Keil-only. Dominant Keil constructs:
-
-| Keil construct | SDCC equivalent | Projects |
-|----------------|-----------------|----------|
-| `code` (flash arrays) | `__code` | 9 |
-| `sbit` / `bit` | `__sbit __at()` / `__bit` | 4 |
-| `P_SW1`, `P42` etc. | need compat header | 2 |
-| local header resolution | concat + strip | 1 |
-
-### Final rainbowpeee totals
+### Totals
 
 | Status | Count |
 |--------|-------|
-| **boots under emu8051** | **2** (空程序, 流水灯) |
-| Keil-only (not SDCC-portable) | **29** |
+| **boots under emu8051** | **30** |
+| source incomplete (missing file) | **1** (LCD12864) |
+| SDCC type error (idata ptr) | **2** (MFRC522×2) |
 | wedges | **0** |
 
-**The Keil→SDCC syntax barrier is the dominant issue**, not peripheral
-model gaps. Every project that compiles with SDCC boots cleanly —
-zero wedges. The two that boot (empty program + LED chaser) exercise
-port I/O on P0/P2 under the STC15 config.
+### Keil→SDCC translator (`tools/keil2sdcc.py`)
 
-**STC15 model completion roadmap (from real firmware):**
+Automated translation of 6 Keil C51 constructs to SDCC equivalents:
 
-The Keil-only projects, when eventually ported, would need:
-1. **P_SW1 (0xA2)** — UART pin switch (3 projects)
-2. **DS1302** — real-time clock via bit-bang I/O (2 projects)
-3. **PCF8591** — I2C ADC/DAC (1 project)
-4. **OLED/LCD12864** — I2C/SPI display (3 projects)
-5. **MFRC522** — SPI RFID reader (2 projects)
-6. **DS18B20** — 1-Wire temperature sensor (3 projects)
-7. **IR receiver** — infrared decode (2 projects)
-8. **Ultrasonic** — HC-SR04 timing (1 project)
-9. **Stepper motor** — GPIO sequencing (1 project)
-10. **16x16 LED matrix** — shift register cascade (2 projects)
+| Keil construct | SDCC equivalent | Projects affected |
+|----------------|-----------------|-------------------|
+| `sfr NAME = 0xNN` | `__sfr __at(0xNN) NAME` | all |
+| `sbit NAME = SFR^N` | `__sbit __at(base+N) NAME` | 16 |
+| `bit` type | `__bit` | 11 |
+| `code` qualifier | `__code` | 20+ |
+| `interrupt N` | `__interrupt(N)` | 13 |
+| `idata` qualifier | `__idata` | 2 |
 
-These are peripheral DEVICES, not missing SFRs. The emulator's
-STC15 port model is sufficient; what's missing is the external
-device simulation (I2C/SPI/1-Wire peripherals on the board side).
+Master SDCC STC15 header: `tools/stc15f2k60s2_sdcc.h` (drop-in for
+all Keil-style vendor headers). Intrinsic stub: `tools/intrins_sdcc.h`.
+
+### Source-level bugs patched during translation
+
+| Bug | Projects | Fix |
+|-----|----------|-----|
+| Missing variable declarations | 温度, 按键数码管×2 | added declarations |
+| Duplicate function names | 数码管测试 | renamed `delay()` → `delay_display()` |
+| `static` in shared header | 红外人体感应灯 | removed `static` from prototype |
+| Missing sbit defines | LED汉字/01一 | added SHCP/STCP/DS sbits |
+| Typos (I vs 1, diaplay) | LED汉字/01一 | corrected |
+| Missing semicolons | LED汉字/01一 | added |
+| Array without size | 按键数码管×2 | added size or made extern |
+| `extern` on definitions | multiple | removed `extern` on initialised arrays |
+| `display_num` never defined | 5 projects | extern→definition or stub |
+
+These are all bugs in the original Keil source code, not translator
+issues. The Keil compiler is more permissive about implicit types,
+missing declarations, and conflicting qualifiers.
 
 ## mogoreanu/8x16 STC15 corpus (2026-08-10)
 
