@@ -19,7 +19,7 @@ CORE_SRC := core.c opcodes.c disasm.c stc12.c debug.c
 # Rules
 #####################################################################
 HEADERS := $(wildcard *.h)
-SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c test_multi_when.c test_suite.c test_bench.c test_debug.c test_cycles.c test_mass.c trace.c, $(wildcard *.c))
+SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c test_multi_when.c test_suite.c test_bench.c test_debug.c test_cycles.c test_mass.c test_soak.c trace.c, $(wildcard *.c))
 OBJ := $(SRC:.c=.o)
 
 %.o: %.c $(HEADERS)
@@ -64,10 +64,13 @@ test_cycles: test_cycles.c $(CORE_SRC) $(HEADERS)
 test_mass: test_mass.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_mass.c $(CORE_SRC)
 
+test_soak: test_soak.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_soak.c $(CORE_SRC)
+
 emu_trace: trace.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
 
-test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass test-images
+test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass test_soak test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
 	@echo ""
@@ -94,12 +97,15 @@ test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite
 	@echo ""
 	@echo "=== Mass firmware validation ==="
 	./test_mass
+	@echo ""
+	@echo "=== Time fidelity soak test ==="
+	./test_soak
 
 test-wasm: build/emu8051.js
 	node test_wasm.mjs
 
 clean:
-	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass emu_trace
+	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass test_soak emu_trace
 	$(MAKE) -C test_images clean
 
 .PHONY: clean all test test-wasm test-images

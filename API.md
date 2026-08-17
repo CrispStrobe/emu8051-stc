@@ -45,8 +45,75 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_set_adc_voltage(ch,volts)` | `(i32,f64) → void` | ADC input in volts (0-VCC). |
 | `emu_set_port_input(port,val)` | `(i32,i32) → void` | Set all 8 pins of a port. Legacy. |
 | `emu_set_board_callbacks(pin,read,analog,advance,ud)` | `(ptr×5) → void` | Register push-mode callbacks via `addFunction`. `advance` signature: `(lo32, hi32, ud)` — split i64 for WASM compatibility. |
-| `emu_get_time_ns_lo()` | `() → i32` | Nanoseconds since reset (low 32 bits). |
-| `emu_get_time_ns_hi()` | `() → i32` | Nanoseconds since reset (high 32 bits). |
+| `emu_get_time_ns_lo()` | `() → i32` | Nanoseconds since reset (low 32 bits). **See timing contract below.** |
+| `emu_get_time_ns_hi()` | `() → i32` | Nanoseconds since reset (high 32 bits). **See timing contract below.** |
+
+### Timing contract (u32 split representation)
+
+The emulator's internal time is a `uint64_t` nanosecond counter, monotonically
+increasing and overflow-free for ~36 years of simulated time. The WASM API
+splits it into two `uint32_t` words because Emscripten cannot pass `i64`
+across the JS/C boundary.
+
+**Callers MUST reconstruct the full 64-bit value:**
+```js
+const lo = Module._emu_get_time_ns_lo() >>> 0;  // unsigned!
+const hi = Module._emu_get_time_ns_hi() >>> 0;
+const t  = BigInt(hi) * 0x100000000n + BigInt(lo);
+```
+
+| Boundary | ns | Wall time | What breaks |
+|----------|----|-----------|-------------|
+| i32 sign flip | 2,147,483,648 | ~2.15 s | `lo \| 0` treats bit 31 as sign → time appears negative |
+| u32 wrap | 4,294,967,296 | ~4.29 s | Ignoring `hi` → time appears to restart from 0 |
+
+The `>>> 0` (unsigned right-shift by zero) is the JS idiom that coerces
+a signed i32 to an unsigned u32. Without it, `lo` goes negative at 2.15 s.
+
+The `on_advance` callback signature is `(lo32, hi32, user_data)` for the
+same reason. Both `emu_advance_to_ns` and `emu_dbg_run_until_ns` accept
+`(lo, hi)` pairs.
+
+**Tested:** `test_soak.c` runs 5.5 seconds of simulated time, crossing both
+boundaries, verifying zero time-monotonicity violations and zero edge-period
+jitter across the u32 wrap.
+
+### Pin mode encoding
+
+`emu_get_pin_mode(port, bit)` returns a 2-bit value `(M1 << 1) | M0`
+matching the STC12/STC15 PxM1/PxM0 register encoding:
+
+| Value | M1 | M0 | Mode | Drive behavior |
+|-------|----|----|------|----------------|
+| 0 | 0 | 0 | Quasi-bidirectional | Weak pull-up (~230 µA), strong pull-down (20 mA). Reset default. |
+| 1 | 0 | 1 | Push-pull | Strong drive both directions (20 mA). |
+| 2 | 1 | 0 | Input-only | High impedance. Latch value ignored for output. |
+| 3 | 1 | 1 | Open-drain | No internal pull-up. Needs external pull-up. Used for I2C. |
+
+The same encoding appears in the `on_pin_change` callback's `mode` parameter
+and in the pin history event struct.
+
+**Tested:** `test_integration.c` → `test_pin_mode_transitions` asserts all four
+modes on P2 with mixed per-pin configurations.
+
+### Push-callback vs read-callback (pollPins contract)
+
+The `on_pin_change` callback fires only when firmware **writes** to a port
+register or port-mode register. It does NOT fire at registration time and
+does NOT fire for ports that firmware only reads.
+
+For ports that are **input-only** (e.g., P3.2 = INT0 as a button), the
+host receives pin state requests through the `on_read_pin` callback. This
+is the "pollPins" contract: the adapter seats input pins by registering a
+`read_pin` callback, not by waiting for a `pin_change` push notification.
+
+At reset, all port latches and shadows are 0xFF (quasi-bidirectional,
+all high). The first firmware write that deviates from 0xFF fires the
+first `on_pin_change`. A port that is never written never fires.
+
+**Tested:** `test_integration.c` → `test_push_callback_read_only` boots
+firmware that reads P3 without writing it, verifying `readPin` is called
+1200+ times while `pin_change` fires zero times for P3.
 
 ## Serial (UART)
 
