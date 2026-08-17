@@ -260,9 +260,201 @@ static void test_time_monotonicity(void) {
     teardown();
 }
 
-int main(void) {
+/* ================================================================== *
+ * Test 3: STC15 soak with real firmware (P5 + ADC + Timer ISR)        *
+ *                                                                      *
+ * Loads the 76-multimeter hex (STC15F2K60S2): 7-seg display on P0/P2, *
+ * ADC on P1.0-P1.2, buzzer on P5.5, button on P3.2.                   *
+ * Runs for 5.5 simulated seconds and verifies:                         *
+ *   1. Time monotonicity across u32 boundaries                         *
+ *   2. P5 events fire (STC15-specific port)                            *
+ *   3. PIN event count grows with sim time (not stuck)                  *
+ *   4. No PC restart loops (firmware progresses)                        *
+ * ================================================================== */
+
+static int stc15_pin_total;
+static int stc15_p5_count;
+static int stc15_p0_count;
+static int stc15_p2_count;
+static uint64_t stc15_last_pin_time;
+
+static void stc15_pin_cb(int port, int bit, enum stc12_pin_mode mode,
+                          bool drive_high, void *ud)
+{
+    (void)bit; (void)mode; (void)drive_high; (void)ud;
+    stc15_pin_total++;
+    stc15_last_pin_time = stc12_get_time_ns(&stc);
+    if (port == 5) stc15_p5_count++;
+    if (port == 0) stc15_p0_count++;
+    if (port == 2) stc15_p2_count++;
+}
+
+static void test_stc15_multimeter_soak(const char *hex_path) {
+    printf("\n=== test_stc15_multimeter_soak ===\n");
+    printf("  Firmware: %s\n", hex_path);
+
+    /* Setup STC15 */
+    memset(&cpu, 0, sizeof(cpu));
+    memset(&stc, 0, sizeof(stc));
+    cpu.mCodeMemMaxIdx = 65535;
+    cpu.mCodeMem = calloc(65536, 1);
+    cpu.mExtDataMaxIdx = 65535;
+    cpu.mExtData = calloc(65536, 1);
+    cpu.mUpperData = calloc(128, 1);
+    reset(&cpu, 1);
+    stc.fosc = 11059200;
+    stc12_init(&cpu, &stc);
+    stc12_set_part(&stc, 1); /* PART_STC15 */
+    cpu.mMachineCycleScale = 1; /* STC15 = 1T */
+
+    /* Load firmware */
+    int rc = load_obj(&cpu, (char *)hex_path);
+    if (rc != 0) {
+        printf("  Failed to load hex: %s (rc=%d)\n", hex_path, rc);
+        FAIL("stc15 soak: hex load");
+        free(cpu.mCodeMem); free(cpu.mExtData); free(cpu.mUpperData);
+        return;
+    }
+    PASS("stc15 soak: hex loaded");
+
+    /* Register callbacks */
+    stc15_pin_total = 0;
+    stc15_p5_count = 0;
+    stc15_p0_count = 0;
+    stc15_p2_count = 0;
+    stc15_last_pin_time = 0;
+    stc12_set_board_callbacks(&stc, stc15_pin_cb, NULL, NULL, NULL, NULL);
+
+    uint64_t target_ns = 5500000000ULL;
+    uint64_t prev_time = 0;
+    int mono_violations = 0;
+    uint64_t check_interval = 1000000;
+    uint64_t next_check = check_interval;
+
+    uint64_t i32_boundary = 2147483648ULL;
+    uint64_t u32_boundary = 4294967296ULL;
+    bool crossed_i32 = false;
+    bool crossed_u32 = false;
+
+    /* Snapshot at 1s and 3s for liveness check */
+    int pins_at_1s = 0, pins_at_3s = 0;
+
+    printf("  Running 5.5s at FOSC=%u (STC15, 1T)...\n", (unsigned)stc.fosc);
+
+    while (stc12_get_time_ns(&stc) < target_ns) {
+        tick(&cpu);
+        stc12_tick(&cpu, &stc);
+
+        uint64_t t = stc12_get_time_ns(&stc);
+        if (t >= next_check) {
+            if (t < prev_time) mono_violations++;
+            prev_time = t;
+            next_check = t + check_interval;
+
+            uint32_t lo = (uint32_t)(t & 0xFFFFFFFF);
+            uint32_t hi = (uint32_t)(t >> 32);
+            uint64_t recon = ((uint64_t)hi << 32) | lo;
+            if (recon != t) mono_violations++;
+
+            if (t > i32_boundary && !crossed_i32) {
+                crossed_i32 = true;
+                printf("  i32 boundary at %llu ns (lo=%u signed=%d hi=%u)\n",
+                       (unsigned long long)t, lo, (int32_t)lo, hi);
+            }
+            if (t > u32_boundary && !crossed_u32) {
+                crossed_u32 = true;
+                printf("  u32 boundary at %llu ns (lo=%u hi=%u)\n",
+                       (unsigned long long)t, lo, hi);
+            }
+
+            /* Liveness snapshots */
+            if (t >= 1000000000ULL && pins_at_1s == 0)
+                pins_at_1s = stc15_pin_total;
+            if (t >= 3000000000ULL && pins_at_3s == 0)
+                pins_at_3s = stc15_pin_total;
+        }
+    }
+
+    uint64_t final = stc12_get_time_ns(&stc);
+    printf("  Final: %llu ns (%.3fs), %d PIN events\n",
+           (unsigned long long)final, final / 1e9, stc15_pin_total);
+    printf("  P0=%d P2=%d P5=%d (segments, digits, buzzer)\n",
+           stc15_p0_count, stc15_p2_count, stc15_p5_count);
+    printf("  Pins@1s=%d  Pins@3s=%d  Pins@5.5s=%d\n",
+           pins_at_1s, pins_at_3s, stc15_pin_total);
+
+    /* Assertions */
+    CHECK(mono_violations == 0,
+          "stc15 soak: time monotonicity (zero violations)");
+    CHECK(crossed_i32,
+          "stc15 soak: crossed i32 boundary");
+    CHECK(crossed_u32,
+          "stc15 soak: crossed u32 boundary");
+    CHECK(final >= target_ns,
+          "stc15 soak: reached 5.5s target");
+
+    uint32_t flo = (uint32_t)(final & 0xFFFFFFFF);
+    uint32_t fhi = (uint32_t)(final >> 32);
+    CHECK(((uint64_t)fhi << 32 | flo) == final,
+          "stc15 soak: split representation correct");
+    CHECK(fhi > 0,
+          "stc15 soak: hi word nonzero");
+
+    /* STC15-specific: P5 port events */
+    CHECK(stc15_p5_count > 0,
+          "stc15 soak: P5 events (buzzer on P5.5)");
+
+    /* Display activity: P0 (segments) and P2 (digit select) */
+    CHECK(stc15_p0_count > 1000,
+          "stc15 soak: P0 segment events (display active)");
+    CHECK(stc15_p2_count > 100,
+          "stc15 soak: P2 digit select events");
+
+    /* Liveness: events grow over time (not stuck in a loop) */
+    CHECK(pins_at_1s > 0,
+          "stc15 soak: events before 1s (firmware booted)");
+    CHECK(pins_at_3s > pins_at_1s,
+          "stc15 soak: events growing (3s > 1s)");
+    CHECK(stc15_pin_total > pins_at_3s,
+          "stc15 soak: events growing (5.5s > 3s)");
+
+    /* Total should be proportional to time (display ISR is periodic) */
+    double ratio = (double)stc15_pin_total / pins_at_1s;
+    printf("  Liveness ratio (5.5s / 1s events): %.2f (expect ~5.5)\n", ratio);
+    CHECK(ratio > 4.0 && ratio < 7.0,
+          "stc15 soak: event rate roughly proportional to time");
+
+    free(cpu.mCodeMem);
+    free(cpu.mExtData);
+    free(cpu.mUpperData);
+}
+
+int main(int argc, char **argv) {
     printf("=== Time fidelity soak tests ===\n");
     test_time_monotonicity();
+
+    /* STC15 soak with real firmware if hex path provided */
+    const char *multimeter_hex = NULL;
+    if (argc > 1) {
+        multimeter_hex = argv[1];
+    } else {
+        /* Default path */
+        multimeter_hex = "../bw-board/rom/multimeter/76-multimeter.ihx";
+        FILE *f = fopen(multimeter_hex, "r");
+        if (!f) {
+            multimeter_hex = "/mnt/volume1/code/bw-board/rom/multimeter/76-multimeter.ihx";
+            f = fopen(multimeter_hex, "r");
+        }
+        if (f) fclose(f);
+        else multimeter_hex = NULL;
+    }
+
+    if (multimeter_hex) {
+        test_stc15_multimeter_soak(multimeter_hex);
+    } else {
+        printf("\n  SKIP: STC15 multimeter soak (hex not found)\n");
+        printf("  Run with: ./test_soak <path-to-76-multimeter.ihx>\n");
+    }
 
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count ? 1 : 0;

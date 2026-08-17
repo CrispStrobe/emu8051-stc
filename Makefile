@@ -99,7 +99,7 @@ test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite
 	./test_mass
 	@echo ""
 	@echo "=== Time fidelity soak test ==="
-	./test_soak
+	./test_soak corpus/bw-board/76-multimeter.ihx
 
 test-wasm: build/emu8051.js
 	node test_wasm.mjs
