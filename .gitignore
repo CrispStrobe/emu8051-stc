@@ -43,3 +43,4 @@ CLAUDE.md
 # Third-party firmware corpus (unlicensed, never commit)
 stc-research/
 test_mass
+test_soak
