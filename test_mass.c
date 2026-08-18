@@ -256,6 +256,61 @@ int main(void) {
           "combined: P2M0=0x07 (select)");
     teardown();
 
+    /* A2 parts: keypad-stc89 (STC89, quasi-bidi, UART, polled scan) */
+    setup_and_load("corpus/a2-parts/keypad-stc89.ihx");
+    cpu.skip_timers = 0; cpu.mMachineCycleScale = 12;
+    run_ms(200);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x21,
+          "keypad-stc89: TMOD=0x21 (T0m1+T1m2 for UART baud)");
+    /* TR0 is NOT always running — polled delay_ms starts/stops it */
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR1) != 0,
+          "keypad-stc89: TR1=1 (UART baud timer)");
+    CHECK(cpu.mSFR[0x98 - 0x80] == 0x50,
+          "keypad-stc89: SCON=0x50 (UART mode 1, REN)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0x00,
+          "keypad-stc89: P1M0=0 (quasi-bidi, STC89 has no mode regs)");
+    teardown();
+
+    /* A2 parts: keypad-hats (STC89, cooperative scheduler, key events) */
+    setup_and_load("corpus/a2-parts/keypad-hats.ihx");
+    cpu.skip_timers = 0; cpu.mMachineCycleScale = 12;
+    run_ms(200);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "keypad-hats: TMOD=0x01 (Timer 0 mode 1)");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "keypad-hats: IE=0x82 (EA+ET0, scheduler ISR)");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "keypad-hats: TR0=1");
+    teardown();
+
+    /* A2 parts: keypad-stc12 (STC12, push-pull, BRT UART, polled) */
+    setup_and_load("corpus/a2-parts/keypad-stc12.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0xFF,
+          "keypad-stc12: P1M0=FF (all keypad pins push-pull)");
+    CHECK(cpu.mSFR[STC_REG_P1M1] == 0x00,
+          "keypad-stc12: P1M1=00");
+    CHECK(cpu.mSFR[STC_REG_AUXR] == 0x15,
+          "keypad-stc12: AUXR=0x15 (BRTR+BRTx12+S1BRS)");
+    CHECK(cpu.mSFR[0x98 - 0x80] == 0x50,
+          "keypad-stc12: SCON=0x50 (UART mode 1)");
+    teardown();
+
+    /* A2 parts: a2-sampler (keypad + 7seg + LEDs, STC12) */
+    setup_and_load("corpus/a2-parts/a2-sampler.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0xFF,
+          "a2-sampler: P0M0=FF (7seg segments PP)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0xFF,
+          "a2-sampler: P1M0=FF (keypad PP)");
+    CHECK(cpu.mSFR[STC_REG_P2M0] == 0x07,
+          "a2-sampler: P2M0=0x07 (7seg select PP)");
+    CHECK(cpu.mSFR[STC_REG_P3M0] == 0xFF,
+          "a2-sampler: P3M0=FF (LEDs PP)");
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "a2-sampler: TMOD=0x01");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "a2-sampler: TR0=1");
+    teardown();
+
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
 }

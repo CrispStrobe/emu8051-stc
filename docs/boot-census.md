@@ -262,3 +262,48 @@ All three programs set the expected SFR values at 50 ms:
 The sevenseg8/combined divergence is the timer-ISR boundary pattern:
 ucsim fires more timer interrupts in 500 ms, producing extra P2 digit-select
 events. Same root cause as the rainbowpeee timer divergences. No logic bugs.
+
+## KEYPAD4X4 + A2 sampler (2026-08-18, stc-compiler 623e165)
+
+Keypad scanner firmware: row-scan with 2-NOP settle, polled inline.
+A2 sampler combines KEYPAD4X4 + SEVENSEG8 + LEDBANK8 on a single timer ISR.
+
+### Boot census
+
+| Program | Device | Hex bytes | PIN (2s) | Verdict |
+|---------|--------|-----------|----------|---------|
+| keypad-stc89 | STC89C52RC | 2046 | 4352 | clean |
+| keypad-hats | STC89C52RC | 1920 | 25104 | clean |
+| keypad-stc12 | STC12C5A60S2 | 2052 | 544 | clean |
+| a2-sampler | STC12C5A60S2 | 2716 | 7057 | clean |
+
+### SFR init conformance
+
+| SFR | keypad-stc89 | keypad-hats | keypad-stc12 | a2-sampler |
+|-----|-------------|-------------|-------------|-----------|
+| AUXR | 0x00 | 0x00 | 0x15 (BRT) | 0x00 |
+| TMOD | 0x21 (T0+T1) | 0x01 | 0x01 | 0x01 |
+| IE | 0x00 (polled) | 0x82 (EA+ET0) | 0x00 (polled) | 0x82 (EA+ET0) |
+| SCON | 0x50 (UART) | 0x00 | 0x50 (UART) | 0x00 |
+| P1M0 | 0x00 (quasi) | 0x00 (quasi) | 0xFF (PP) | 0xFF (PP) |
+| P0M0 | — | — | — | 0xFF (segs) |
+| P2M0 | — | — | — | 0x07 (select) |
+| P3M0 | — | — | — | 0xFF (LEDs) |
+
+STC89 programs have no PxM0/PxM1 writes (quasi-bidi only). STC12 programs
+set all 8 keypad pins push-pull (both rows and columns — the scan drives
+rows low one at a time, the pushed-high idle state on columns is readable).
+
+Keypad scan does `EA=0` / `EA=1` around the row-scan critical section,
+causing IE to toggle between 0x80 and 0x82 during the scan window.
+
+### Cross-emulator agreement (emu8051 vs ucsim, 500ms)
+
+| Program | emu | ucsim | Match | Notes |
+|---------|-----|-------|-------|-------|
+| keypad-stc89 | 136 | 136 | **exact** | STC89, no mode events |
+| keypad-hats | 800 | 800 | **exact** | STC89, scheduler+debounce |
+| keypad-stc12 | 144 | 136 | **exact** (−8 mode) | P1M0 push-pull init |
+| a2-sampler | 1790 | 1763 | **exact** (−27 mode) | P0+P1+P2+P3 init |
+
+**All four exact match after mode strip. Zero data divergences.**
