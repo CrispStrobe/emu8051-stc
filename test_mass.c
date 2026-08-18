@@ -208,6 +208,54 @@ int main(void) {
     CHECK(cpu.mSFR[REG_TMOD] & 0x01, "21-smoke: Timer 0 mode 1");
     teardown();
 
+    /* A2 parts: SEVENSEG8 (stc-compiler 623e165) */
+    setup_and_load("corpus/a2-parts/sevenseg8.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_AUXR] == 0x00,
+          "sevenseg8: AUXR=0 (T0x12=0, 12T timer)");
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "sevenseg8: TMOD=0x01 (Timer 0 mode 1)");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "sevenseg8: TR0=1 (Timer 0 running)");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "sevenseg8: IE=0x82 (EA=1, ET0=1)");
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0xFF,
+          "sevenseg8: P0M0=FF (segments push-pull)");
+    CHECK(cpu.mSFR[STC_REG_P0M1] == 0x00,
+          "sevenseg8: P0M1=00");
+    CHECK(cpu.mSFR[STC_REG_P2M0] == 0x07,
+          "sevenseg8: P2M0=0x07 (select pins push-pull)");
+    teardown();
+
+    /* A2 parts: LEDBANK8 */
+    setup_and_load("corpus/a2-parts/ledbank8.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_AUXR] == 0x00,
+          "ledbank8: AUXR=0 (12T timer)");
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "ledbank8: TMOD=0x01");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "ledbank8: TR0=1");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "ledbank8: IE=0x82 (EA+ET0)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0xFF,
+          "ledbank8: P1M0=FF (LEDs push-pull)");
+    CHECK(cpu.mSFR[STC_REG_P1M1] == 0x00,
+          "ledbank8: P1M1=00");
+    teardown();
+
+    /* A2 parts: combined SEVENSEG8 + LEDBANK8 */
+    setup_and_load("corpus/a2-parts/combined.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "combined: TMOD=0x01");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "combined: IE=0x82");
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0xFF,
+          "combined: P0M0=FF (segments)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0xFF,
+          "combined: P1M0=FF (LEDs)");
+    CHECK(cpu.mSFR[STC_REG_P2M0] == 0x07,
+          "combined: P2M0=0x07 (select)");
+    teardown();
+
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
 }

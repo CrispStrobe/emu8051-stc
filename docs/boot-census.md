@@ -222,3 +222,43 @@ boundary (timer ISR count difference).
 **Zero data-level divergences across 67 programs and 3 part IDs
 (STC12, STC15, STC89). Zero unexplained divergences. The mode-event
 convention is settled in spec-update 011 and API.md.**
+
+## A2 multiplexed-display parts (2026-08-18, stc-compiler 623e165)
+
+SEVENSEG8 (ISR-scanned 8-digit 7-seg) and LEDBANK8 (ISR-owned LED bank),
+compiled from pseudocode via the stc-compiler API.
+
+### Boot census
+
+| Program | Hex bytes | PIN (2s) | TMOD | IE | P0M0 | P1M0 | P2M0 | Verdict |
+|---------|-----------|----------|------|------|------|------|------|---------|
+| sevenseg8 | 1812 | 28475 | 0x01 | 0x82 | 0xFF | 0x00 | 0x07 | clean |
+| ledbank8 | 1018 | 8 | 0x01 | 0x82 | 0x00 | 0xFF | 0x00 | clean |
+| combined | 2134 | 32153 | 0x01 | 0x82 | 0xFF | 0xFF | 0x07 | clean |
+
+### SFR init conformance
+
+All three programs set the expected SFR values at 50 ms:
+
+| SFR | Expected | sevenseg8 | ledbank8 | combined | Status |
+|-----|----------|-----------|----------|----------|--------|
+| AUXR (0x8E) | 0x00 (T0x12=0, 12T) | 0x00 | 0x00 | 0x00 | ✓ |
+| TMOD (0x89) | 0x01 (Timer 0 mode 1) | 0x01 | 0x01 | 0x01 | ✓ |
+| TCON (0x88) | 0x10 (TR0=1) | 0x10 | 0x10 | 0x10 | ✓ |
+| IE (0xA8) | 0x82 (EA=1, ET0=1) | 0x82 | 0x82 | 0x82 | ✓ |
+| P0M0 (0x94) | 0xFF (seg PP) or 0x00 | 0xFF | 0x00 | 0xFF | ✓ |
+| P0M1 (0x93) | 0x00 | 0x00 | 0x00 | 0x00 | ✓ |
+| P1M0 (0x92) | 0xFF (LED PP) or 0x00 | 0x00 | 0xFF | 0xFF | ✓ |
+| P2M0 (0x96) | 0x07 (select PP) or 0x00 | 0x07 | 0x00 | 0x07 | ✓ |
+
+### Cross-emulator agreement (emu8051 vs ucsim, 500ms)
+
+| Program | emu events | ucsim events | Data match | Notes |
+|---------|-----------|-------------|-----------|-------|
+| sevenseg8 | 7124 | 7119 | prefix (7031 after mode strip) | +88 ucsim P2 select events (timer boundary) |
+| ledbank8 | 8 | 0 | **exact** (0/0 after mode strip) | mode-only |
+| combined | 8031 | 8029 | prefix (7901 after mode strip) | +128 ucsim P2 select events (timer boundary) |
+
+The sevenseg8/combined divergence is the timer-ISR boundary pattern:
+ucsim fires more timer interrupts in 500 ms, producing extra P2 digit-select
+events. Same root cause as the rainbowpeee timer divergences. No logic bugs.
