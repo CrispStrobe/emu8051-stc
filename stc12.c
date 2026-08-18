@@ -906,9 +906,12 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     /* Serial callbacks are NOT preserved — they must be re-registered
      * after reset since they may be WASM addFunction pointers. */
 
-    /* Pre-compute ns per clock (fixed-point * 16 for precision) */
+    /* Pre-compute ns per clock (fixed-point * 256 for precision).
+     * ×256 gives <7 ppm error at all standard FOSC values, down from
+     * 166 ppm with the old ×16 representation. Max sim time ~2.3 years
+     * at 11 MHz before uint64_t overflow — more than enough. */
     if (aState->fosc > 0)
-        aState->ns_per_clock_x16 = (uint64_t)(16.0e9 / aState->fosc + 0.5);
+        aState->ns_per_clock_x256 = (uint64_t)(256.0e9 / aState->fosc + 0.5);
 
     /* All external port pins default high (quasi-bidirectional pull-up) */
     for (int i = 0; i < 6; i++)
@@ -1026,7 +1029,7 @@ void stc12_set_board_callbacks(struct stc12_state *aState,
 
 uint64_t stc12_get_time_ns(struct stc12_state *aState)
 {
-    return (aState->osc_clocks * aState->ns_per_clock_x16) >> 4;
+    return (aState->osc_clocks * aState->ns_per_clock_x256) >> 8;
 }
 
 int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,

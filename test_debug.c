@@ -285,7 +285,7 @@ static void test_time(void) {
     printf("--- test_time ---\n");
     setup();
     stc.fosc = 11059200;
-    stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / stc.fosc + 0.5);
+    stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / stc.fosc + 0.5);
     cpu.mCodeMem[0] = 0x00; /* NOP loop */
 
     CHECK(dbg_get_time_ns(&dbg) == 0, "Time: 0 at start");

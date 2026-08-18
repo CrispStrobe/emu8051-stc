@@ -637,7 +637,7 @@ static void test_advance_to(void) {
     printf("\n--- test_advance_to ---\n");
     setup();
     stc.fosc = 11059200;
-    stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / stc.fosc + 0.5);
+    stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / stc.fosc + 0.5);
 
     /* Put a NOP loop at 0 */
     cpu.mCodeMem[0] = 0x00; /* NOP */

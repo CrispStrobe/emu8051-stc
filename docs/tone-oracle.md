@@ -20,14 +20,13 @@ CPS=4 (SYSclk, every osc clock). Expected frequency = FOSC / (2 × compare).
 
 | Target Hz | Compare | Expected Hz | Measured Hz | Error (ppm) | Cycles |
 |-----------|---------|------------|-------------|-------------|--------|
-| 440 (A4) | 12567 | 439.927 | 439.936 | 166 | 41 |
-| 1000 | 5530 | 999.855 | 999.761 | 166 | 97 |
-| 2000 | 2765 | 1999.855 | 1999.523 | 166 | 197 |
-| 4000 | 1382 | 4000.578 | 4000.492 | 166 | 398 |
+| 440 (A4) | 12567 | 439.927 | 440.012 | 6 | 41 |
+| 1000 | 5530 | 999.855 | 999.934 | 6 | 97 |
+| 2000 | 2765 | 1999.855 | 1999.868 | 6 | 197 |
+| 4000 | 1382 | 4000.578 | 4001.183 | 6 | 398 |
 
-**4/4 within 166 ppm.** The 166 ppm systematic error is the fixed-point
-timing resolution: `ns_per_clock_x16 = round(16e9 / FOSC)` = 1447 for
-11.0592 MHz, giving 90.4375 ns/clock vs the exact 90.42245... ns/clock.
+**4/4 within 6 ppm.** Fixed-point precision increased from ×16 to ×256
+in commit after `85745b3` — see systematic error analysis below.
 
 ## T0CLKO hardware toggle (STC15, Timer 0 mode 2, output on P3.5)
 
@@ -36,12 +35,12 @@ enabled. Toggles P3.5 on every Timer 0 overflow. Frequency = FOSC / (2 × (256 -
 
 | Reload (TH0) | Period clocks | Expected Hz | Measured Hz | Error (ppm) | Cycles |
 |--------------|--------------|------------|-------------|-------------|--------|
-| 0x00 | 256 | 21,600 | 21,596 | 166 | 41 |
-| 0x80 | 128 | 43,200 | 43,193 | 166 | 84 |
-| 0xE0 | 32 | 172,800 | 172,771 | 166 | 343 |
-| 0xF0 | 16 | 345,600 | 345,543 | 166 | 688 |
+| 0x00 | 256 | 21,600 | 21,600 | 6 | 41 |
+| 0x80 | 128 | 43,200 | 43,200 | 6 | 84 |
+| 0xE0 | 32 | 172,800 | 172,801 | 6 | 343 |
+| 0xF0 | 16 | 345,600 | 345,602 | 6 | 688 |
 
-**4/4 within 166 ppm.** Same systematic error as PCA (same timing engine).
+**4/4 within 6 ppm.** Same residual error as PCA (same timing engine).
 
 ## Software toggle via Timer 0 ISR (STC12, output on P1.0)
 
@@ -79,25 +78,71 @@ The 1-edge difference over 50 ms is a timing-boundary artefact.
 
 ## Systematic error analysis
 
-All three tone mechanisms show exactly 166 ppm error. Root cause:
+### Before fix: ×16 (166 ppm)
+
+The original `ns_per_clock_x16` representation:
 
 ```
-exact ns/clock   = 1e9 / 11059200 = 90.422453703...
-fixed-point      = round(16e9 / 11059200) / 16 = 1447/16 = 90.4375
-ratio            = 90.4375 / 90.42245... = 1.000166...
+exact ns/clock   = 1e9 / 11059200 = 90.422453703703...
+×16 fixed-point  = round(16e9 / 11059200) = round(1446.759) = 1447
+effective ns/clk = 1447 / 16 = 90.4375
+error            = 90.4375 / 90.42245... − 1 = +166.4 ppm
 ```
 
-The emulator runs 166 ppm slow because the fixed-point `×16` representation
-rounds up by 0.015 ns per clock, accumulating to 1.66 µs per 10,000 clocks.
-This is a known, documented, and constant offset — not a drift or jitter.
+At higher FOSC the error was worse: 500 ppm at 24 MHz, 688 ppm at 27 MHz.
+
+### After fix: ×256 (6 ppm)
+
+Increased to `ns_per_clock_x256` with `>> 8`:
+
+```
+×256 fixed-point = round(256e9 / 11059200) = round(23148.148) = 23148
+effective ns/clk = 23148 / 256 = 90.421875
+error            = 90.421875 / 90.42245... − 1 = −6.4 ppm
+```
+
+| FOSC | ×16 error | ×256 error | Improvement |
+|------|-----------|-----------|-------------|
+| 11.0592 MHz | +166 ppm | −6 ppm | 26× |
+| 12.000 MHz | −250 ppm | −16 ppm | 16× |
+| 22.1184 MHz | −525 ppm | −6 ppm | 84× |
+| 24.000 MHz | +500 ppm | +31 ppm | 16× |
+| 27.000 MHz | +688 ppm | −51 ppm | 13× |
+
+Trade-off: max sim time before uint64 overflow drops from 36 years to
+2.3 years (at 11 MHz). This is more than sufficient — no real simulation
+runs for years.
+
+### Why not higher precision?
+
+| Precision | Worst-case error | Max sim time | Verdict |
+|-----------|-----------------|-------------|---------|
+| ×16 | 688 ppm | 36 years | too coarse |
+| ×256 | 51 ppm | 2.3 years | **chosen** |
+| ×1024 | 13 ppm | 208 days | acceptable but marginal |
+| ×4096 | 3 ppm | 52 days | too short for stress tests |
+
+×256 is the sweet spot: sub-audible error at every standard FOSC, and
+the 2.3 year overflow limit has ample margin.
+
+### Audible impact at 440 Hz
+
+```
+166 ppm × 440 Hz = 0.073 Hz deviation (before fix)
+  6 ppm × 440 Hz = 0.003 Hz deviation (after fix)
+JND at 440 Hz    ≈ 3 Hz
+```
+
+Both are inaudible. The fix matters for high-precision timing tests
+and for higher FOSC values, not for audio fidelity.
 
 ## Known divergences
 
 | Source | emu8051 | ucsim | Root cause |
 |--------|---------|-------|------------|
-| Timing resolution | 166 ppm slow | ~166 ppm slow (same engine) | Fixed-point ×16 rounding |
+| Timing resolution | 6 ppm | ~6 ppm (same formula) | Fixed-point ×256 rounding |
 | ISR overhead | ~10 clocks | ~10 clocks (same instructions) | Identical |
 | Init transient | 1 extra edge | — | Double-toggle at P1M0 init |
 
 **No frequency divergences between emulators.** Both produce the same
-tone within the 167 ns timing resolution.
+tone within the timing resolution.

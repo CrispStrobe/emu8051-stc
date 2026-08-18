@@ -157,7 +157,7 @@ int main(int argc, char **argv) {
     stc12_set_part(&stc, part_id);
     stc.fosc = fosc;
     if (fosc > 0)
-        stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / fosc + 0.5);
+        stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / fosc + 0.5);
     /* STC89: 12T core, upstream tick() handles timers */
     cpu.skip_timers = (part_id != PART_STC89);
     cpu.mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;

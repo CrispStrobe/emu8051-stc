@@ -357,7 +357,7 @@ struct stc12_state
 
     /* Time tracking */
     uint64_t osc_clocks;        /* total oscillator clocks since reset */
-    uint64_t ns_per_clock_x16;  /* (1e9 / fosc) * 16, fixed-point */
+    uint64_t ns_per_clock_x256; /* (1e9 / fosc) * 256, fixed-point */
 
     /* Shadow of last-emitted pin state, for change detection */
     uint8_t pin_m1_shadow[6];    /* last PxM1 value emitted per port */

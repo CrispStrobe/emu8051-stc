@@ -306,7 +306,7 @@ EMSCRIPTEN_KEEPALIVE
 void emu_set_fosc(uint32_t hz) {
     stc.fosc = hz;
     if (hz > 0)
-        stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / hz + 0.5);
+        stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / hz + 0.5);
 }
 
 /* ------------------------------------------------------------------ *

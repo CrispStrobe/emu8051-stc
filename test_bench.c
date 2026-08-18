@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
 
     /* Also benchmark advanceTo */
     stc.osc_clocks = 0;
-    stc.ns_per_clock_x16 = (uint64_t)(16.0e9 / 11059200.0 + 0.5);
+    stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / 11059200.0 + 0.5);
     uint64_t target_ns = 1000000000ULL; /* 1 second */
 
     t0 = now_sec();
