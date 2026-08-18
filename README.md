@@ -90,11 +90,16 @@ and by datasheet citation (Ch. 6, p. 138). IE.6 is ELVD (LVD enable), not
 PCA enable — PCA interrupt is gated by ECCFn in CCAPMn. Evidence category
 2b: two emulators agree, no silicon. See `spec-updates/008-stc12-interrupt-vectors.md`.
 
-**Nothing in this repo has run on real silicon.** The ADC register sequence,
-PCA timing, and UART model are all from the datasheet and are self-consistent
-(category 2b). They have not been confirmed on hardware. The test images
-(`test_images/02-adc.hex`) exist precisely to verify on a real chip and have
-not been run.
+**Nothing in this repo has itself run on real silicon**, but since the
+first bench sessions (2026-08-18, [lab repo §9](https://github.com/CrispStrobe/stc12c5a60s2-lab#9-first-silicon--what-is-now-verified-on-real-hardware))
+the shared timer/UART arithmetic this emulator models is corroborated on
+real STC89C52RC hardware: 12T Timer-0 timing (crystal-true), Timer-1 UART
+at 9600 both ways, and Timer-2 baud generation at 115200. The
+STC12-specific models — the ADC register sequence, PCA timing, and the
+BRT-based UART model — are from the datasheet, self-consistent (category
+2b), and still unconfirmed on hardware. The test images
+(`test_images/02-adc.hex`) exist precisely to verify them on a real STC12
+and have not been run.
 
 What is NOT done
 ----------------
