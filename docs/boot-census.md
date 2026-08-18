@@ -199,20 +199,26 @@ Re-verified key programs from the catalog census:
 
 Full test suite: **39/39 pass** (436+ assertions). No regressions.
 
-## Catalog + corpus cross-emulator summary (2026-08-18)
+## Cross-emulator oracle summary (2026-08-18)
 
 All firmware cross-checked against ucsim at FOSC=11059200, 500ms sim.
+Mode-change events (from PxM0/PxM1 writes) are stripped before comparison
+— these are **intentional** per spec-update 011: the board's Thévenin
+model depends on mode, so mode transitions are correct pin events.
 
-| Corpus | Programs | Exact | Mode-only | Prefix | Data divergences |
-|--------|----------|-------|-----------|--------|-----------------|
+| Corpus | Programs | Data-exact | Mode-only | Prefix | Data divergences |
+|--------|----------|-----------|-----------|--------|-----------------|
 | Catalog (test_images) | 32 | 22 | 7 | 3 | 0 |
 | STC15 (pong, retro, multimeter, mogoreanu) | 4 | 2 | 0 | 2 | 0 |
 | rainbowpeee (Keil→SDCC) | 31 | 13 | 0 | 13 | 0 (5 timer-boundary) |
 | **Total** | **67** | **37** | **7** | **18** | **0** |
 
-"Exact" = identical after stripping mode-init events (PxM0/PxM1 writes).
-"Mode-only" = program configures pins but never writes port data.
-"Prefix" = first N events match, divergence at sim-time boundary.
+**Data-exact**: identical after stripping mode events.
+**Mode-only**: program configures pin modes but never writes port data
+(emu8051 emits mode events; ucsim emits nothing; both are correct).
+**Prefix**: first N data events match; tail divergence at sim-time
+boundary (timer ISR count difference).
 
 **Zero data-level divergences across 67 programs and 3 part IDs
-(STC12, STC15, STC89).**
+(STC12, STC15, STC89). Zero unexplained divergences. The mode-event
+convention is settled in spec-update 011 and API.md.**
