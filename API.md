@@ -96,11 +96,33 @@ and in the pin history event struct.
 **Tested:** `test_integration.c` → `test_pin_mode_transitions` asserts all four
 modes on P2 with mixed per-pin configurations.
 
+### Mode-change events are pin events (design ruling)
+
+A write to PxM0 or PxM1 that changes a pin's mode fires `on_pin_change`
+with the **new mode** and the **current latch value**, even if the latch
+did not change. This is correct and intentional:
+
+- **The board's circuit model depends on mode.** A quasi-bidirectional pin
+  driving high sources ~230 µA; a push-pull pin driving high sources 20 mA.
+  The 87× current difference directly affects LED brightness, I2C pull-up
+  behavior, and every Thévenin-based component model.
+- **The adapter calls `board.setPin(pin, mode, driveHigh)` on every
+  callback**, passing both mode and drive. Suppressing mode-only events
+  would leave the board with a stale Thévenin model until the next latch
+  write.
+- **ucsim does not emit these events.** This is a documented convention
+  difference: ucsim's trace format omits mode transitions. When
+  cross-checking, mode events are stripped before comparison. The
+  remaining data-level events match exactly.
+
+Reference: STC12-PERIPHERAL-MODEL.md §3, §7.2; bw-board
+`emu8051-adapter.js` line 142.
+
 ### Push-callback vs read-callback (pollPins contract)
 
-The `on_pin_change` callback fires only when firmware **writes** to a port
-register or port-mode register. It does NOT fire at registration time and
-does NOT fire for ports that firmware only reads.
+The `on_pin_change` callback fires when firmware writes to a port data
+register **or** a port-mode register (PxM0/PxM1). It does NOT fire at
+registration time and does NOT fire for ports that firmware only reads.
 
 For ports that are **input-only** (e.g., P3.2 = INT0 as a button), the
 host receives pin state requests through the `on_read_pin` callback. This
