@@ -36,6 +36,7 @@ static void setup(void) {
     reset(&cpu, 1);
     stc12_init(&cpu, &stc);
     cpu.skip_timers = true;
+    cpu.mSFR[STC_REG_P1ASF] = 0xFF; /* enable all ADC channels by default */
 }
 
 static void teardown(void) {

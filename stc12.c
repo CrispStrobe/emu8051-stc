@@ -490,6 +490,13 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
         }
         if (result > 1023) result = 1023;
 
+        /* P1ASF check: the channel's P1ASF bit must be set for a valid
+         * reading. Without it, the pin is a digital I/O and the ADC
+         * should not produce a meaningful result.
+         * P1ASF is at 0x9D; bit N enables channel N. */
+        if (ch < 8 && !(aCPU->mSFR[STC_REG_P1ASF] & (1 << ch)))
+            result = 0;
+
         /* ADRJ controls justification. Its location depends on the part:
          * STC12: AUXR1 (0xA2) bit 2
          * STC15: CLK_DIV (0x97) bit 5  (STC15-PERIPHERAL-MODEL.md §2.1) */

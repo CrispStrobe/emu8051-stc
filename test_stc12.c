@@ -194,6 +194,7 @@ static void test_adc(void) {
 
     /* Set channel 3 input to 512 */
     stc12_set_adc_input(&stc, 3, 512);
+    cpu.mSFR[STC_REG_P1ASF] = 0xFF; /* enable all ADC channels */
 
     /* Start ADC: power on, channel 3, speed 11 (fastest = 70 clocks) */
     cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 3;

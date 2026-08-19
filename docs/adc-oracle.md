@@ -101,11 +101,15 @@ Both verified in `test_adc_oracle.c`.
 
 ## Known behavioral differences
 
-| Aspect | emu8051 | ucsim | Impact |
+| Aspect | emu8051 | ucsim | Status |
 |--------|---------|-------|--------|
-| P1ASF check | Ignores P1ASF (always uses input) | Returns 0 if channel not in P1ASF | None for normal firmware (firmware sets P1ASF before reading) |
-| Tick granularity | 1 osc clock per stc12_tick | Multi-cycle per tick | 4–10 clock timing delta on completion |
+| P1ASF check | Enforced (returns 0 if channel not in P1ASF) | Same | **Fixed** (was: ignored) |
+| Tick granularity | 1 osc clock per stc12_tick | Multi-cycle per tick | 4–10 clock timing delta |
 | Analog callback | Volts→counts via `round(v/vcc*1023)` | Raw counts only | emu8051 also supports raw count injection |
+
+**P1ASF enforcement fixed:** emu8051 now returns 0 for channels without
+the P1ASF bit set, matching ucsim and the datasheet. Test coverage:
+`test_adc_oracle.c` → `test_p1asf_enforcement` (2 assertions).
 
 **No value divergences. All count-level results are identical.**
 

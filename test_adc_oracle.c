@@ -51,6 +51,9 @@ static void teardown(void) {
 }
 
 static void run_adc_conversion(int channel) {
+    /* Enable the channel in P1ASF (required for valid reading) */
+    cpu.mSFR[STC_REG_P1ASF] |= (1 << (channel & 7));
+
     /* Trigger ADC: set ADC_POWER + ADC_START + channel, fastest speed */
     cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | (channel & 7);
     if (cpu.sfrwrite[STC_REG_ADC_CONTR])
@@ -291,6 +294,42 @@ static void test_all_channels(void) {
     teardown();
 }
 
+/* ================================================================== *
+ * Test 7: P1ASF enforcement — channel without P1ASF bit returns 0     *
+ * ================================================================== */
+static void test_p1asf_enforcement(void) {
+    printf("\n--- P1ASF enforcement ---\n");
+    setup();
+
+    /* Inject a nonzero value on channel 5 but do NOT set P1ASF bit 5 */
+    stc12_set_adc_input(&stc, 5, 768);
+    cpu.mSFR[STC_REG_P1ASF] = 0x00; /* no channels enabled */
+    cpu.mSFR[STC_REG_AUXR1] &= ~AUXR1_ADRJ;
+
+    /* Start conversion manually (don't use run_adc_conversion which sets P1ASF) */
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 5;
+    if (cpu.sfrwrite[STC_REG_ADC_CONTR])
+        cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 100; i++) stc12_tick(&cpu, &stc);
+
+    uint16_t result = read_adc_result_adrj0();
+    printf("  P1ASF=0x00, ch5 injected=768, result=%d (expect 0)\n", result);
+    CHECK(result == 0, "P1ASF: channel without P1ASF bit returns 0");
+
+    /* Now set P1ASF bit 5 and retry — should get 768 */
+    cpu.mSFR[STC_REG_P1ASF] = 0x20; /* enable channel 5 */
+    cpu.mSFR[STC_REG_ADC_CONTR] = ADC_POWER | ADC_START | ADC_SPEED1 | ADC_SPEED0 | 5;
+    if (cpu.sfrwrite[STC_REG_ADC_CONTR])
+        cpu.sfrwrite[STC_REG_ADC_CONTR](&cpu, STC_REG_ADC_CONTR + 0x80);
+    for (int i = 0; i < 100; i++) stc12_tick(&cpu, &stc);
+
+    result = read_adc_result_adrj0();
+    printf("  P1ASF=0x20, ch5 injected=768, result=%d (expect 768)\n", result);
+    CHECK(result == 768, "P1ASF: channel with P1ASF bit returns correct value");
+
+    teardown();
+}
+
 int main(void) {
     printf("=== ADC Analog Path Oracle ===\n");
 
@@ -300,6 +339,7 @@ int main(void) {
     test_stc15_adrj();
     test_flag_start_behavior();
     test_all_channels();
+    test_p1asf_enforcement();
 
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count ? 1 : 0;
