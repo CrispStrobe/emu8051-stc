@@ -363,6 +363,16 @@ int main(void) {
           "matrix-bcm-89: IE=0x82");
     teardown();
 
+    /* A2 parts: standalone 74HC595 pin expansion */
+    setup_and_load("corpus/a2-parts/sr595.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_P3M0] == 0x70,
+          "sr595: P3M0=0x70 (DATA+LATCH+CLOCK PP)");
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0x00,
+          "sr595: P0M0=0 (no column port)");
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "sr595: TMOD=0x01");
+    teardown();
+
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
 }

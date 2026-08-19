@@ -346,3 +346,13 @@ STC89 variants: no PxM0/PxM1 writes (quasi-bidi only) — correct.
 | matrix-bcm | 10496 | 10485 | **exact** (−11 mode) | P0+P3 push-pull init |
 
 **All four exact match. Zero data divergences.**
+
+## 74HC595 standalone pin expansion (2026-08-19)
+
+Standalone 74HC595 shift register (8 outputs for 3 pins), polled writes.
+
+| Program | Device | Hex bytes | PIN (2s) | P3M0 | Match |
+|---------|--------|-----------|----------|------|-------|
+| sr595 | STC12C5A60S2 | 772 | 738 | 0x70 | **exact** (−3 mode) |
+
+P3M0=0x70: bits 4 (DATA), 5 (LATCH), 6 (CLOCK) push-pull. No ISR (polled).
