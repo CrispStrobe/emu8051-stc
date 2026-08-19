@@ -307,3 +307,42 @@ causing IE to toggle between 0x80 and 0x82 during the scan window.
 | a2-sampler | 1790 | 1763 | **exact** (−27 mode) | P0+P1+P2+P3 init |
 
 **All four exact match after mode strip. Zero data divergences.**
+
+## MATRIX8X8 fixtures (2026-08-19, stc-compiler 623e165)
+
+KEYPAD4X4+MATRIX8X8 combined (keypress updates frame buffer) and
+MATRIX8X8 BCM 4-level brightness. Both STC12 and STC89 variants.
+
+### Boot census
+
+| Program | Device | Hex bytes | PIN (2s) | Verdict |
+|---------|--------|-----------|----------|---------|
+| keypad-matrix | STC12C5A60S2 | 3598 | 40016 | clean |
+| keypad-matrix-89 | STC89C52RC | 3516 | 114509 | clean |
+| matrix-bcm | STC12C5A60S2 | 3004 | 41978 | clean |
+| matrix-bcm-89 | STC89C52RC | 2954 | 114511 | clean |
+
+### SFR init conformance
+
+| SFR | keypad-matrix (STC12) | matrix-bcm (STC12) | Expected |
+|-----|----------------------|-------------------|----------|
+| AUXR | 0x00 (12T) | 0x00 | ✓ |
+| TMOD | 0x01 | 0x01 | ✓ |
+| IE | 0x82 (EA+ET0) | 0x82 | ✓ |
+| P0M0 | 0xFF (columns PP) | 0xFF | ✓ |
+| P1M0 | 0xFF (keypad PP) | 0x00 | ✓ |
+| P3M0 | 0x70 (595 DATA+LATCH+CLOCK) | 0x70 | ✓ — bits 4,5,6 |
+| P3M1 | 0x00 | 0x00 | ✓ |
+
+STC89 variants: no PxM0/PxM1 writes (quasi-bidi only) — correct.
+
+### Cross-emulator agreement (emu8051 vs ucsim, 500ms)
+
+| Program | emu | ucsim | Match | Notes |
+|---------|-----|-------|-------|-------|
+| keypad-matrix-89 | 9991 | 9991 | **exact** | STC89, no mode events |
+| matrix-bcm-89 | 10485 | 10485 | **exact** | STC89, no mode events |
+| keypad-matrix | 10010 | 9991 | **exact** (−19 mode) | P0+P1+P3 push-pull init |
+| matrix-bcm | 10496 | 10485 | **exact** (−11 mode) | P0+P3 push-pull init |
+
+**All four exact match. Zero data divergences.**

@@ -311,6 +311,58 @@ int main(void) {
           "a2-sampler: TR0=1");
     teardown();
 
+    /* A2 parts: keypad-matrix (KEYPAD4X4 + MATRIX8X8, STC12) */
+    setup_and_load("corpus/a2-parts/keypad-matrix.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0xFF,
+          "keypad-matrix: P0M0=FF (columns PP)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0xFF,
+          "keypad-matrix: P1M0=FF (keypad PP)");
+    CHECK(cpu.mSFR[STC_REG_P3M0] == 0x70,
+          "keypad-matrix: P3M0=0x70 (595 DATA+LATCH+CLOCK PP)");
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "keypad-matrix: TMOD=0x01");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "keypad-matrix: IE=0x82 (EA+ET0)");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "keypad-matrix: TR0=1");
+    teardown();
+
+    /* A2 parts: matrix-bcm (MATRIX8X8 BCM 4-level, STC12) */
+    setup_and_load("corpus/a2-parts/matrix-bcm.ihx"); run_ms(50);
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0xFF,
+          "matrix-bcm: P0M0=FF (columns PP)");
+    CHECK(cpu.mSFR[STC_REG_P3M0] == 0x70,
+          "matrix-bcm: P3M0=0x70 (595 pins PP)");
+    CHECK(cpu.mSFR[STC_REG_P1M0] == 0x00,
+          "matrix-bcm: P1M0=0 (no keypad)");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "matrix-bcm: IE=0x82");
+    CHECK((cpu.mSFR[REG_TCON] & TCONMASK_TR0) != 0,
+          "matrix-bcm: TR0=1");
+    teardown();
+
+    /* A2 parts: keypad-matrix-89 (STC89, no port modes) */
+    setup_and_load("corpus/a2-parts/keypad-matrix-89.ihx");
+    cpu.skip_timers = 0; cpu.mMachineCycleScale = 12;
+    run_ms(200);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "keypad-matrix-89: TMOD=0x01");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "keypad-matrix-89: IE=0x82");
+    CHECK(cpu.mSFR[STC_REG_P0M0] == 0x00,
+          "keypad-matrix-89: P0M0=0 (STC89 quasi-bidi)");
+    teardown();
+
+    /* A2 parts: matrix-bcm-89 (STC89, BCM) */
+    setup_and_load("corpus/a2-parts/matrix-bcm-89.ihx");
+    cpu.skip_timers = 0; cpu.mMachineCycleScale = 12;
+    run_ms(200);
+    CHECK(cpu.mSFR[REG_TMOD] == 0x01,
+          "matrix-bcm-89: TMOD=0x01");
+    CHECK(cpu.mSFR[REG_IE] == 0x82,
+          "matrix-bcm-89: IE=0x82");
+    teardown();
+
     printf("\n%d passed, %d failed\n", pass_count, fail_count);
     return fail_count > 0 ? 1 : 0;
 }
