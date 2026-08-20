@@ -46,3 +46,4 @@ test_mass
 test_soak
 test_adc_oracle
 test_tone_oracle
+test_pca_pwm_oracle
