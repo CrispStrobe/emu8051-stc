@@ -372,6 +372,38 @@ int emu_advance_to_ns(uint32_t target_ns_lo, uint32_t target_ns_hi) {
     return stc12_advance_to(&cpu, &stc, target);
 }
 
+/* Is the core parked on PCON.IDL? The embedder's mirror of rp2040js's
+ * `core.waiting`: bw-board's adapter reads it to report slept time and to
+ * skip work that only matters while instructions are being executed. */
+EMSCRIPTEN_KEEPALIVE
+int emu_core_is_idle(void) {
+    if (!initialized) return 0;
+    return stc12_core_is_idle(&cpu) ? 1 : 0;
+}
+
+/* Oscillator clocks the PCON.IDL fast-forward has jumped since reset.
+ * Deterministic — a test can assert on it without a wall clock, which is the
+ * whole point (three machines have shown wall-clock budgets fire falsely
+ * under load). Split lo/hi like the time accessors. */
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_get_idle_skipped_lo(void) {
+    if (!initialized) return 0;
+    return (uint32_t)(stc12_get_idle_skipped_clocks(&stc) & 0xFFFFFFFF);
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_get_idle_skipped_hi(void) {
+    if (!initialized) return 0;
+    return (uint32_t)(stc12_get_idle_skipped_clocks(&stc) >> 32);
+}
+
+/* Turn the fast-forward off. Exists so the same firmware can be run twice and
+ * compared; a speed measurement says nothing about correctness. */
+EMSCRIPTEN_KEEPALIVE
+void emu_set_idle_fastforward(int enabled) {
+    stc12_set_idle_fastforward(enabled ? true : false);
+}
+
 /* Get current MCU time in nanoseconds (returns low 32 bits; use _hi for upper). */
 EMSCRIPTEN_KEEPALIVE
 uint32_t emu_get_time_ns_lo(void) {

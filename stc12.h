@@ -357,6 +357,7 @@ struct stc12_state
 
     /* Time tracking */
     uint64_t osc_clocks;        /* total oscillator clocks since reset */
+    uint64_t idle_skipped_clocks; /* clocks jumped by the PCON.IDL fast-forward */
     uint64_t ns_per_clock_x256; /* (1e9 / fosc) * 256, fixed-point */
 
     /* Shadow of last-emitted pin state, for change detection */
@@ -372,6 +373,20 @@ struct stc12_state
 /* Initialize STC12 peripheral state and install SFR callbacks.
  * Call after reset(). */
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState);
+
+/* Is the core parked on PCON.IDL? The embedder's mirror of rp2040js's
+ * `core.waiting`. */
+bool stc12_core_is_idle(struct em8051 *aCPU);
+
+/* Turn the PCON.IDL fast-forward off (default on). Exists so the same
+ * firmware can be run twice and the two runs compared — the only honest way
+ * to claim an optimisation changed nothing but speed. */
+void stc12_set_idle_fastforward(bool enabled);
+bool stc12_get_idle_fastforward(void);
+
+/* Oscillator clocks the idle fast-forward has jumped since reset. A
+ * deterministic counter, so a test can assert on it without a wall clock. */
+uint64_t stc12_get_idle_skipped_clocks(struct stc12_state *aState);
 
 /* Tick STC12 peripherals. Call once per oscillator clock (i.e. once
  * per call to the upstream tick() when in 1T mode). */

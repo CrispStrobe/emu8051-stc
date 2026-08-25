@@ -23,6 +23,10 @@ EXPORTS := \
 	_emu_run \
 	_emu_load_hex \
 	_emu_get_sfr \
+	_emu_core_is_idle \
+	_emu_get_idle_skipped_lo \
+	_emu_get_idle_skipped_hi \
+	_emu_set_idle_fastforward \
 	_emu_set_sfr \
 	_emu_get_iram \
 	_emu_set_iram \

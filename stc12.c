@@ -1039,11 +1039,181 @@ uint64_t stc12_get_time_ns(struct stc12_state *aState)
     return (aState->osc_clocks * aState->ns_per_clock_x256) >> 8;
 }
 
+/* ================================================================== *
+ * PCON.IDL fast-forward                                               *
+ * ================================================================== *
+ *
+ * core.c already implements idle CORRECTLY: with PCON.IDL set it stops
+ * executing opcodes, leaves the PC parked, keeps the timers counting, and
+ * clears IDL when an enabled interrupt vectors. What it does NOT do is get
+ * any FASTER, because stc12_advance_to still grinds one oscillator clock at
+ * a time. Measured before this existed, on an 11.0592 MHz STC12:
+ *
+ *     busy-spin (SJMP $)   0.643 s wall per 1 s of sim   sim/wall 1.55
+ *     PCON.IDL set         0.732 s wall per 1 s of sim   sim/wall 1.37
+ *
+ * — idling was SLOWER than spinning. Splitting the idle cost: the CPU
+ * tick() is 65 % of it and the peripheral stc12_tick() the other 35 %, so
+ * skipping only the CPU caps the win at about 1.5x. A real jump has to skip
+ * both, which means knowing when the peripherals next do anything.
+ *
+ * WHY THIS IS NARROW ON PURPOSE. Enumerating the next event across T0, T1,
+ * the baud-rate timer, the PCA, the ADC and the watchdog is exactly the kind
+ * of enumeration that breaks firmware silently — bw-board's avr8js sleep
+ * fast-forward (b1cc57e) shipped a first cut that fell through a sleep and
+ * only real third-party firmware caught it. So this does not enumerate. It
+ * asks one question: "is Timer 0 the ONLY thing that can happen next?" If
+ * anything else is armed, or anything is uncertain, it returns 0 and the
+ * emulator behaves exactly as it did before. The optimisation is inert
+ * unless it is provably safe.
+ *
+ * That narrow case is the one that matters: the generated TASKS scheduler
+ * arms T0 as its millisecond tick (`ET0 = 1; EA = 1; TR0 = 1`) and idles
+ * against it, which is precisely what sb3-creator emits for this family.
+ *
+ * AND IT NEVER SKIPS THE OVERFLOW. The jump stops at least one COUNTER TICK
+ * short, so TF0, the PCA's T0-overflow drive, the STC15 clock-out toggle and
+ * the interrupt vectoring all still happen on the normal per-clock path.
+ * Nothing about overflow is duplicated here — only the counting is, and only
+ * while nothing else is counting.
+ *
+ * @return oscillator clocks that may be skipped, or 0 when anything at all
+ *         is uncertain.
+ */
+/* Off switch, so the fast-forward can be compared against ITSELF. A speed
+ * measurement says nothing about correctness; the differential test runs the
+ * same firmware twice, with and without, and requires the two runs to agree
+ * on everything except elapsed wall time. */
+static bool g_idle_fastforward = true;
+
+void stc12_set_idle_fastforward(bool enabled) { g_idle_fastforward = enabled; }
+bool stc12_get_idle_fastforward(void) { return g_idle_fastforward; }
+
+static uint64_t stc12_idle_skip_clocks(struct em8051 *aCPU,
+                                       struct stc12_state *st,
+                                       uint64_t max_clocks)
+{
+    if (!g_idle_fastforward) return 0;
+    if (max_clocks == 0) return 0;
+    if (!st->stc12_mode) return 0;
+    /* This models stc12_timer0_tick and nothing else. With skip_timers false
+     * core.c's own timer_tick ALSO counts T0, and the two together advance it
+     * twice per clock — a configuration no real embedder uses (emu.c,
+     * emu_serial_bridge.c, debug.c and every harness set skip_timers) but one
+     * the differential oracle ran into immediately. Stay inert rather than
+     * model half of a doubled timer. */
+    if (!aCPU->skip_timers) return 0;
+    /* STC89 is 12T with its own Timer 2 path; not modelled here. */
+    if (st->part_id != PART_STC12 && st->part_id != PART_STC15) return 0;
+
+    /* The core must actually be idle, and not powered down (power-down
+     * stops the timers too, so there would be nothing to wake it). */
+    uint8_t pcon = aCPU->mSFR[REG_PCON];
+    if (!(pcon & 0x01) || (pcon & 0x02)) return 0;
+
+    /* A wake must already be armed, or skipping could park for ever. */
+    if (!(aCPU->mSFR[REG_IE] & IEMASK_EA)) return 0;
+    if (!(aCPU->mSFR[REG_IE] & IEMASK_ET0)) return 0;
+
+    /* Anything already pending means the core is about to wake: let it. */
+    if (aCPU->mSFR[REG_TCON] & (TCONMASK_TF0 | TCONMASK_TF1 | TCONMASK_IE0 | TCONMASK_IE1)) return 0;
+    if (aCPU->serial_interrupt_trigger) return 0;
+    if (aCPU->mInterruptActive) return 0;
+
+    /* Timer 0 must be running, clocked internally, ungated. A counter input
+     * or a gate depends on a pin, and a pin can change while we are not
+     * looking. */
+    uint8_t tmod = aCPU->mSFR[REG_TMOD];
+    uint8_t tcon = aCPU->mSFR[REG_TCON];
+    if (!(tcon & TCONMASK_TR0)) return 0;
+    if (tmod & TMODMASK_CT_0) return 0;
+    if (tmod & TMODMASK_GATE_0) return 0;
+
+    /* Only the two modes the generated scheduler uses. */
+    uint8_t mode = tmod & (TMODMASK_M0_0 | TMODMASK_M1_0);
+    if (mode != TMODMASK_M0_0 && mode != TMODMASK_M1_0) return 0;
+
+    /* NOTHING ELSE MAY BE COUNTING. Each of these ticks inside stc12_tick,
+     * and each would be skipped along with the CPU. */
+    if (tcon & TCONMASK_TR1) return 0;                                  /* Timer 1  */
+    if (aCPU->mSFR[STC_REG_AUXR] & AUXR_BRTR) return 0;                 /* baud-rate timer */
+    if (aCPU->mSFR[STC_REG_CCON] & CCON_CR) return 0;                   /* PCA */
+    if (st->adc_countdown != 0) return 0;                               /* ADC conversion */
+    if (aCPU->mSFR[STC_REG_ADC_CONTR] & ADC_START) return 0;
+    if (aCPU->mSFR[STC_REG_WDT_CONTR] & 0x20) return 0;                 /* watchdog (EN_WDT) */
+    if (st->part_id == PART_STC15 &&
+        (aCPU->mSFR[STC_REG_INT_CLKO] & (INT_CLKO_T0CLKO | INT_CLKO_T1CLKO))) return 0;
+
+    /* Clocks per counter tick: AUXR.T0x12 selects 1T, else 12T. */
+    uint32_t divisor = (aCPU->mSFR[STC_REG_AUXR] & AUXR_T0x12) ? 1u : 12u;
+
+    /* Counter ticks until overflow. */
+    uint32_t ticks_to_overflow;
+    if (mode == TMODMASK_M0_0) {           /* 16-bit */
+        uint32_t v = ((uint32_t)aCPU->mSFR[REG_TH0] << 8) | aCPU->mSFR[REG_TL0];
+        ticks_to_overflow = 0x10000u - v;
+    } else {                                /* 8-bit auto-reload */
+        ticks_to_overflow = 0x100u - aCPU->mSFR[REG_TL0];
+    }
+    if (ticks_to_overflow <= 1) return 0;   /* about to overflow: let it */
+
+    /* Stop one counter tick short, and skip only WHOLE ticks so the 12T
+     * prescaler stays exactly where it was. */
+    uint64_t ticks = ticks_to_overflow - 1;
+    uint64_t clocks = ticks * divisor;
+    if (clocks > max_clocks) {
+        ticks = max_clocks / divisor;
+        clocks = ticks * divisor;
+    }
+    if (ticks == 0) return 0;
+
+    /* Advance the counter by the ticks we are skipping. By construction this
+     * cannot overflow: we stopped short of it. */
+    if (mode == TMODMASK_M0_0) {
+        uint32_t v = (((uint32_t)aCPU->mSFR[REG_TH0] << 8) | aCPU->mSFR[REG_TL0])
+                     + (uint32_t)ticks;
+        aCPU->mSFR[REG_TL0] = (uint8_t)(v & 0xff);
+        aCPU->mSFR[REG_TH0] = (uint8_t)((v >> 8) & 0xff);
+    } else {
+        aCPU->mSFR[REG_TL0] = (uint8_t)(aCPU->mSFR[REG_TL0] + (uint32_t)ticks);
+    }
+
+    st->idle_skipped_clocks += clocks;
+    return clocks;
+}
+
+/* Is the core parked on PCON.IDL? The embedder's mirror of rp2040js's
+ * `core.waiting` — bw-board's adapter reads it to report slept time and to
+ * skip work that only matters while instructions are being executed. */
+bool stc12_core_is_idle(struct em8051 *aCPU)
+{
+    return (aCPU->mSFR[REG_PCON] & 0x01) != 0;
+}
+
+uint64_t stc12_get_idle_skipped_clocks(struct stc12_state *aState)
+{
+    return aState->idle_skipped_clocks;
+}
+
 int stc12_advance_to(struct em8051 *aCPU, struct stc12_state *aState,
                      uint64_t target_ns)
 {
     int count = 0;
     while (stc12_get_time_ns(aState) < target_ns) {
+        /* Parked on PCON.IDL with Timer 0 the only thing counting: jump the
+         * clock to just before its overflow instead of stepping to it. */
+        uint64_t now_ns = stc12_get_time_ns(aState);
+        if (now_ns < target_ns && (aCPU->mSFR[REG_PCON] & 0x01)) {
+            uint64_t ns_left = target_ns - now_ns;
+            /* Clocks that still fit inside this slice. */
+            uint64_t clocks_left = aState->ns_per_clock_x256
+                ? (ns_left << 8) / aState->ns_per_clock_x256 : 0;
+            uint64_t skip = stc12_idle_skip_clocks(aCPU, aState, clocks_left);
+            if (skip) {
+                aState->osc_clocks += skip;
+                continue;
+            }
+        }
         bool ticked = tick(aCPU);
         stc12_tick(aCPU, aState);
         if (ticked) count++;
