@@ -12,6 +12,13 @@
  * optimisation stays completely inert over all of it — which is the claim
  * worth having: existing firmware is untouched.
  *
+ * Measured 2026-08-25 over 28 images (the nine shipped example .hex files plus
+ * the rest of src/ built from source, including the A2 examples 22-26 that had
+ * landed days earlier): 143-3975 bytes of code each, every PC well past the
+ * reset vector, 0 divergent, slept=0 on every one. Build them with
+ * `make EXAMPLE=<dir>` in the stc repo — it writes to build/, which is
+ * gitignored there.
+ *
  * THE FIRST RUN OF THIS PROVED NOTHING and said so confidently: it reported
  * "12 images, 0 divergent" while emu_load_hex's return of 0 — which is
  * SUCCESS, not failure — had been misread as a failed load. It would have
@@ -40,9 +47,11 @@ if (!existsSync(STC)) {
 const hexes = execSync(`find ${STC} -name "*.hex"`, { encoding: 'utf8' })
   .trim().split('\n').filter(Boolean);
 if (hexes.length < 8) {
-  console.log(`SKIP: only ${hexes.length} built images found — the corpus is not built.`);
+  console.log(`SKIP: only ${hexes.length} built images found — the corpus is not built. ` +
+    'Build with `make EXAMPLE=<dir>` per example in the stc repo.');
   process.exit(0);
 }
+console.log(`${hexes.length} images found under ${STC}`);
 
 const SIM_NS = 20_000_000;   /* 20 ms of sim per image */
 let fails = 0, idlers = 0;
