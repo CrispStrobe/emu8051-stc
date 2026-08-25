@@ -1,5 +1,6 @@
 _emu_advance_to_ns
 _emu_capabilities
+_emu_core_is_idle
 _emu_dbg_acc
 _emu_dbg_b
 _emu_dbg_bw_ms
@@ -34,6 +35,8 @@ _emu_dbg_write_mem
 _emu_disasm
 _emu_get_code
 _emu_get_flash_size
+_emu_get_idle_skipped_hi
+_emu_get_idle_skipped_lo
 _emu_get_interrupt_active
 _emu_get_iram
 _emu_get_pc
@@ -61,6 +64,7 @@ _emu_set_adc_input
 _emu_set_adc_voltage
 _emu_set_board_callbacks
 _emu_set_fosc
+_emu_set_idle_fastforward
 _emu_set_iram
 _emu_set_part
 _emu_set_pc
