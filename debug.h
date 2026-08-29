@@ -19,7 +19,17 @@
  * ------------------------------------------------------------------ */
 
 enum dbg_state { DBG_HALTED, DBG_RUNNING };
-enum dbg_step_kind { STEP_INSN, STEP_LINE, STEP_BLOCK, STEP_OVER, STEP_OUT };
+/* The integer values are a WIRE PROTOCOL — the WASM front end passes them as
+ * ints — so new kinds are APPENDED and never renumbered.
+ *
+ * STEP_CYCLE is the only one that completes on a CLOCK rather than on an
+ * instruction. It exists because this core genuinely has sub-instruction
+ * state: `tick()` advances one oscillator clock and returns false while
+ * `mTickDelay` counts down, so there is a real place to stop between the
+ * fetch and the write-back. Cores that execute a whole instruction per call
+ * have no such place, and a "cycle step" on one of those would be an
+ * instruction step wearing a different label. */
+enum dbg_step_kind { STEP_INSN, STEP_LINE, STEP_BLOCK, STEP_OVER, STEP_OUT, STEP_CYCLE };
 enum dbg_space { SPACE_CODE, SPACE_IRAM, SPACE_SFR, SPACE_XRAM, SPACE_BIT };
 enum dbg_halt_cause { HALT_BP, HALT_STEP, HALT_USER, HALT_RESET, HALT_FAULT };
 
@@ -136,6 +146,16 @@ enum dbg_state dbg_get_state(struct dbg_target *t);
 void dbg_run(struct dbg_target *t);
 void dbg_halt(struct dbg_target *t);
 int  dbg_step(struct dbg_target *t, enum dbg_step_kind kind, int count);
+
+/* Does this target really implement `kind`? Returns 1 or 0.
+ *
+ * `dbg_step` returns 0 ("success") for every kind in range, including
+ * STEP_LINE, which it then treats as STEP_INSN because a line table is
+ * something this emulator has no way to receive. A front end that trusted the
+ * return value would offer a line step and silently deliver an instruction —
+ * which is the failure boundary D exists to prevent. This is the honest
+ * answer, and STEP_LINE is 0 in it. */
+int  dbg_supports_step(enum dbg_step_kind kind);
 void dbg_reset(struct dbg_target *t);
 
 /* Tick — call from the main loop when state == DBG_RUNNING.

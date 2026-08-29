@@ -37,6 +37,7 @@ _emu_dbg_set_task
 _emu_dbg_sp
 _emu_dbg_state
 _emu_dbg_step
+_emu_dbg_supports_step
 _emu_dbg_task_state
 _emu_dbg_task_until
 _emu_dbg_tick

@@ -488,11 +488,24 @@ void emu_dbg_halt(void) {
     dbg_halt(&dbg);
 }
 
-/* Step: kind 0=insn, 1=line, 2=block, 3=over, 4=out. Returns 0 on success. */
+/* Step: kind 0=insn, 1=line, 2=block, 3=over, 4=out, 5=cycle.
+ * Returns 0 on success, -1 for a kind this build does not implement.
+ * `line` is in range but NOT implemented — ask emu_dbg_supports_step. */
 EMSCRIPTEN_KEEPALIVE
 int emu_dbg_step(int kind, int count) {
-    if (kind < 0 || kind > 4) return -1;
+    if (kind < 0 || kind > 5) return -1;
+    if (!dbg_supports_step((enum dbg_step_kind)kind)) return -1;
     return dbg_step(&dbg, (enum dbg_step_kind)kind, count);
+}
+
+/* Capability probe: 1 if this build really implements `kind`, else 0.
+ * Its ABSENCE is itself the answer for older builds — a front end that
+ * feature-detects this export learns "no cycle step here" without guessing
+ * from a version number. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_supports_step(int kind) {
+    if (kind < 0 || kind > 5) return 0;
+    return dbg_supports_step((enum dbg_step_kind)kind);
 }
 
 EMSCRIPTEN_KEEPALIVE

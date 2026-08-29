@@ -472,6 +472,49 @@ emu_init(1);
     assert(halt_addr() === 0, 'step halt: watch address is 0, not stale from the watchpoint run');
 }
 
+// Test 31: the cycle step, across the WASM boundary
+//
+// The number that matters is the CONTRAST: the same program needs 3 cycle
+// steps and 2 instruction steps to reach PC 4. If the cycle step were an
+// instruction step with a different label the two counts would be equal, and
+// a front end offering both would be lying about one of them.
+{
+    const dbg_step     = Module.cwrap('emu_dbg_step', 'number', ['number', 'number']);
+    const dbg_tick     = Module.cwrap('emu_dbg_tick', 'number', []);
+    const dbg_state    = Module.cwrap('emu_dbg_state', 'number', []);
+    const supports     = Module.cwrap('emu_dbg_supports_step', 'number', ['number']);
+    const STEP_INSN = 0, STEP_LINE = 1, STEP_CYCLE = 5;
+
+    assert(supports(STEP_CYCLE) === 1, 'cycle step: the build reports it as supported');
+    assert(supports(STEP_INSN) === 1, 'cycle step: insn still reported supported');
+    assert(supports(STEP_LINE) === 0,
+        'cycle step: line reported UNSUPPORTED — it would silently give an insn');
+    assert(dbg_step(STEP_LINE, 1) === -1, 'cycle step: a line step is refused with -1');
+    assert(dbg_step(99, 1) === -1, 'cycle step: an out-of-range kind is refused with -1');
+
+    // MOV DPTR,#1234h ; NOP ; NOP
+    const cycHex = ':05000000901234000025\n:00000001FF\n';
+
+    const countSteps = (kind) => {
+        emu_init(1);
+        emu_load_hex(cycHex, cycHex.length);
+        emu_reset(0);
+        let n = 0;
+        while (emu_get_pc() < 4 && n < 20) {
+            dbg_step(kind, 1);
+            for (let i = 0; i < 50 && dbg_state() === 1; i++) dbg_tick();
+            n++;
+        }
+        return n;
+    };
+
+    const cycles = countSteps(STEP_CYCLE);
+    const insns  = countSteps(STEP_INSN);
+    assert(cycles === 3, `cycle step: 3 cycle steps reach PC 4 (got ${cycles})`);
+    assert(insns === 2, `cycle step: 2 instruction steps reach PC 4 (got ${insns})`);
+    assert(cycles > insns, `cycle step: strictly finer than an insn step (${cycles} > ${insns})`);
+}
+
 console.log(`
 ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

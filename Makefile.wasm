@@ -55,6 +55,7 @@ EXPORTS := \
 	_emu_dbg_run \
 	_emu_dbg_halt \
 	_emu_dbg_step \
+	_emu_dbg_supports_step \
 	_emu_dbg_reset \
 	_emu_dbg_tick \
 	_emu_dbg_run_until_ns \

@@ -72,7 +72,24 @@ int dbg_step(struct dbg_target *t, enum dbg_step_kind kind, int count)
     }
 
     t->state = DBG_RUNNING;
-    return 0; /* success — we support all step kinds */
+    return 0; /* in-range kinds all start; see dbg_supports_step for the truth */
+}
+
+int dbg_supports_step(enum dbg_step_kind kind)
+{
+    switch (kind) {
+    case STEP_INSN:
+    case STEP_BLOCK:
+    case STEP_OVER:
+    case STEP_OUT:
+    case STEP_CYCLE:
+        return 1;
+    case STEP_LINE:
+        /* Treated as STEP_INSN by dbg_step, which is not the same thing.
+         * Reported as unsupported so nobody offers it. */
+        return 0;
+    }
+    return 0;
 }
 
 void dbg_reset(struct dbg_target *t)
@@ -165,6 +182,23 @@ bool dbg_tick(struct dbg_target *t)
     /* Execute one osc clock */
     bool ticked = tick(t->cpu);
     stc12_tick(t->cpu, t->stc);
+
+    /* STEP_CYCLE completes HERE, on the clock, and that placement is the whole
+     * feature: every other kind is decided below the `!ticked` return, i.e.
+     * only at instruction boundaries. A cycle step stops between them — after
+     * one oscillator clock, whether or not the instruction in flight finished.
+     * On the clock that DOES finish an instruction the PC moves; on the others
+     * it does not, and a user watching the PC sit still for three steps and
+     * then jump is seeing the machine cycle count of that instruction, which
+     * is the thing worth showing. */
+    if (t->step_count > 0 && t->step_kind == STEP_CYCLE) {
+        t->step_count--;
+        if (t->step_count == 0) {
+            emit_halt(t, HALT_STEP, -1);
+            return true;
+        }
+        return false;
+    }
 
     if (!ticked) return false; /* still in multi-cycle instruction */
 
@@ -265,9 +299,17 @@ bool dbg_tick(struct dbg_target *t)
             }
             break;
         case STEP_LINE:
-            /* Would need a line table. For now, treat as step-insn. */
+            /* Would need a line table. For now, treat as step-insn — which is
+             * why dbg_supports_step reports STEP_LINE as unsupported and
+             * emu_dbg_step refuses it: silently giving an instruction step is
+             * exactly what boundary D forbids. */
             t->step_count--;
             step_done = (t->step_count == 0);
+            break;
+        case STEP_CYCLE:
+            /* Unreachable: a cycle step is completed above, before the
+             * instruction-boundary return, and never arrives here. Named
+             * anyway so the compiler checks this switch stays exhaustive. */
             break;
         }
 

@@ -161,7 +161,8 @@ firmware that reads P3 without writing it, verifying `readPin` is called
 | `emu_dbg_state()` | `() → i32` | 0=halted, 1=running. |
 | `emu_dbg_run()` | `() → void` | Start running. |
 | `emu_dbg_halt()` | `() → void` | Halt execution. |
-| `emu_dbg_step(kind,count)` | `(i32,i32) → i32` | Step. kind: 0=insn, 1=line, 2=block, 3=over, 4=out. |
+| `emu_dbg_step(kind,count)` | `(i32,i32) → i32` | Step. kind: 0=insn, 1=line, 2=block, 3=over, 4=out, **5=cycle**. Returns 0, or **-1** for a kind this build does not implement (`line` is one of them). |
+| `emu_dbg_supports_step(kind)` | `(i32) → i32` | 1 if `kind` is really implemented. Ask this rather than trusting `emu_dbg_step`'s return: see below. |
 | `emu_dbg_reset()` | `() → void` | Reset CPU (keeps code memory). |
 | `emu_dbg_tick()` | `() → i32` | One tick in debug mode. Returns 1 if halted. |
 | `emu_dbg_run_until_ns(lo,hi)` | `(i32,i32) → i32` | Run until time or halt. Returns 1 if BP/step. |
@@ -180,6 +181,32 @@ firmware that reads P3 without writing it, verifying `readPin` is called
 | `emu_dbg_rn(n)` | `(i32) → i32` | Read R0-R7 (bank-aware). |
 | `emu_dbg_set_on_halt(fn)` | `(ptr) → void` | Register halt callback. |
 | `emu_dbg_consumes_count()` | `() → i32` | Returns 0 (emulator consumes nothing). |
+
+### Step kinds, and which are real
+
+`emu_dbg_supports_step(kind)` is the honest list. Two entries need saying out
+loud:
+
+- **`line` (1) is NOT implemented.** `dbg_step` treats it as an instruction
+  step because a line table is something this emulator has no way to receive.
+  A front end that trusted the old "success" return would offer a line step and
+  silently deliver an instruction. `emu_dbg_supports_step(1)` returns 0 and
+  `emu_dbg_step(1, n)` returns -1.
+- **`cycle` (5) is a real sub-instruction step**, and it is the only kind that
+  completes on a CLOCK rather than at an instruction boundary. It exists here
+  because this core genuinely has somewhere to stop in between: `tick()`
+  advances one oscillator clock and returns false while `mTickDelay` counts
+  down.
+
+Measured on `MOV DPTR,#1234h ; NOP ; NOP`, reaching PC 4 takes **3 cycle steps
+and 2 instruction steps**. The core executes an instruction on the FIRST clock
+of it and idles out the remainder, so after one cycle step the PC is already 3
+and DPTR is already loaded; the second cycle step advances a clock in which
+nothing architectural changes. That idle clock is the thing an instruction step
+cannot stop on.
+
+A front end should **feature-detect the export itself** — its absence is the
+answer for older builds, without guessing from a version number.
 
 ### Reading the halt reason
 

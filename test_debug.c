@@ -415,6 +415,70 @@ static void test_write_watchpoint_limits(void) {
 }
 
 /* ================================================================== */
+/* Test: STEP_CYCLE stops between instructions, not on them            */
+/* ================================================================== */
+static void test_step_cycle(void) {
+    printf("--- test_step_cycle ---\n");
+
+    /* The claims first: this build implements a cycle step, and does NOT
+     * implement a line step even though dbg_step would accept one. */
+    setup();
+    CHECK(dbg_supports_step(STEP_CYCLE) == 1, "cycle step: reported as supported");
+    CHECK(dbg_supports_step(STEP_INSN) == 1, "cycle step: insn still supported");
+    CHECK(dbg_supports_step(STEP_LINE) == 0,
+          "cycle step: LINE reported unsupported — dbg_step would silently give an insn");
+    teardown();
+
+    /* MOV DPTR,#1234h ; NOP ; NOP — a 2-cycle instruction followed by 1-cycle
+     * ones, which is the shortest program that can tell the two step kinds
+     * apart.
+     *
+     * MEASURED, and it is not what a pipeline diagram would suggest: this core
+     * executes the instruction on the FIRST clock of it and then idles out the
+     * remainder (mTickDelay). So after ONE cycle step the PC is already 3 and
+     * DPTR is already loaded; the SECOND cycle step advances a clock in which
+     * nothing architectural changes at all. That idle clock is precisely what
+     * a cycle step can stop on and an instruction step cannot, and it is why
+     * the assertion below is about the COUNT of steps rather than about the PC
+     * standing still — the first version of this test asserted the latter,
+     * measured nothing, and stayed green when the cycle step was mutated into
+     * an instruction step. */
+    setup();
+    cpu.mCodeMem[0] = 0x90; cpu.mCodeMem[1] = 0x12; cpu.mCodeMem[2] = 0x34;
+    cpu.mCodeMem[3] = 0x00; cpu.mCodeMem[4] = 0x00;
+
+    int cycle_steps = 0;
+    while (dbg_get_pc(&dbg) < 4 && cycle_steps < 20) {
+        dbg_step(&dbg, STEP_CYCLE, 1);
+        for (int i = 0; i < 50 && dbg_get_state(&dbg) == DBG_RUNNING; i++) dbg_tick(&dbg);
+        cycle_steps++;
+    }
+    CHECK(cycle_steps == 3,
+          "cycle step: 3 cycle steps to reach PC 4 (2 clocks for MOV DPTR + 1 for NOP)");
+    CHECK(cpu.mSFR[REG_DPH] == 0x12 && cpu.mSFR[REG_DPL] == 0x34,
+          "cycle step: the instruction really did complete, DPTR = 1234h");
+    teardown();
+
+    /* The contrast, on the identical program: instruction steps need TWO.
+     * If a cycle step were secretly an instruction step the two counts would
+     * be equal, and that is the whole gate. */
+    setup();
+    cpu.mCodeMem[0] = 0x90; cpu.mCodeMem[1] = 0x12; cpu.mCodeMem[2] = 0x34;
+    cpu.mCodeMem[3] = 0x00; cpu.mCodeMem[4] = 0x00;
+
+    int insn_steps = 0;
+    while (dbg_get_pc(&dbg) < 4 && insn_steps < 20) {
+        dbg_step(&dbg, STEP_INSN, 1);
+        for (int i = 0; i < 50 && dbg_get_state(&dbg) == DBG_RUNNING; i++) dbg_tick(&dbg);
+        insn_steps++;
+    }
+    CHECK(insn_steps == 2, "cycle step contrast: 2 instruction steps to reach PC 4");
+    CHECK(cycle_steps > insn_steps,
+          "cycle step: a cycle step is STRICTLY finer than an instruction step (3 > 2)");
+    teardown();
+}
+
+/* ================================================================== */
 /* Test: a halt that is NOT a watchpoint says so                       */
 /* ================================================================== */
 static void test_halt_reason_not_a_watch(void) {
@@ -484,6 +548,7 @@ int main(void) {
     test_step_over_out();
     test_write_watchpoint();
     test_write_watchpoint_limits();
+    test_step_cycle();
     test_halt_reason_not_a_watch();
     test_step_over_nested();
     test_level1_position();
