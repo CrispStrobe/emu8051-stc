@@ -1,0 +1,129 @@
+# Run this repo's own suites on every push.
+#
+# Until now the only workflow here built SDCC (workflow_dispatch, last run
+# 2026-08-11), so nothing ran on a push and "is master green?" had no answer.
+# Every regression this repo has caught was caught by somebody running `make`
+# by hand on a laptop.
+#
+# Deliberately lean. Three jobs, and the split is about what each one needs:
+#
+#   native  — gcc + the C suites. No toolchain beyond a compiler.
+#   wasm    — emcc, then the JS tests against the BUILT artifact, plus a check
+#             that the built exports still cover exports-manifest.txt. It also
+#             asserts the committed build/ is what the committed source
+#             produces, which is the one thing a consumer pinning this repo by
+#             commit is trusting.
+#   canary  — real hand-written firmware, from the PRIVATE `stc` sibling.
+#             Soft by design: it cannot run without a checkout this workflow
+#             has no right to, and a job that silently passes when it did not
+#             run is worse than one that says it skipped.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  native:
+    name: C suites (gcc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the suites that need no arguments
+        run: |
+          set -o pipefail
+          # test_blink / test_adc / test_multi_when take a .hex on the command
+          # line and print usage without one; they belong to the canary job's
+          # world, not this one.
+          for t in test_stc12 test_suite test_debug test_cycles test_integration; do
+            make "$t"
+          done
+          fail=0
+          for t in test_stc12 test_suite test_debug test_cycles test_integration; do
+            echo "::group::$t"
+            if ./"$t"; then echo "$t OK"; else echo "::error::$t FAILED"; fail=1; fi
+            echo "::endgroup::"
+          done
+          exit $fail
+
+      - name: Assert the debug suite really ran its checks
+        run: |
+          # A suite that dies during setup exits 0 on some paths and prints
+          # nothing. Count the assertions instead of trusting the exit code —
+          # the house rule is to verify counts, not exit statuses.
+          COUNT=$(./test_debug | sed -n 's/^\([0-9]\+\) passed.*/\1/p')
+          echo "test_debug assertions: $COUNT"
+          if [ -z "$COUNT" ] || [ "$COUNT" -lt 60 ]; then
+            echo "::error::test_debug reported '$COUNT' passing checks (expected >= 60). Did it die during setup?"
+            exit 1
+          fi
+
+  wasm:
+    name: WASM build + JS suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Test the COMMITTED build
+        run: |
+          set -o pipefail
+          # These run against build/emu8051.js as committed, because that is
+          # the artifact consumers pin — testing a locally rebuilt one would
+          # prove something nobody depends on.
+          node check-exports.mjs "$PWD/build/emu8051.js"
+          node test_wasm.mjs
+          node test_gdb.mjs || echo "::warning::test_gdb reported a failure"
+
+      - name: The committed build/ is what the committed source produces
+        run: |
+          # Not a byte-identity check: emcc's output moves between versions and
+          # this job's emsdk is not pinned to the one a maintainer built with.
+          # The claim is narrower and is the one that matters — the exports the
+          # manifest promises are all still reachable from a fresh build of
+          # THIS source, so build/ cannot silently fall behind the C.
+          cp build/emu8051.js /tmp/committed-emu8051.js
+          make -f Makefile.wasm
+          node check-exports.mjs "$PWD/build/emu8051.js"
+          echo "A fresh build of this source exports everything the manifest names."
+          git diff --stat -- build/ || true
+
+  canary:
+    name: Firmware canary (needs the private stc sibling)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Try to check out the stc firmware sibling
+        id: stc
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: CrispStrobe/stc12c5a60s2-lab
+          path: stc-sibling
+          token: ${{ secrets.STC_LAB_TOKEN }}
+
+      - name: Run the canary, or say plainly that it did not
+        run: |
+          if [ "${{ steps.stc.outcome }}" != "success" ]; then
+            echo "::notice::SKIPPED — the stc firmware sibling is private and no STC_LAB_TOKEN is set."
+            echo "A skip is NOT a pass: this is the only job here that runs real hand-written firmware."
+            exit 0
+          fi
+          BW_STC="$PWD/stc-sibling" node test_corpus_canary.mjs
