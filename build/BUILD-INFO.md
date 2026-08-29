@@ -2,9 +2,9 @@
 
 | File | Size | SHA-256 |
 |------|------|---------|
-| emu8051.js | 20K | `25eab6e31a4b5ce528733162abd3f3601c3f3345b6da285dfb1ad381964a9054` |
-| emu8051.wasm | 66K | `fb0d75be03bb14e9860fb9c53ab51f5e6f05fd39eba9fe63ee9472facd15f985` |
+| emu8051.js | 21K | `e79ae24842860ca69b8886e9fd04aecc0b6fe4d018a9ce68b67f95e80613b3bd` |
+| emu8051.wasm | 67K | `82abb5e0a5209002d38114590a716c0c81ca3348bc63a6d163fe02527635beee` |
 
 **Emscripten:** emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.6 (ce75e06884093bcefb86a6b8fd56a5d62a4cc245)
-**Source:** `24177ae`
+**Source:** `ecabd29`
 **Licence:** MIT (emu8051 + STC12/15) + MIT/UIUC (Emscripten). No GPL.
