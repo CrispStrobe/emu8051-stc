@@ -43,15 +43,15 @@ void dbg_halt(struct dbg_target *t)
     if (t->state != DBG_RUNNING) return;
     t->state = DBG_HALTED;
 
-    if (t->on_halt) {
-        struct dbg_halt_reason r = {
-            .cause = HALT_USER,
-            .pc = t->cpu->mPC,
-            .bp_id = -1,
-            .t_ns = stc12_get_time_ns(t->stc),
-        };
-        t->on_halt(&r, t->on_halt_data);
-    }
+    struct dbg_halt_reason r = {
+        .cause = HALT_USER,
+        .pc = t->cpu->mPC,
+        .bp_id = -1,
+        .t_ns = stc12_get_time_ns(t->stc),
+        .is_watch = false,
+    };
+    t->last_halt = r;
+    if (t->on_halt) t->on_halt(&r, t->on_halt_data);
 }
 
 int dbg_step(struct dbg_target *t, enum dbg_step_kind kind, int count)
@@ -82,6 +82,29 @@ void dbg_reset(struct dbg_target *t)
     t->cpu->skip_timers = true;
     t->state = DBG_HALTED;
     t->step_count = 0;
+
+    /* Re-seed every watchpoint shadow from the memory the reset just wrote.
+     *
+     * Without this a watchpoint set before a reset compares post-reset memory
+     * against a pre-reset shadow, so the very first tick after Restart halts
+     * on a "write" that no instruction performed — the reset itself. That is
+     * the worst kind of debugger lie: a stop with a plausible address on it.
+     * Reset clears the halt reason too; the last halt was in the old run. */
+    for (int i = 0; i < DBG_MAX_BP; i++) {
+        struct dbg_breakpoint *bp = &t->bps[i];
+        if (!bp->active || (bp->kind != BP_WRITE && bp->kind != BP_READ)) continue;
+        uint8_t val = 0;
+        dbg_read_mem(t, bp->watch.space, bp->addr, &val, 1);
+        t->watch_shadow[i] = val;
+    }
+    memset(&t->last_halt, 0, sizeof(t->last_halt));
+    t->last_halt.cause = HALT_RESET;
+    t->last_halt.bp_id = -1;
+}
+
+const struct dbg_halt_reason *dbg_get_last_halt(struct dbg_target *t)
+{
+    return &t->last_halt;
 }
 
 /* ================================================================== *
@@ -101,15 +124,38 @@ static uint16_t read_iram16(struct em8051 *cpu, uint16_t addr)
 static void emit_halt(struct dbg_target *t, enum dbg_halt_cause cause, int bp_id)
 {
     t->state = DBG_HALTED;
-    if (t->on_halt) {
-        struct dbg_halt_reason r = {
-            .cause = cause,
-            .pc = t->cpu->mPC,
-            .bp_id = bp_id,
-            .t_ns = stc12_get_time_ns(t->stc),
-        };
-        t->on_halt(&r, t->on_halt_data);
-    }
+    struct dbg_halt_reason r = {
+        .cause = cause,
+        .pc = t->cpu->mPC,
+        .bp_id = bp_id,
+        .t_ns = stc12_get_time_ns(t->stc),
+        .is_watch = false,
+    };
+    t->last_halt = r;
+    if (t->on_halt) t->on_halt(&r, t->on_halt_data);
+}
+
+/* The watchpoint flavour of emit_halt: same halt, plus the byte that moved.
+ * Split out rather than adding four parameters to emit_halt because every
+ * other caller would have to pass four zeroes, and a zero address is a legal
+ * address — the `is_watch` flag is what a consumer must branch on. */
+static void emit_watch_halt(struct dbg_target *t, int bp_id, enum dbg_space space,
+                            uint16_t addr, uint8_t value, uint8_t prev)
+{
+    t->state = DBG_HALTED;
+    struct dbg_halt_reason r = {
+        .cause = HALT_BP,
+        .pc = t->cpu->mPC,
+        .bp_id = bp_id,
+        .t_ns = stc12_get_time_ns(t->stc),
+        .is_watch = true,
+        .watch_space = space,
+        .watch_addr = addr,
+        .watch_value = value,
+        .watch_prev = prev,
+    };
+    t->last_halt = r;
+    if (t->on_halt) t->on_halt(&r, t->on_halt_data);
 }
 
 bool dbg_tick(struct dbg_target *t)
@@ -151,12 +197,18 @@ bool dbg_tick(struct dbg_target *t)
             }
             break;
         case BP_WRITE: {
-            /* Polling watchpoint: check if the watched byte changed */
+            /* Polling watchpoint: check if the watched byte changed.
+             *
+             * This is a CHANGE detector, not a store detector — see the
+             * caveat block above dbg_set_breakpoint. The report therefore
+             * names both the new value and the shadow it replaced, because
+             * "0x30 changed" without a from-value is not evidence. */
             uint8_t cur = 0;
             dbg_read_mem(t, bp->watch.space, bp->addr, &cur, 1);
             if (cur != t->watch_shadow[i]) {
+                uint8_t prev = t->watch_shadow[i];
                 t->watch_shadow[i] = cur;
-                emit_halt(t, HALT_BP, bp->id);
+                emit_watch_halt(t, bp->id, bp->watch.space, bp->addr, cur, prev);
                 return true;
             }
             break;
@@ -232,8 +284,40 @@ bool dbg_tick(struct dbg_target *t)
  * Breakpoints                                                         *
  * ================================================================== */
 
+/* WHAT A WRITE WATCHPOINT HERE ACTUALLY IS, stated once so no consumer has to
+ * guess — and so no front end can advertise more than this delivers.
+ *
+ * It is a CHANGE detector sampled at instruction boundaries, not a store
+ * detector wired into the address decoder. Three consequences, all of them
+ * visible to a user:
+ *
+ *   1. A store that writes the value already there fires nothing. `MOV 30h,#0`
+ *      onto a byte already 0 is invisible. "What wrote my variable?" is
+ *      answered only when the write CHANGED it.
+ *   2. A byte that changes for a reason other than a store still fires — an
+ *      SFR the peripherals move (TL0, the serial buffer, an ADC result) will
+ *      trip a watchpoint set on it with no program instruction responsible.
+ *      That is not a false positive at the memory level; it is a true report
+ *      that the byte moved, and the PC in the halt reason is where execution
+ *      happened to be, NOT the writer.
+ *   3. The granularity is one instruction. Two changes inside a single
+ *      multi-cycle instruction report only the last one.
+ *
+ * All three are honest limits of polling, and they are why the halt reason
+ * carries `watch_prev` as well as `watch_value`: the transition is the
+ * evidence, and a consumer that shows only the new value is showing less than
+ * was measured. A store-accurate watchpoint would need the write path in
+ * core.c to call back, which is a larger change than this interface. */
 int dbg_set_breakpoint(struct dbg_target *t, struct dbg_breakpoint *bp)
 {
+    /* Refuse an out-of-range space rather than storing a watchpoint that can
+     * never fire: dbg_read_mem's default branch returns 0 for an unknown
+     * space, so the shadow would sit at 0 for ever and the user would watch a
+     * dead address believing it armed. Refusing by return value is boundary
+     * D's rule — never silently do something else. */
+    if (bp->kind == BP_WRITE || bp->kind == BP_READ) {
+        if (bp->watch.space < SPACE_CODE || bp->watch.space > SPACE_BIT) return -1;
+    }
     for (int i = 0; i < DBG_MAX_BP; i++) {
         if (!t->bps[i].active) {
             t->bps[i] = *bp;

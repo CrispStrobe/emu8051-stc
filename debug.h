@@ -52,12 +52,30 @@ struct dbg_symbols {
     int n_tasks;
 };
 
-/* Halt reason (§7) */
+/* Halt reason (§7)
+ *
+ * `watch_*` describe the byte a WRITE watchpoint caught, and are meaningful
+ * only when `is_watch` is true. They exist because "halted at PC 0x0142" is
+ * not an answer to "what wrote my variable?": the user set the watchpoint on
+ * an ADDRESS and the only useful report names that address and what it now
+ * holds. `watch_prev` is what the byte held at the previous instruction
+ * boundary, so a front end can render the transition rather than a value with
+ * no before.
+ *
+ * On every other cause `is_watch` is false and the four fields are zero. A
+ * consumer must branch on `is_watch`, not on a sentinel address — 0x00 is a
+ * legal IRAM address.
+ */
 struct dbg_halt_reason {
     enum dbg_halt_cause cause;
     uint16_t pc;
     int bp_id;                   /* -1 if no breakpoint */
     uint64_t t_ns;               /* program-time nanoseconds since reset */
+    bool is_watch;               /* true when a BP_WRITE caused this halt */
+    enum dbg_space watch_space;  /* which space the watched byte lives in */
+    uint16_t watch_addr;         /* the watched address */
+    uint8_t watch_value;         /* what it holds now */
+    uint8_t watch_prev;          /* what it held one instruction ago */
 };
 
 /* Halt callback */
@@ -86,6 +104,12 @@ struct dbg_target {
     /* Halt callback */
     dbg_on_halt_fn on_halt;
     void *on_halt_data;
+
+    /* The last reason emitted, kept so a host that cannot receive a struct
+     * through a callback (the WASM build: a JS callback gets a pointer into a
+     * heap whose layout it must not assume) can read it back field by field.
+     * Written on every halt, including HALT_USER. */
+    struct dbg_halt_reason last_halt;
 
     /* Write watchpoint shadow (polling, checked after each instruction) */
     uint8_t watch_shadow[DBG_MAX_BP];
@@ -147,6 +171,12 @@ void dbg_set_symbols(struct dbg_target *t, struct dbg_symbols *syms);
 
 /* Halt callback */
 void dbg_set_on_halt(struct dbg_target *t, dbg_on_halt_fn fn, void *data);
+
+/* The last halt reason emitted, readable without a callback. Never NULL:
+ * before the first halt it reads cause = HALT_HALTED-at-init (zeroed) with
+ * bp_id 0; after dbg_reset it reads HALT_RESET. Use it when the transport
+ * cannot carry a struct — the WASM build reads it field by field. */
+const struct dbg_halt_reason *dbg_get_last_halt(struct dbg_target *t);
 
 /* Time */
 uint64_t dbg_get_time_ns(struct dbg_target *t);

@@ -329,6 +329,114 @@ static void test_write_watchpoint(void) {
     CHECK(dbg_get_state(&dbg) == DBG_HALTED, "write watchpoint: halted");
     CHECK(cpu.mLowerData[0x30] == 0x42, "write watchpoint: value changed to 0x42");
 
+    /* The halt must NAME the byte. Halting is half an answer: the user set the
+     * watchpoint on an address, so the report has to carry that address and
+     * the transition, not just a PC. Before this, `struct dbg_halt_reason`
+     * carried neither and a front end could only say "something stopped". */
+    const struct dbg_halt_reason *r = dbg_get_last_halt(&dbg);
+    CHECK(r->cause == HALT_BP, "write watchpoint: cause = breakpoint");
+    CHECK(r->bp_id == id, "write watchpoint: bp_id matches the handle");
+    CHECK(r->is_watch, "write watchpoint: reason is flagged as a watch");
+    CHECK(r->watch_space == SPACE_IRAM, "write watchpoint: space = iram");
+    CHECK(r->watch_addr == 0x30, "write watchpoint: reports address 30h");
+    CHECK(r->watch_value == 0x42, "write watchpoint: reports new value 42h");
+    CHECK(r->watch_prev == 0x00, "write watchpoint: reports previous value 00h");
+
+    teardown();
+}
+
+/* ================================================================== */
+/* Test: the three honest limits of a polling watchpoint               */
+/* ================================================================== */
+static void test_write_watchpoint_limits(void) {
+    printf("--- test_write_watchpoint_limits ---\n");
+
+    /* (a) A store of the value already there is INVISIBLE. This is the
+     * limitation that most surprises a user, so it is pinned as behaviour
+     * rather than left to be discovered: if this ever starts firing, the
+     * watchpoint became a store detector and every doc saying otherwise —
+     * including the front end's own wording — needs re-reading. */
+    setup();
+    /* MOV 30h,#00 ; MOV 30h,#00 ; SJMP $   onto a byte already 0 */
+    cpu.mCodeMem[0] = 0x75; cpu.mCodeMem[1] = 0x30; cpu.mCodeMem[2] = 0x00;
+    cpu.mCodeMem[3] = 0x75; cpu.mCodeMem[4] = 0x30; cpu.mCodeMem[5] = 0x00;
+    cpu.mCodeMem[6] = 0x80; cpu.mCodeMem[7] = 0xFE;
+    cpu.mLowerData[0x30] = 0x00;
+    struct dbg_breakpoint same = {
+        .kind = BP_WRITE, .addr = 0x30, .watch = { .space = SPACE_IRAM, .len = 1 }
+    };
+    CHECK(dbg_set_breakpoint(&dbg, &same) > 0, "same-value: watchpoint set");
+    dbg_run(&dbg);
+    for (int i = 0; i < 300 && dbg_get_state(&dbg) == DBG_RUNNING; i++) dbg_tick(&dbg);
+    CHECK(dbg_get_state(&dbg) == DBG_RUNNING,
+          "same-value: two stores of 00h onto a 00h byte do NOT halt (change detector)");
+    teardown();
+
+    /* (b) An unknown space is REFUSED, not stored. dbg_read_mem answers 0 for
+     * a space it does not know, so an accepted watchpoint there would sit at
+     * shadow 0 for ever: armed to the user, dead in fact. */
+    setup();
+    struct dbg_breakpoint bogus = {
+        .kind = BP_WRITE, .addr = 0x30, .watch = { .space = (enum dbg_space)9, .len = 1 }
+    };
+    CHECK(dbg_set_breakpoint(&dbg, &bogus) == -1,
+          "bad space: watchpoint refused with -1 rather than armed and dead");
+    teardown();
+
+    /* (c) Reset re-seeds the shadow. A watchpoint that survives a Restart must
+     * not fire on the reset's own rewriting of memory — a stop with a real
+     * address on it that no instruction caused is the worst failure this
+     * interface can have.
+     *
+     * The watched byte is an SFR and that is deliberate, not incidental:
+     * dbg_reset calls reset(cpu, 0), a WARM reset, which leaves IRAM and XRAM
+     * alone but does `memset(mSFR, 0, 128)` and then restores P0..P3 to 0xFF.
+     * So an SFR watchpoint is the one that actually goes stale, and an IRAM
+     * watchpoint would pass this test whether or not the re-seed exists —
+     * which is what the first version of this test did, and it proved
+     * nothing: removing the re-seed left it green. */
+    setup();
+    cpu.mCodeMem[0] = 0x00;                          /* NOP */
+    cpu.mCodeMem[1] = 0x80; cpu.mCodeMem[2] = 0xFE;  /* SJMP $ */
+    cpu.mSFR[REG_P1] = 0x00;                         /* not its post-reset 0xFF */
+    struct dbg_breakpoint keep = {
+        .kind = BP_WRITE, .addr = 0x90,              /* P1, absolute SFR address */
+        .watch = { .space = SPACE_SFR, .len = 1 }
+    };
+    CHECK(dbg_set_breakpoint(&dbg, &keep) > 0, "reset re-seed: watchpoint armed on P1 at 00h");
+    dbg_reset(&dbg);                                  /* restores P1 to 0xFF */
+    CHECK(dbg_get_last_halt(&dbg)->cause == HALT_RESET, "reset re-seed: reason says reset");
+    CHECK(cpu.mSFR[REG_P1] == 0xFF, "reset re-seed: the reset really did move P1 00h -> FFh");
+    dbg_run(&dbg);
+    for (int i = 0; i < 100 && dbg_get_state(&dbg) == DBG_RUNNING; i++) dbg_tick(&dbg);
+    CHECK(dbg_get_state(&dbg) == DBG_RUNNING,
+          "reset re-seed: the reset's own rewrite of P1 does not fire the watchpoint");
+    teardown();
+}
+
+/* ================================================================== */
+/* Test: a halt that is NOT a watchpoint says so                       */
+/* ================================================================== */
+static void test_halt_reason_not_a_watch(void) {
+    printf("--- test_halt_reason_not_a_watch ---\n");
+    setup();
+
+    /* MOV A,#42h ; MOV A,#43h ; SJMP $ — step once, then read the reason. */
+    cpu.mCodeMem[0] = 0x74; cpu.mCodeMem[1] = 0x42;
+    cpu.mCodeMem[2] = 0x74; cpu.mCodeMem[3] = 0x43;
+    cpu.mCodeMem[4] = 0x80; cpu.mCodeMem[5] = 0xFE;
+
+    dbg_step(&dbg, STEP_INSN, 1);
+    for (int i = 0; i < 100 && dbg_get_state(&dbg) == DBG_RUNNING; i++) dbg_tick(&dbg);
+
+    const struct dbg_halt_reason *r = dbg_get_last_halt(&dbg);
+    CHECK(r->cause == HALT_STEP, "step halt: cause = step");
+    CHECK(!r->is_watch, "step halt: is_watch is false");
+    CHECK(r->bp_id == -1, "step halt: no breakpoint handle");
+    /* And the watch fields are zero rather than stale from an earlier halt. */
+    CHECK(r->watch_addr == 0 && r->watch_value == 0 && r->watch_prev == 0,
+          "step halt: watch fields are zero, not stale");
+
     teardown();
 }
 
@@ -375,6 +483,8 @@ int main(void) {
     test_memory_access();
     test_step_over_out();
     test_write_watchpoint();
+    test_write_watchpoint_limits();
+    test_halt_reason_not_a_watch();
     test_step_over_nested();
     test_level1_position();
     test_time();

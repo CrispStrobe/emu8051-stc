@@ -77,6 +77,15 @@ EXPORTS := \
 	_emu_dbg_set_bw_ms_addr \
 	_emu_dbg_set_task \
 	_emu_dbg_set_on_halt \
+	_emu_dbg_halt_cause \
+	_emu_dbg_halt_bp \
+	_emu_dbg_halt_is_watch \
+	_emu_dbg_halt_watch_space \
+	_emu_dbg_halt_watch_addr \
+	_emu_dbg_halt_watch_value \
+	_emu_dbg_halt_watch_prev \
+	_emu_dbg_halt_t_ns_lo \
+	_emu_dbg_halt_t_ns_hi \
 	_emu_dbg_profile_start \
 	_emu_dbg_profile_stop \
 	_emu_dbg_profile_get \

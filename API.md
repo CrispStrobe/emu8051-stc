@@ -167,7 +167,7 @@ firmware that reads P3 without writing it, verifying `readPin` is called
 | `emu_dbg_run_until_ns(lo,hi)` | `(i32,i32) → i32` | Run until time or halt. Returns 1 if BP/step. |
 | `emu_dbg_set_bp_code(addr)` | `(i32) → i32` | Set code breakpoint. Returns handle. |
 | `emu_dbg_set_bp_yield(addr,task,state)` | `(i32,i32,i32) → i32` | Set yield breakpoint. |
-| `emu_dbg_set_bp_write(space,addr)` | `(i32,i32) → i32` | Set write watchpoint. Halts when the byte changes. Space: 0=code,1=iram,2=sfr,3=xram. |
+| `emu_dbg_set_bp_write(space,addr)` | `(i32,i32) → i32` | Set write watchpoint. Returns a handle, or **-1** for an unknown space or a full table. Space: 0=code,1=iram,2=sfr,3=xram,4=bit. See the caveat below — this is a change detector, not a store detector. |
 | `emu_dbg_clear_bp(handle)` | `(i32) → void` | Clear breakpoint. |
 | `emu_dbg_read_mem(space,addr,len)` | `(i32,i32,i32) → ptr` | Read memory. space: 0-4. Returns pointer. |
 | `emu_dbg_write_mem(space,addr,val)` | `(i32,i32,i32) → void` | Write one byte. |
@@ -180,6 +180,45 @@ firmware that reads P3 without writing it, verifying `readPin` is called
 | `emu_dbg_rn(n)` | `(i32) → i32` | Read R0-R7 (bank-aware). |
 | `emu_dbg_set_on_halt(fn)` | `(ptr) → void` | Register halt callback. |
 | `emu_dbg_consumes_count()` | `() → i32` | Returns 0 (emulator consumes nothing). |
+
+### Reading the halt reason
+
+`emu_dbg_set_on_halt` hands C a `struct dbg_halt_reason *`. A JS host receiving
+that pointer would have to know the struct's layout, which is a compiler
+decision it must not depend on — so the reason is also readable back as
+scalars. All of these describe the **most recent** halt and are valid until the
+next one.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `emu_dbg_halt_cause()` | `() → i32` | 0=breakpoint, 1=step, 2=user, 3=reset, 4=fault. |
+| `emu_dbg_halt_bp()` | `() → i32` | The breakpoint handle that caused it, or -1. |
+| `emu_dbg_halt_is_watch()` | `() → i32` | 1 when a write watchpoint caused this halt. **Branch on this**, not on the address: 0x00 is a legal address, so there is no sentinel value to test. |
+| `emu_dbg_halt_watch_space()` | `() → i32` | Space of the watched byte (0-4). |
+| `emu_dbg_halt_watch_addr()` | `() → i32` | The watched address. |
+| `emu_dbg_halt_watch_value()` | `() → i32` | What the byte holds now. |
+| `emu_dbg_halt_watch_prev()` | `() → i32` | What it held one instruction earlier. |
+| `emu_dbg_halt_t_ns_lo/hi()` | `() → u32` | Halt time in ns since reset, as two halves. |
+
+### What a write watchpoint here actually is
+
+It is a **change detector sampled at instruction boundaries**, not a store
+detector wired into the address decoder. Three consequences, all user-visible:
+
+1. **A store of the value already there fires nothing.** `MOV 30h,#0` onto a
+   byte already 0 is invisible. "What wrote my variable?" is answered only when
+   the write CHANGED it.
+2. **A byte that changes for a reason other than a store still fires.** An SFR
+   the peripherals move (TL0, SBUF, an ADC result) trips a watchpoint set on it
+   with no program instruction responsible. The reported `pc` is where
+   execution happened to be, **not** the writer.
+3. **Granularity is one instruction.** Two changes inside a single multi-cycle
+   instruction report only the last.
+
+This is why the reason carries `watch_prev` as well as `watch_value`: the
+transition is the evidence, and a consumer that shows only the new value shows
+less than was measured. A store-accurate watchpoint would need the write path
+in `core.c` to call back — a larger change than this interface.
 
 ## Level 1 Position (Cooperative Scheduler)
 

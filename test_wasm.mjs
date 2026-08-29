@@ -394,6 +394,84 @@ emu_init(1);
 }
 
 
+// Test 29: a write watchpoint halts, and the halt REPORTS the byte
+//
+// test_debug.c proves the mechanism natively. This proves the WASM boundary,
+// which is a separate claim and the one that had been failing: the watchpoint
+// itself has been exported for a long time, but the halt reason was reachable
+// only as a `struct dbg_halt_reason *` handed to a callback — a pointer whose
+// layout a JS host must not assume — so a front end could halt and then had
+// nothing to say beyond "stopped". Every field checked here crosses that
+// boundary as a scalar.
+{
+    const dbg_set_bp_write = Module.cwrap('emu_dbg_set_bp_write', 'number', ['number', 'number']);
+    const dbg_clear_bp     = Module.cwrap('emu_dbg_clear_bp', null, ['number']);
+    const dbg_run          = Module.cwrap('emu_dbg_run', null, []);
+    const dbg_tick         = Module.cwrap('emu_dbg_tick', 'number', []);
+    const dbg_state        = Module.cwrap('emu_dbg_state', 'number', []);
+    const halt_cause       = Module.cwrap('emu_dbg_halt_cause', 'number', []);
+    const halt_bp          = Module.cwrap('emu_dbg_halt_bp', 'number', []);
+    const halt_is_watch    = Module.cwrap('emu_dbg_halt_is_watch', 'number', []);
+    const halt_space       = Module.cwrap('emu_dbg_halt_watch_space', 'number', []);
+    const halt_addr        = Module.cwrap('emu_dbg_halt_watch_addr', 'number', []);
+    const halt_value       = Module.cwrap('emu_dbg_halt_watch_value', 'number', []);
+    const halt_prev        = Module.cwrap('emu_dbg_halt_watch_prev', 'number', []);
+
+    // MOV 30h,#00 ; MOV 30h,#42 ; SJMP $
+    const wpHex = ':0800000075300075304280FEEE\n:00000001FF\n';
+    emu_init(1);
+    emu_load_hex(wpHex, wpHex.length);
+    emu_reset(0);
+
+    const SPACE_IRAM = 1;
+    const handle = dbg_set_bp_write(SPACE_IRAM, 0x30);
+    assert(handle > 0, `watchpoint: set on iram 0x30 -> handle ${handle}`);
+
+    dbg_run();
+    let halted = 0;
+    for (let i = 0; i < 500 && dbg_state() === 1; i++) halted = dbg_tick();
+
+    assert(dbg_state() === 0, 'watchpoint: the emulator halted');
+    assert(halted === 1, 'watchpoint: dbg_tick reported the halt');
+    assert(halt_cause() === 0, `watchpoint: cause == 0 (breakpoint), got ${halt_cause()}`);
+    assert(halt_bp() === handle, `watchpoint: bp handle ${halt_bp()} == ${handle}`);
+    assert(halt_is_watch() === 1, 'watchpoint: halt is flagged as a watch');
+    assert(halt_space() === SPACE_IRAM, `watchpoint: space ${halt_space()} == iram(1)`);
+    assert(halt_addr() === 0x30, `watchpoint: address 0x${halt_addr().toString(16)} == 0x30`);
+    assert(halt_value() === 0x42, `watchpoint: new value 0x${halt_value().toString(16)} == 0x42`);
+    assert(halt_prev() === 0x00, `watchpoint: previous value 0x${halt_prev().toString(16)} == 0x00`);
+    assert(emu_get_iram(0x30) === 0x42, 'watchpoint: memory really holds 0x42');
+
+    // An unknown space is refused, not armed-and-dead.
+    assert(dbg_set_bp_write(9, 0x30) === -1, 'watchpoint: space 9 refused with -1');
+
+    dbg_clear_bp(handle);
+}
+
+// Test 30: a halt that is not a watchpoint says so across the boundary too.
+// Without this, a front end could read watch_addr after ANY halt and render a
+// stale address as if it were fresh evidence.
+{
+    const dbg_step      = Module.cwrap('emu_dbg_step', 'number', ['number', 'number']);
+    const dbg_tick      = Module.cwrap('emu_dbg_tick', 'number', []);
+    const dbg_state     = Module.cwrap('emu_dbg_state', 'number', []);
+    const halt_cause    = Module.cwrap('emu_dbg_halt_cause', 'number', []);
+    const halt_is_watch = Module.cwrap('emu_dbg_halt_is_watch', 'number', []);
+    const halt_addr     = Module.cwrap('emu_dbg_halt_watch_addr', 'number', []);
+
+    const stepHex = ':04000000744280FE44\n:00000001FF\n';
+    emu_init(1);
+    emu_load_hex(stepHex, stepHex.length);
+    emu_reset(0);
+
+    dbg_step(0, 1); // STEP_INSN
+    for (let i = 0; i < 100 && dbg_state() === 1; i++) dbg_tick();
+
+    assert(halt_cause() === 1, `step halt: cause == 1 (step), got ${halt_cause()}`);
+    assert(halt_is_watch() === 0, 'step halt: is_watch == 0');
+    assert(halt_addr() === 0, 'step halt: watch address is 0, not stale from the watchpoint run');
+}
+
 console.log(`
 ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -536,6 +536,9 @@ int emu_dbg_set_bp_yield(uint16_t addr, uint8_t task, uint16_t state) {
     return dbg_set_breakpoint(&dbg, &bp);
 }
 
+/* Returns a positive handle, or -1 for an unknown space or a full table.
+ * `space` is validated inside dbg_set_breakpoint — a watchpoint on a space
+ * that does not exist would arm silently and never fire. */
 EMSCRIPTEN_KEEPALIVE
 int emu_dbg_set_bp_write(int space, uint16_t addr) {
     struct dbg_breakpoint bp = {
@@ -621,6 +624,54 @@ EMSCRIPTEN_KEEPALIVE
 void emu_dbg_set_on_halt(dbg_on_halt_fn fn) {
     dbg_set_on_halt(&dbg, fn, NULL);
 }
+
+/* ------------------------------------------------------------------ *
+ * Halt reason, readable as scalars                                    *
+ *                                                                     *
+ * The on-halt callback hands C a `struct dbg_halt_reason *`. A JS host *
+ * receiving that pointer would have to know the struct's layout, which *
+ * is a compiler decision it must not depend on — so the reason is read *
+ * back a field at a time instead. Every one of these is valid only     *
+ * immediately after a halt, and `emu_dbg_halt_is_watch` is the flag a  *
+ * consumer must branch on before believing the three watch fields:     *
+ * address 0 is a legal IRAM address, so there is no sentinel to test.  *
+ * ------------------------------------------------------------------ */
+
+/* 0=bp, 1=step, 2=user, 3=reset, 4=fault — enum dbg_halt_cause order. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_cause(void) { return (int)dbg_get_last_halt(&dbg)->cause; }
+
+/* The breakpoint handle that caused it, or -1. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_bp(void) { return dbg_get_last_halt(&dbg)->bp_id; }
+
+/* 1 when a write watchpoint caused this halt, 0 otherwise. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_is_watch(void) { return dbg_get_last_halt(&dbg)->is_watch ? 1 : 0; }
+
+/* Which space the watched byte lives in: 0=code 1=iram 2=sfr 3=xram 4=bit. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_watch_space(void) { return (int)dbg_get_last_halt(&dbg)->watch_space; }
+
+/* The watched address. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_watch_addr(void) { return dbg_get_last_halt(&dbg)->watch_addr; }
+
+/* What the watched byte holds now. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_watch_value(void) { return dbg_get_last_halt(&dbg)->watch_value; }
+
+/* What it held one instruction earlier — the other half of the transition. */
+EMSCRIPTEN_KEEPALIVE
+int emu_dbg_halt_watch_prev(void) { return dbg_get_last_halt(&dbg)->watch_prev; }
+
+/* The halt's program time, in nanoseconds since reset, as two 32-bit halves
+ * (the rest of this API splits 64-bit values the same way). */
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_dbg_halt_t_ns_lo(void) { return (uint32_t)(dbg_get_last_halt(&dbg)->t_ns & 0xFFFFFFFFu); }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_dbg_halt_t_ns_hi(void) { return (uint32_t)(dbg_get_last_halt(&dbg)->t_ns >> 32); }
 
 /* ------------------------------------------------------------------ *
  * Profiling (PC histogram)                                            *

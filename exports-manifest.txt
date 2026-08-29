@@ -8,6 +8,15 @@ _emu_dbg_clear_bp
 _emu_dbg_consumes_count
 _emu_dbg_dptr
 _emu_dbg_halt
+_emu_dbg_halt_bp
+_emu_dbg_halt_cause
+_emu_dbg_halt_is_watch
+_emu_dbg_halt_t_ns_hi
+_emu_dbg_halt_t_ns_lo
+_emu_dbg_halt_watch_addr
+_emu_dbg_halt_watch_prev
+_emu_dbg_halt_watch_space
+_emu_dbg_halt_watch_value
 _emu_dbg_pc
 _emu_dbg_profile_get
 _emu_dbg_profile_start
