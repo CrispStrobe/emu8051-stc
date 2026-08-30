@@ -123,8 +123,8 @@ jobs:
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
-            CFLAGS="-O2 -sUSE_ZLIB" \
-            CXXFLAGS="-O2 -sUSE_ZLIB -std=c++11" \
+            CFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
+            CXXFLAGS="-O2 -sUSE_ZLIB -std=c++11 -Wno-error" \
             CPPFLAGS="-isystem /tmp/boost-headers" \
             LDFLAGS="$WASM_LDFLAGS" \
             --host=i686-unknown-linux-gnu \
@@ -154,11 +154,9 @@ jobs:
           # MEMFS only — this is the artifact that ships to browsers.
           # The byte-identity test runs THIS binary, not a NODERAWFS variant,
           # so the test proves the shipped artifact produces correct output.
-          # LDFLAGS already baked in by configure. Only EXEEXT and CXXFLAGS here.
-          emmake make -j4 \
-            EXEEXT=.js \
-            CFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
-            CXXFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
+          # All flags are baked in by configure; overriding them here drops
+          # per-directory include flags from recursive make. Only EXEEXT here.
+          emmake make -j4 EXEEXT=.js \
             || {
               echo "::error::SDCC WASM build failed"
               exit 1
