@@ -234,12 +234,19 @@ async function main() {
 
     let asmCode;
     try {
-      asmCode = vfsRead(ccMod, '/test.asm');
+      // Emscripten's c1mode can resolve the bare output beside the #line
+      // source path. Accept both locations; the browser pipeline deliberately
+      // chdirs to /work and uses the latter.
+      const asmPath = ccMod.FS.analyzePath('/test.asm').exists
+        ? '/test.asm' : '/work/test.asm';
+      asmCode = vfsRead(ccMod, asmPath);
     } catch(e) {
       // Check what files were created
       const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
       console.log('  VFS root after codegen:', rootFiles);
-      throw new Error('Codegen did not produce /test.asm: ' + e.message);
+      const workFiles = ccMod.FS.readdir('/work').filter(x => x !== '.' && x !== '..');
+      console.log('  VFS /work after codegen:', workFiles);
+      throw new Error('Codegen did not produce test.asm: ' + e.message);
     }
     // --c1mode does not emit the .optsdcc directive that the driver adds.
     // Without it, the assembler misses the O record and area tables differ.
