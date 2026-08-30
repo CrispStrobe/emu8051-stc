@@ -114,7 +114,25 @@ async function runTool(name, args, setupFn, opts) {
     arguments: args,
     preRun: [function(M) {
       if (setupFn) setupFn(M);
+      if (opts && opts.stdinBytes) {
+        try { M.FS.mkdir('/work'); } catch(e) {}
+        M.FS.writeFile('/work/test.i', opts.stdinBytes);
+        if (!M.FS.init.initialized) M.FS.init();
+        const stdin = M.FS.getStream ? M.FS.getStream(0) : M.FS.streams[0];
+        if (stdin) M.FS.close(stdin);
+        M.FS.unlink('/dev/stdin');
+        M.FS.symlink('/work/test.i', '/dev/stdin');
+        const input = M.FS.open('/work/test.i', 'r');
+        if (input.fd !== 0) throw new Error(`expected compiler input on fd 0, got ${input.fd}`);
+        M.FS.chdir('/work');
+      }
     }],
+    quit: function(status, error) {
+      if (status) console.error(`  [${name}] exited with status ${status}`);
+      if (error && error.message && !/^Program terminated/.test(error.message)) {
+        console.error(`  [${name}] ${error.message}`);
+      }
+    },
     print: function(text) { console.log(`  [${name}] ${text}`); },
     printErr: function(text) { console.error(`  [${name}] ${text}`); },
   };
@@ -217,19 +235,12 @@ async function main() {
       '-o', 'test.asm',
     ];
 
-    // Build a stdin feeder from the preprocessed buffer
-    let stdinPos = 0;
-
     const ccMod = await runTool('sdcc', sdccArgs, function(M) {
       populateVFS(M);
       try { M.FS.mkdir('/work'); } catch(e) {}
+      M.FS.writeFile('/work/test.c', sourceCode);
     }, {
-      stdin: function() {
-        if (stdinPos < preprocessed.length) {
-          return preprocessed[stdinPos++];
-        }
-        return null; // EOF
-      }
+      stdinBytes: preprocessed
     });
 
     let asmCode;

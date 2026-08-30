@@ -323,6 +323,14 @@ jobs:
           GZIP_SIZE=$(stat -c%s /tmp/sdcc-wasm.tar.gz)
           echo "Gzipped transfer size: $GZIP_SIZE bytes ($(echo "scale=1; $GZIP_SIZE / 1048576" | bc) MB)"
 
+      # Preserve the candidate even if a later acceptance produces useful
+      # diagnostics. Consumers still vendor it only after all gates pass.
+      - name: Upload candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdcc-emcc-${{ env.SDCC_VERSION }}-candidate
+          path: dist/sdcc-wasm/
+
       # ── Step 3: Byte-identity test ──
 
       - name: Byte-identity test (native 4.5.0 vs WASM 4.5.0)
