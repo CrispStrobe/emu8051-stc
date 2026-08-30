@@ -60,6 +60,7 @@ jobs:
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
             --disable-tlcs90-port --disable-ez80_z80-port --disable-z80n-port \
+            --disable-r800-port --disable-f8-port \
             --disable-ds390-port --disable-ds400-port --disable-hc08-port \
             --disable-s08-port --disable-stm8-port --disable-pdk13-port \
             --disable-pdk14-port --disable-pdk15-port --disable-mos6502-port \
@@ -111,9 +112,14 @@ jobs:
           # (sdcpp). This is the fix for sdcpp not receiving MODULARIZE/FS:
           # command-line make variables do not propagate to sub-makes that
           # assign LDFLAGS themselves, but configure-time LDFLAGS do.
+          # SDCC's AST walkers cast callbacks between compatible C signatures.
+          # Native ABIs tolerate that; strict WASM tables trap unless Emscripten
+          # emits the cast adapters. The generated idle-loop acceptance below
+          # exercises the exact walker which exposed the missing adapters.
           WASM_LDFLAGS="-sUSE_ZLIB -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM"
           WASM_LDFLAGS="$WASM_LDFLAGS -sMODULARIZE=1 -sEXPORT_NAME=createSDCC"
           WASM_LDFLAGS="$WASM_LDFLAGS -sEXPORTED_RUNTIME_METHODS=FS"
+          WASM_LDFLAGS="$WASM_LDFLAGS -sEMULATE_FUNCTION_POINTER_CASTS=1"
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
@@ -125,6 +131,7 @@ jobs:
             --disable-z80-port --disable-z180-port --disable-r2k-port \
             --disable-r2ka-port --disable-r3ka-port --disable-sm83-port \
             --disable-tlcs90-port --disable-ez80_z80-port --disable-z80n-port \
+            --disable-r800-port --disable-f8-port \
             --disable-ds390-port --disable-ds400-port --disable-hc08-port \
             --disable-s08-port --disable-stm8-port --disable-pdk13-port \
             --disable-pdk14-port --disable-pdk15-port --disable-mos6502-port \
@@ -336,6 +343,31 @@ jobs:
             fi
           done
           echo "All WASM tools present: sdcc cc1 sdas8051 sdld"
+
+          # Regression for BrickWright's generated idle fast-forward. Without
+          # EMULATE_FUNCTION_POINTER_CASTS the SDCC WASM stage traps in
+          # SDCCast.c while native SDCC compiles the same input.
+          mkdir -p /tmp/byte-test
+          cat > /tmp/byte-test/idle.c <<'EOF'
+          #include <stc12.h>
+          static volatile unsigned int bw_ms;
+          static unsigned char bw_calm;
+          void main(void) {
+              for (;;) {
+                  unsigned int pass_ms = bw_ms;
+                  if (bw_ms == pass_ms) { if (++bw_calm >= 2u) { bw_calm = 0u; } }
+                  else bw_calm = 0u;
+              }
+          }
+          EOF
+          "$NATIVE" -mmcs51 --model-small -o /tmp/byte-test/idle-native.ihx /tmp/byte-test/idle.c
+          node sdcc-wasm/wasm-compile-driver.cjs \
+            "$DIST" "$INSTALLED" /tmp/byte-test/idle.c /tmp/byte-test/idle-wasm.ihx
+          test -s /tmp/byte-test/idle-wasm.ihx || {
+            echo "::error::SDCC WASM still rejects BrickWright's generated idle loop"
+            exit 1
+          }
+          echo "Generated idle-loop regression: PASS"
 
           # Compile a minimal test program with both toolchains.
           mkdir -p /tmp/byte-test
