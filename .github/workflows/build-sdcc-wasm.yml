@@ -123,6 +123,9 @@ jobs:
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
+            ac_cv_sizeof_char=1 ac_cv_sizeof_short=2 ac_cv_sizeof_int=4 \
+            ac_cv_sizeof_long=4 ac_cv_sizeof_long_long=8 \
+            ac_cv_c_char_unsigned=no \
             CFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
             CXXFLAGS="-O2 -sUSE_ZLIB -std=c++11 -Wno-error" \
             CPPFLAGS="-isystem /tmp/boost-headers" \
@@ -146,6 +149,12 @@ jobs:
               grep -i "boost\|adjacency" config.log | tail -20
               exit 1
             }
+
+          grep -E '^#define (SIZEOF_|TYPE_)' sdccconf.h
+          grep -q '^#define TYPE_BYTE char$' sdccconf.h
+          grep -q '^#define TYPE_WORD short$' sdccconf.h
+          grep -q '^#define TYPE_DWORD int$' sdccconf.h
+          grep -q '^#define TYPE_QWORD long long$' sdccconf.h
 
       - name: Build SDCC WASM
         run: |
