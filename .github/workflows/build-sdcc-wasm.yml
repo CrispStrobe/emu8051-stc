@@ -745,6 +745,7 @@ jobs:
             echo "Threading: single-threaded (no -pthread, no SharedArrayBuffer)"
             echo "Architecture: four-stage MEMFS pipeline (no fork/exec)"
             echo "Patches: psignal libiberty conflict (HAVE_PSIGNAL)"
+            echo "WASM link compatibility: EMULATE_FUNCTION_POINTER_CASTS=1 (SDCC AST callbacks)"
             echo ""
             echo "## Artifact sizes"
             echo ""
