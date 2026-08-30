@@ -123,8 +123,8 @@ jobs:
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
-            CFLAGS="-sUSE_ZLIB" \
-            CXXFLAGS="-sUSE_ZLIB -std=c++11" \
+            CFLAGS="-O2 -sUSE_ZLIB" \
+            CXXFLAGS="-O2 -sUSE_ZLIB -std=c++11" \
             CPPFLAGS="-isystem /tmp/boost-headers" \
             LDFLAGS="$WASM_LDFLAGS" \
             --host=i686-unknown-linux-gnu \
@@ -157,7 +157,8 @@ jobs:
           # LDFLAGS already baked in by configure. Only EXEEXT and CXXFLAGS here.
           emmake make -j4 \
             EXEEXT=.js \
-            CXXFLAGS="-O2 -Wno-error" \
+            CFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
+            CXXFLAGS="-O2 -sUSE_ZLIB -Wno-error" \
             || {
               echo "::error::SDCC WASM build failed"
               exit 1
