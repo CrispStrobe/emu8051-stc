@@ -8,8 +8,13 @@
 #   cannot set COOP/COEP headers for cross-origin isolation)
 # - GPL source compliance: BUILD-INFO records tarball URL + SHA-256 +
 #   any patches applied (corresponding source obligation)
-# - Acceptance: byte-identical .hex for 9 pseudocode examples vs
-#   native SDCC 4.5.0, or the job fails
+# - Acceptance: byte-identical .hex vs native SDCC 4.5.0 for every
+#   program in sdcc-wasm/byte-identity-suite.js, or the job fails.
+#   That set must keep including REAL BrickWright generateC() output
+#   (sdcc-wasm/acceptance/): ten hand-written fixtures all passed
+#   through a build that could not compile 17 of the app's own 44
+#   generated 8051 programs, because hand-written fixtures are short
+#   and flat and generated code nests.
 #
 # Reference: chrismaltby/gbdk-emscripten (same shape, z80 port)
 
@@ -350,6 +355,30 @@ jobs:
           cp "$LIB_BUILD"/*.lib dist/sdcc-wasm/lib/small/ 2>/dev/null || true
           echo "Lib files: $(ls dist/sdcc-wasm/lib/small/ 2>/dev/null | wc -l) from $LIB_BUILD"
 
+          # STRIP DWARF, AND PROVE IT IS GONE.
+          #
+          # SDCC's own build adds -ggdb ahead of whatever configure was given,
+          # so once the make-time CFLAGS override was dropped (to keep the
+          # per-directory include flags) the debug info came back — 11 MB of it
+          # in sdcc.wasm alone, against a 1.2 MB code section. That ships to a
+          # browser over GitHub Pages, so it is not a rounding error.
+          #
+          # emstrip is llvm-strip: it removes the custom sections and leaves
+          # the code section untouched, so the byte-identity suite below still
+          # judges exactly the bytes that get vendored.
+          echo "=== Stripping debug sections ==="
+          for tool in sdcc cc1 sdas8051 sdld; do
+            W="dist/sdcc-wasm/$tool.wasm"
+            [ -f "$W" ] || continue
+            BEFORE=$(stat -c%s "$W")
+            emstrip "$W" || wasm-opt --strip-debug --strip-producers "$W" -o "$W"
+            echo "  $tool.wasm: $BEFORE -> $(stat -c%s "$W") bytes"
+          done
+          python3 sdcc-wasm/assert-stripped.py dist/sdcc-wasm/*.wasm || {
+            echo "::error::debug sections survived the strip — see above"
+            exit 1
+          }
+
           # Report sizes
           echo "=== Artifact sizes ==="
           ls -lh dist/sdcc-wasm/*.js dist/sdcc-wasm/*.wasm 2>/dev/null || {
@@ -364,6 +393,18 @@ jobs:
           ls -lh /tmp/sdcc-wasm.tar.gz
           GZIP_SIZE=$(stat -c%s /tmp/sdcc-wasm.tar.gz)
           echo "Gzipped transfer size: $GZIP_SIZE bytes ($(echo "scale=1; $GZIP_SIZE / 1048576" | bc) MB)"
+
+          # A ceiling, because "it still works" says nothing about what the
+          # browser has to download. The build that shipped before this one
+          # was 2.8 MB for sdcc.wasm; 5 MB is room to grow and still a wall.
+          for tool in sdcc cc1 sdas8051 sdld; do
+            SZ=$(stat -c%s "dist/sdcc-wasm/$tool.wasm")
+            if [ "$SZ" -gt 5242880 ]; then
+              echo "::error::$tool.wasm is $SZ bytes, over the 5 MB ceiling." \
+                   "Debug info or a link flag has bloated it — check the strip step above."
+              exit 1
+            fi
+          done
 
       # Preserve the candidate even if a later acceptance produces useful
       # diagnostics. Consumers still vendor it only after all gates pass.
@@ -724,7 +765,7 @@ jobs:
             exit 1
           fi
 
-      - name: Byte-identity suite (10 programs)
+      - name: Byte-identity suite (hand-written fixtures + generated programs)
         if: success()
         run: |
           NATIVE="$(pwd)/sdcc-installed/bin/sdcc"
