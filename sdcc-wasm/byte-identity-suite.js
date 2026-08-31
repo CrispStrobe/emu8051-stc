@@ -180,4 +180,45 @@ void main(void) {
   },
 ];
 
+// ── The hole this suite had, and the programs that close it ────────────────
+//
+// Every entry above is HAND-WRITTEN, and every one of them compiled fine
+// through a WASM build that could not compile 17 of BrickWright's own 44
+// generated 8051 programs (measured 2026-08-31). Hand-written fixtures are
+// short and flat; generated code is a cooperative scheduler with nested state
+// machines, and it is the NESTING that ran SDCC's recursive AST walk off the
+// end of a 64 KiB Emscripten stack.
+//
+// So the acceptance set now includes real transpiler output, byte-compared
+// against native SDCC exactly like the fixtures above. These files are
+// `generateC()` output from brickwright-lite's own examples — copied in, not
+// re-derived here, so this repo's gate does not depend on lite's tree:
+//
+//   generated-multimeter-idle.c  76-multimeter — TWO cooperative tasks, so it
+//                                carries the idle fast-forward block
+//                                (`bw_calm` / `PCON |= 0x01`) that generateC
+//                                emits whenever a program needs the scheduler.
+//                                This is the shape that was failing.
+//   generated-sos-morse.c        13-sos-morse — nested loops and a table.
+//   generated-counter.c          05-counter — small, but still failed.
+//
+// Regenerating them: `node -e` over lite's
+// packages/scratch-gui/src/lib/sb3-creator.js, `new SB3Creator().parse(bw)`
+// then `.generateC()`, from overlay/scratch-gui/examples/<id>/program.bw.
+// If the transpiler's output changes, refresh these files — a stale copy still
+// tests the toolchain, it just stops tracking the app.
+const {readFileSync} = require('fs');
+const {join} = require('path');
+for (const [name, file, desc] of [
+  ['11-generated-idle', 'generated-multimeter-idle.c',
+    'GENERATED: two tasks + idle fast-forward (the shape that broke the build)'],
+  ['12-generated-morse', 'generated-sos-morse.c', 'GENERATED: nested loops over a table'],
+  ['13-generated-counter', 'generated-counter.c', 'GENERATED: small single-task program']
+]) {
+  PROGRAMS.push({
+    name, desc,
+    source: readFileSync(join(__dirname, 'acceptance', file), 'utf8')
+  });
+}
+
 module.exports = PROGRAMS;

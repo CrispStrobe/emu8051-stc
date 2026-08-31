@@ -112,14 +112,48 @@ jobs:
           # (sdcpp). This is the fix for sdcpp not receiving MODULARIZE/FS:
           # command-line make variables do not propagate to sub-makes that
           # assign LDFLAGS themselves, but configure-time LDFLAGS do.
-          # SDCC's AST walkers cast callbacks between compatible C signatures.
-          # Native ABIs tolerate that; strict WASM tables trap unless Emscripten
-          # emits the cast adapters. The generated idle-loop acceptance below
-          # exercises the exact walker which exposed the missing adapters.
+          # THE STACK. Measured 2026-08-31, and the reason this build could not
+          # compile most of BrickWright's own generated 8051 programs.
+          #
+          # SDCC decorates its AST by recursion, and the frames are large. On a
+          # program with a few levels of nested control flow the compiler walks
+          # ~158 KB deep. Emscripten's DEFAULT stack is 64 KiB (emsdk >= 3.1.27;
+          # it was 5 MB before that, which is why this was never seen), and this
+          # build sets ASSERTIONS=0, so there is no stack-overflow check: the
+          # recursion simply runs the stack pointer down out of its region and
+          # writes over SDCC's own static data.
+          #
+          # Everything reported downstream was that corruption wearing a
+          # different hat: "null function or function signature mismatch" (a
+          # clobbered pointer reaching call_indirect), "memory access out of
+          # bounds", "error 20: Undefined identifier" for a symbol declared
+          # three lines up, "FATAL Compiler Internal Error ... SDCCast.c line
+          # 3528" (the wassert(0) that says a value is neither literal nor
+          # symbol), a bogus "error 101: too many parameters", and one hang.
+          # Proof, not inference: emscripten_stack_get_current() read at the
+          # trap returns 0xc3730 against a stack region of [0xda110, 0xea110] —
+          # 95 KB PAST the bottom, inside data segments that end at 0xca7f8.
+          # Native SDCC compiles every one of those programs in silence because
+          # its stack is 8 MB.
+          #
+          # So: give it native's 8 MB, and turn a future overflow into a loud
+          # abort instead of silent corruption. STACK_OVERFLOW_CHECK=1 is the
+          # cheap variant (a magic cookie below the stack, checked on exit);
+          # it does not touch the code SDCC generates, so byte-identity with
+          # native holds — which the acceptance suite below now proves on
+          # BrickWright's own generated output rather than on hand-written
+          # fixtures only.
+          #
+          # NOT EMULATE_FUNCTION_POINTER_CASTS. That flag was tried first, on
+          # the theory that the trap named a real mismatched cast; it made the
+          # symptom move rather than go away (bogus warnings 94/126, no .asm
+          # produced at all). Native SDCC 4.5.0 built with clang
+          # -fsanitize=function reports NO function-type mismatch anywhere on
+          # this path, so there was never a cast to emulate.
           WASM_LDFLAGS="-sUSE_ZLIB -sINITIAL_MEMORY=67108864 -sFORCE_FILESYSTEM"
           WASM_LDFLAGS="$WASM_LDFLAGS -sMODULARIZE=1 -sEXPORT_NAME=createSDCC"
           WASM_LDFLAGS="$WASM_LDFLAGS -sEXPORTED_RUNTIME_METHODS=FS"
-          WASM_LDFLAGS="$WASM_LDFLAGS -sEMULATE_FUNCTION_POINTER_CASTS=1"
+          WASM_LDFLAGS="$WASM_LDFLAGS -sSTACK_SIZE=8388608 -sSTACK_OVERFLOW_CHECK=1"
 
           emconfigure ./configure \
             CC=emcc CXX=em++ \
@@ -360,30 +394,42 @@ jobs:
           done
           echo "All WASM tools present: sdcc cc1 sdas8051 sdld"
 
-          # Regression for BrickWright's generated idle fast-forward. Without
-          # EMULATE_FUNCTION_POINTER_CASTS the SDCC WASM stage traps in
-          # SDCCast.c while native SDCC compiles the same input.
+          # THE STACK-DEPTH CANARY, run before anything else because it is the
+          # cheapest statement of the failure this build exists to not have.
+          # Nested control flow is what drives SDCC's recursive AST walk deep;
+          # a 64 KiB Emscripten stack overflows somewhere around four levels
+          # and silently overwrites SDCC's static data below it. Native SDCC
+          # compiles this in silence, so any difference is the BINARY.
           mkdir -p /tmp/byte-test
-          cat > /tmp/byte-test/idle.c <<'EOF'
+          cat > /tmp/byte-test/nested.c <<'EOF'
           #include <stc12.h>
-          static volatile unsigned int bw_ms;
-          static unsigned char bw_calm;
+          static volatile unsigned int m;
+          static unsigned char c;
           void main(void) {
-              for (;;) {
-                  unsigned int pass_ms = bw_ms;
-                  if (bw_ms == pass_ms) { if (++bw_calm >= 2u) { bw_calm = 0u; } }
-                  else bw_calm = 0u;
-              }
+              if (m == 0u) { if (m == 1u) { if (m == 2u) { if (m == 3u) {
+              if (m == 4u) { if (m == 5u) { if (m == 6u) { if (m == 7u) {
+                  c = 1u;
+              } } } } } } } }
           }
           EOF
-          "$NATIVE" -mmcs51 --model-small -o /tmp/byte-test/idle-native.ihx /tmp/byte-test/idle.c
+          "$NATIVE" -mmcs51 --model-small -o /tmp/byte-test/nested-native.ihx \
+            /tmp/byte-test/nested.c
           node sdcc-wasm/wasm-compile-driver.cjs \
-            "$DIST" "$INSTALLED" /tmp/byte-test/idle.c /tmp/byte-test/idle-wasm.ihx
-          test -s /tmp/byte-test/idle-wasm.ihx || {
-            echo "::error::SDCC WASM still rejects BrickWright's generated idle loop"
+            "$DIST" "$INSTALLED" /tmp/byte-test/nested.c /tmp/byte-test/nested-wasm.ihx \
+            > /tmp/byte-test/nested-pipeline.log 2>&1 || true
+          if [ ! -s /tmp/byte-test/nested-wasm.ihx ]; then
+            echo "::error::WASM SDCC cannot compile eight nested ifs — the stack is too" \
+                 "small again. Native produced $(wc -c < /tmp/byte-test/nested-native.ihx)" \
+                 "bytes from the same source. Check -sSTACK_SIZE in the link flags above."
+            tail -25 /tmp/byte-test/nested-pipeline.log
+            exit 1
+          fi
+          python3 sdcc-wasm/compare-ihx.py \
+            /tmp/byte-test/nested-native.ihx /tmp/byte-test/nested-wasm.ihx || {
+            echo "::error::nested-control-flow canary compiled but does not match native"
             exit 1
           }
-          echo "Generated idle-loop regression: PASS"
+          echo "Stack-depth canary (8 nested ifs, byte-identical): PASS"
 
           # Compile a minimal test program with both toolchains.
           mkdir -p /tmp/byte-test
@@ -689,7 +735,14 @@ jobs:
             P.forEach(p => console.log(p.name + '|' + p.desc));
           ")
 
-          PASS=0; FAIL=0; TOTAL=0
+          # A SKIP USED TO BE SILENT, AND THAT IS HOW THIS SUITE WENT GREEN
+          # THROUGH A BUILD THAT COMPILED ALMOST NOTHING. "WASM compile failed"
+          # was reported as SKIP and a mismatch only as ::warning::, so the one
+          # result the gate exists to produce — the toolchain cannot build this
+          # program — could not turn the job red. Both are hard failures now.
+          # A native compile failure stays a skip: that means the FIXTURE is
+          # bad, not the build, and it is reported as such.
+          PASS=0; FAIL=0; TOTAL=0; BADFIXTURE=0
           echo "=== BYTE-IDENTITY SUITE ==="
           while IFS='|' read -r NAME DESC; do
             TOTAL=$((TOTAL+1))
@@ -704,18 +757,25 @@ jobs:
             "
 
             # Native compile
-            $NATIVE -mmcs51 --model-small -o "$DIR/native.ihx" "$DIR/test.c" 2>/dev/null
+            $NATIVE -mmcs51 --model-small -o "$DIR/native.ihx" "$DIR/test.c" \
+              > "$DIR/native.log" 2>&1
             if [ ! -f "$DIR/native.ihx" ]; then
-              echo "  $NAME: SKIP (native compile failed)"
+              echo "  $NAME: SKIP — native SDCC rejects this fixture, so it says"
+              echo "        nothing about the WASM build. Fix or drop the fixture."
+              sed 's/^/          /' "$DIR/native.log" | head -5
+              BADFIXTURE=$((BADFIXTURE+1))
               continue
             fi
 
-            # WASM compile
+            # WASM compile — a failure here is THE defect this gate is for.
             node sdcc-wasm/wasm-compile-driver.cjs \
               "$DIST" "$INSTALLED" "$DIR/test.c" "$DIR/wasm.ihx" \
               > "$DIR/pipeline.log" 2>&1
             if [ ! -f "$DIR/wasm.ihx" ]; then
-              echo "  $NAME: SKIP (WASM compile failed)"
+              echo "  $NAME: FAIL — WASM toolchain could not compile it at all" \
+                   "(native did, in $(wc -c < "$DIR/native.ihx") bytes) — $DESC"
+              tail -12 "$DIR/pipeline.log" | sed 's/^/          /'
+              FAIL=$((FAIL+1))
               continue
             fi
 
@@ -738,10 +798,21 @@ jobs:
           done <<< "$PROGRAMS"
 
           echo ""
-          echo "=== SUITE RESULT: $PASS/$TOTAL pass, $FAIL fail ==="
+          echo "=== SUITE RESULT: $PASS/$TOTAL pass, $FAIL fail, $BADFIXTURE bad fixture ==="
           echo ""
+          if [ "$BADFIXTURE" -gt 0 ]; then
+            echo "::error::$BADFIXTURE fixture(s) native SDCC will not compile — the suite" \
+                 "cannot speak for them, so it is not allowed to pass with them in it"
+            exit 1
+          fi
           if [ "$FAIL" -gt 0 ]; then
-            echo "::warning::$FAIL of $TOTAL programs differ"
+            echo "::error::$FAIL of $TOTAL programs did not produce byte-identical output" \
+                 "(or did not compile at all) — this build is not shippable"
+            exit 1
+          fi
+          if [ "$PASS" -lt "$TOTAL" ]; then
+            echo "::error::only $PASS of $TOTAL programs were actually compared"
+            exit 1
           fi
 
       - name: Write BUILD-INFO
@@ -761,7 +832,12 @@ jobs:
             echo "Threading: single-threaded (no -pthread, no SharedArrayBuffer)"
             echo "Architecture: four-stage MEMFS pipeline (no fork/exec)"
             echo "Patches: psignal libiberty conflict (HAVE_PSIGNAL)"
-            echo "WASM link compatibility: EMULATE_FUNCTION_POINTER_CASTS=1 (SDCC AST callbacks)"
+            echo "Stack: -sSTACK_SIZE=8388608 -sSTACK_OVERFLOW_CHECK=1 (native SDCC's 8 MB;"
+            echo "       Emscripten's 64 KiB default overflowed on SDCC's recursive AST walk"
+            echo "       and silently overwrote static data — see the link step's comment)"
+            echo "Acceptance: 13 programs byte-compared against native ${{ env.SDCC_VERSION }},"
+            echo "       three of them BrickWright generateC() output including the"
+            echo "       cooperative scheduler's idle fast-forward block"
             echo ""
             echo "## Artifact sizes"
             echo ""

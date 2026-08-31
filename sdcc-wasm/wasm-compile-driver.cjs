@@ -243,22 +243,30 @@ async function main() {
       stdinBytes: preprocessed
     });
 
-    let asmCode;
-    try {
-      // Emscripten's c1mode can resolve the bare output beside the #line
-      // source path. Accept both locations; the browser pipeline deliberately
-      // chdirs to /work and uses the latter.
-      const asmPath = ccMod.FS.analyzePath('/test.asm').exists
-        ? '/test.asm' : '/work/test.asm';
-      asmCode = vfsRead(ccMod, asmPath);
-    } catch(e) {
-      // Check what files were created
-      const rootFiles = ccMod.FS.readdir('/').filter(x => x !== '.' && x !== '..');
-      console.log('  VFS root after codegen:', rootFiles);
-      const workFiles = ccMod.FS.readdir('/work').filter(x => x !== '.' && x !== '..');
-      console.log('  VFS /work after codegen:', workFiles);
-      throw new Error('Codegen did not produce test.asm: ' + e.message);
+    // --c1mode resolves a bare -o either against the cwd or beside the #line
+    // source path, depending on how it was invoked; the browser pipeline
+    // chdirs to /work. Take whichever exists rather than assuming.
+    const asmCandidates = ['/work/test.asm', '/test.asm'];
+    const asmPath = asmCandidates.find(p => ccMod.FS.analyzePath(p).exists);
+    if (!asmPath) {
+      // Say what the stage DID do. "no test.asm" names the missing file and
+      // nothing about the cause, and that sentence cost five red CI runs once.
+      const list = dir => {
+        try { return ccMod.FS.readdir(dir).filter(x => x !== '.' && x !== '..'); }
+        catch (e) { return `<${dir} unreadable>`; }
+      };
+      console.log('  VFS / after codegen:    ', list('/'));
+      console.log('  VFS /work after codegen:', list('/work'));
+      console.log('  cwd after codegen:      ', (() => {
+        try { return ccMod.FS.cwd(); } catch (e) { return '<unknown>'; }
+      })());
+      throw new Error(
+        'Codegen produced none of ' + asmCandidates.join(', ') + '. If the stage also '
+        + 'printed a trap ("null function or function signature mismatch", "memory access '
+        + 'out of bounds") or diagnosed a symbol that is plainly declared, suspect the WASM '
+        + 'stack rather than the program: see -sSTACK_SIZE in build-sdcc-wasm.yml.');
     }
+    const asmCode = vfsRead(ccMod, asmPath);
     // --c1mode does not emit the .optsdcc directive that the driver adds.
     // Without it, the assembler misses the O record and area tables differ.
     // Inject it after the .module line, matching what native sdcc produces.
