@@ -27,6 +27,7 @@ jobs:
       - name: Real ABI and phase/peripheral replay proofs
         run: |
           node tools/checkpoint-wasm-smoke.mjs build-checkpoint/emu8051.js
+          node tools/checkpoint-phase-census.mjs > checkpoint-phase-census.json
           node tools/checkpoint-proof.mjs tools/checkpoint-real-adapter.mjs > checkpoint-receipt.json
           node tools/checkpoint-receipt-check.mjs checkpoint-receipt.json
       - uses: actions/upload-artifact@v4
@@ -35,5 +36,6 @@ jobs:
           name: checkpoint-proof-${{ github.sha }}
           path: |
             checkpoint-receipt.json
+            checkpoint-phase-census.json
             build-proof/
             build-checkpoint/

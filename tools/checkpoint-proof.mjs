@@ -99,7 +99,7 @@ export async function prove(adapter) {
         receipts.push({ scenario: scenario.name, point, phase: original.phase,
           refusals: malformed.length, mutationKinds: malformed.map(m => m.kind) });
       }
-      same([...seen].sort(), [...scenario.expectedPhases].sort(), 'incomplete phase census');
+      same([...seen].sort(), [...scenario.expectedPhases].sort(), `incomplete phase census: ${scenario.name}`);
       await machine.verifyCoverage?.();
     } finally {
       await machine.dispose?.();
