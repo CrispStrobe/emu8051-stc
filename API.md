@@ -17,6 +17,11 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_set_vcc(v)` | `(f64) → void` | Set supply voltage (default 5.0). |
 | `emu_capabilities()` | `() → string` | JSON capabilities per DEBUG-CONTROL-MODEL.md §7. |
 | `emu_version()` | `() → string` | Returns `"emu8051-stc 1.0.0"`. |
+| `emu_checkpoint_version()` | `() → u32` | Checkpoint wire-format major (`1`). |
+| `emu_checkpoint_build_id()` | `() → u32` | Deterministic codec/layout fingerprint (`0x80510101`); changes whenever v1 interpretation or completeness changes. |
+| `emu_checkpoint_size()` | `() → u32` | Exact caller-buffer size for checkpoint v1. |
+| `emu_checkpoint_save(dst, len)` | `(ptr, u32) → int` | Saves complete rewind-visible state into an exact-size caller buffer. |
+| `emu_checkpoint_restore(src, len)` | `(ptr, u32) → int` | Fully validates before atomically replacing live state; external callbacks remain bound. |
 
 ## Memory
 

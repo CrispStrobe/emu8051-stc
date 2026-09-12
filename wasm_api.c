@@ -34,6 +34,7 @@
 #include "emu8051.h"
 #include "stc12.h"
 #include "debug.h"
+#include "checkpoint.h"
 
 static struct em8051 cpu;
 static struct stc12_state stc;
@@ -622,6 +623,28 @@ void emu_dbg_set_bw_ms_addr(uint16_t addr) {
 }
 
 static struct dbg_task_pos wasm_tasks[8];
+
+/* Versioned fixed-endian checkpoint ABI. The build id fingerprints the
+ * explicit codec layout, never the running session or ambient build tools. */
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_checkpoint_version(void) { return EMU_CHECKPOINT_VERSION; }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_checkpoint_build_id(void) { return EMU_CHECKPOINT_BUILD_ID; }
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t emu_checkpoint_size(void) { return emu_checkpoint_codec_size(); }
+
+EMSCRIPTEN_KEEPALIVE
+int emu_checkpoint_save(uint8_t *dst, uint32_t len) {
+    return emu_checkpoint_encode(&cpu, &stc, &dbg, initialized, dst, len);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int emu_checkpoint_restore(const uint8_t *src, uint32_t len) {
+    return emu_checkpoint_decode(&cpu, &stc, &dbg, wasm_tasks, &initialized,
+                                 src, len);
+}
 
 EMSCRIPTEN_KEEPALIVE
 void emu_dbg_set_task(int idx, uint16_t state_addr, uint16_t until_addr) {

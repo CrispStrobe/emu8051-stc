@@ -1,5 +1,10 @@
 _emu_advance_to_ns
 _emu_capabilities
+_emu_checkpoint_build_id
+_emu_checkpoint_restore
+_emu_checkpoint_save
+_emu_checkpoint_size
+_emu_checkpoint_version
 _emu_core_is_idle
 _emu_dbg_acc
 _emu_dbg_b
