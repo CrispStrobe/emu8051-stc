@@ -1000,6 +1000,31 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
 }
 
+void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState)
+{
+    struct stc12_state saved_state = *aState;
+    uint8_t saved_sfr[128];
+    memcpy(saved_sfr, aCPU->mSFR, sizeof(saved_sfr));
+
+    /* Every entry in these tables is core/STC-owned. Clearing first matters
+     * when a restore changes part topology (for example STC15 P5 -> STC89). */
+    memset(aCPU->sfrread, 0, sizeof(aCPU->sfrread));
+    memset(aCPU->sfrwrite, 0, sizeof(aCPU->sfrwrite));
+    if (saved_state.stc12_mode) {
+        stc12_init(aCPU, aState);
+    } else {
+        /* Classic mode has no STC SFR interception. Keep the singleton
+         * back-pointers coherent for a later mode switch, but install none. */
+        g_cpu = aCPU;
+        g_stc = aState;
+    }
+
+    memcpy(aCPU->mSFR, saved_sfr, sizeof(saved_sfr));
+    *aState = saved_state;
+    g_cpu = aCPU;
+    g_stc = aState;
+}
+
 /* ================================================================== *
  * Utility functions                                                   *
  * ================================================================== */

@@ -39,11 +39,11 @@ jobs:
           # test_blink / test_adc / test_multi_when take a .hex on the command
           # line and print usage without one; they belong to the canary job's
           # world, not this one.
-          for t in test_stc12 test_suite test_debug test_cycles test_integration; do
+          for t in test_stc12 test_suite test_debug test_cycles test_checkpoint test_integration; do
             make "$t"
           done
           fail=0
-          for t in test_stc12 test_suite test_debug test_cycles test_integration; do
+          for t in test_stc12 test_suite test_debug test_cycles test_checkpoint test_integration; do
             echo "::group::$t"
             if ./"$t"; then echo "$t OK"; else echo "::error::$t FAILED"; fail=1; fi
             echo "::endgroup::"

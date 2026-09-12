@@ -10,7 +10,7 @@ EMCC := emcc
 CFLAGS := -O2 -Wall -Wextra -Wno-unused-parameter
 
 # Core source files (no curses, no TUI)
-SRC := core.c opcodes.c disasm.c stc12.c debug.c wasm_api.c
+SRC := core.c opcodes.c disasm.c stc12.c debug.c checkpoint.c wasm_api.c
 
 OUTDIR := build
 OUT := $(OUTDIR)/emu8051.js
@@ -97,6 +97,11 @@ EXPORTS := \
 	_emu_pin_history_get \
 	_emu_pin_event_size \
 	_emu_capabilities \
+	_emu_checkpoint_version \
+	_emu_checkpoint_build_id \
+	_emu_checkpoint_size \
+	_emu_checkpoint_save \
+	_emu_checkpoint_restore \
 	_emu_version \
 	_emu_dbg_consumes_count \
 	_emu_serial_write \

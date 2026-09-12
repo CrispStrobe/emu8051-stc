@@ -17,6 +17,17 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_set_vcc(v)` | `(f64) → void` | Set supply voltage (default 5.0). |
 | `emu_capabilities()` | `() → string` | JSON capabilities per DEBUG-CONTROL-MODEL.md §7. |
 | `emu_version()` | `() → string` | Returns `"emu8051-stc 1.0.0"`. |
+| `emu_checkpoint_version()` | `() → u32` | Checkpoint wire-format major (`1`). |
+| `emu_checkpoint_build_id()` | `() → u32` | Deterministic codec/layout fingerprint (`0x80510101`); changes whenever v1 interpretation or completeness changes. |
+| `emu_checkpoint_size()` | `() → u32` | Exact caller-buffer size for checkpoint v1. |
+| `emu_checkpoint_save(dst, len)` | `(ptr, u32) → int` | Saves complete rewind-visible state into an exact-size caller buffer. |
+| `emu_checkpoint_restore(src, len)` | `(ptr, u32) → int` | Fully validates before atomically replacing live state; external callbacks remain bound. |
+
+Checkpoint save/restore return `0` on success, or a stable negative code:
+`-1` not initialized, `-2` null buffer, `-3` wrong exact length, `-4`
+malformed/corrupt blob, `-5` unsupported version, `-6` incompatible layout
+build id, `-7` invalid encoded state, and `-8` allocation failure. Checkpoint
+v1 initially requires both its major and the exact deterministic layout build id.
 
 ## Memory
 
