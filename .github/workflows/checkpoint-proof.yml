@@ -1,0 +1,39 @@
+name: Checkpoint v1 proof
+on:
+  push:
+    branches: [master, test/8051-checkpoint-v1-proof]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '4.0.14'
+      - name: Test orchestration and synthetic mutations
+        run: node --test tools/checkpoint-proof.test.mjs
+      - name: Build production and read-only-probed WASM from this revision
+        run: |
+          make -f Makefile.wasm OUTDIR=build-checkpoint
+          make -f Makefile.wasm OUTDIR=build-proof SRC='core.c opcodes.c disasm.c stc12.c debug.c checkpoint.c tools/checkpoint-probe.c'
+      - name: Real ABI and phase/peripheral replay proofs
+        run: |
+          node tools/checkpoint-wasm-smoke.mjs build-checkpoint/emu8051.js
+          node tools/checkpoint-proof.mjs tools/checkpoint-real-adapter.mjs > checkpoint-receipt.json
+          node tools/checkpoint-receipt-check.mjs checkpoint-receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkpoint-proof-${{ github.sha }}
+          path: |
+            checkpoint-receipt.json
+            build-proof/
+            build-checkpoint/

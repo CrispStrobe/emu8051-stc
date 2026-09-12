@@ -70,22 +70,25 @@ export async function prove(adapter) {
           : [...new Set([0, 1, 2, 3, 4, 7, 8, 15, 16, 31, 32,
             checkpoint.length >> 1, checkpoint.length - 1])].filter(n => n < checkpoint.length);
         for (const length of lengths)
-          malformed.push({ kind: `truncated:${length}`, blob: checkpoint.slice(0, length) });
+          malformed.push({ kind: `truncated:${length}`, blob: checkpoint.slice(0, length), expectedCode: -3 });
         for (const extra of [1, 16]) {
           const blob = new Uint8Array(checkpoint.length + extra);
           blob.set(checkpoint);
-          malformed.push({ kind: `oversized:${extra}`, blob });
+          malformed.push({ kind: `oversized:${extra}`, blob, expectedCode: -3 });
         }
         const corruptions = await adapter.corrupt(checkpoint.slice());
         for (const kind of corruptionKinds)
           assert.ok(corruptions.some(m => m.kind === kind), `missing corruption: ${kind}`);
         malformed.push(...corruptions);
-        for (const { kind, blob } of malformed) {
+        for (const { kind, blob, expectedCode } of malformed) {
           assert.ok(blob instanceof Uint8Array, `invalid mutation ${kind}`);
           assert.notDeepStrictEqual(blob, checkpoint, `ineffective mutation ${kind}`);
           const before = bytes(await machine.save());
           const observation = clone(await machine.observe());
-          assert.equal(await machine.restore(blob.slice()), false, `accepted ${kind}`);
+          if (machine.restoreRaw) {
+            assert.ok(Number.isInteger(expectedCode) && expectedCode < 0, `missing expected status: ${kind}`);
+            assert.equal(await machine.restoreRaw(blob.slice()), expectedCode, `wrong refusal status: ${kind}`);
+          } else assert.equal(await machine.restore(blob.slice()), false, `accepted ${kind}`);
           same(bytes(await machine.save()), before, `refusal mutated bytes: ${kind}`);
           same(await machine.observe(), observation, `refusal mutated observation: ${kind}`);
         }
@@ -94,9 +97,10 @@ export async function prove(adapter) {
         assert.equal(await machine.restore(checkpoint.slice()), true);
         await machine.apply(clone(scenario.advance));
         receipts.push({ scenario: scenario.name, point, phase: original.phase,
-          refusals: malformed.length });
+          refusals: malformed.length, mutationKinds: malformed.map(m => m.kind) });
       }
       same([...seen].sort(), [...scenario.expectedPhases].sort(), 'incomplete phase census');
+      await machine.verifyCoverage?.();
     } finally {
       await machine.dispose?.();
     }
