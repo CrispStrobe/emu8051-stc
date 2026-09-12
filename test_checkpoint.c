@@ -7,6 +7,17 @@ static void pin_a(int p, int b, enum stc12_pin_mode m, bool h, void *u)
 { (void)p; (void)b; (void)m; (void)h; (void)u; }
 static void pin_b(int p, int b, enum stc12_pin_mode m, bool h, void *u)
 { (void)p; (void)b; (void)m; (void)h; (void)u; }
+static int callback_calls;
+static int read_pin(int p, int b, void *u)
+{ (void)p; (void)b; (void)u; callback_calls++; return 1; }
+static double read_analog(int p, int b, void *u)
+{ (void)p; (void)b; (void)u; callback_calls++; return 2.5; }
+static void advance(uint32_t lo, uint32_t hi, void *u)
+{ (void)lo; (void)hi; (void)u; callback_calls++; }
+static void serial(uint8_t byte, void *u)
+{ (void)byte; (void)u; callback_calls++; }
+static void halted(struct dbg_halt_reason *reason, void *u)
+{ (void)reason; (void)u; callback_calls++; }
 
 int main(void)
 {
@@ -45,6 +56,14 @@ int main(void)
     assert(emu_checkpoint_encode(&cpu, &stc, &dbg, initialized, blob, size) == 0);
 
     stc.on_pin_change = pin_b; /* external binding must not rewind */
+    stc.on_read_pin = read_pin;
+    stc.on_read_analog = read_analog;
+    stc.on_advance = advance;
+    stc.on_serial_tx = serial;
+    stc.on_serial2_tx = serial;
+    stc.board_user_data = &initialized;
+    dbg.on_halt = halted;
+    dbg.on_halt_data = &size;
     stc.part_id = PART_STC89;
     stc12_rebind_callbacks(&cpu, &stc);
     assert(cpu.sfrread[STC_REG_P5] == NULL);
@@ -53,6 +72,11 @@ int main(void)
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
                                  blob, size) == 0);
     assert(stc.part_id == PART_STC15 && stc.on_pin_change == pin_b);
+    assert(stc.on_read_pin == read_pin && stc.on_read_analog == read_analog);
+    assert(stc.on_advance == advance && stc.on_serial_tx == serial);
+    assert(stc.on_serial2_tx == serial && stc.board_user_data == &initialized);
+    assert(dbg.on_halt == halted && dbg.on_halt_data == &size);
+    assert(callback_calls == 0); /* restore emits no board, serial, or halt event */
     assert(cpu.sfrread[STC_REG_P5] != NULL); /* topology follows decoded part */
     assert(cpu.mCodeMem[0x1234] == 0x42 && cpu.mExtData[0x2345] == 0x99);
     assert(cpu.mLowerData[7] == 0x11 && stc.osc_clocks == 987654321);
@@ -64,6 +88,25 @@ int main(void)
     assert(memcmp(blob, again, size) == 0);
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
                                  again, size) == 0); /* restore twice */
+    assert(callback_calls == 0);
+
+    /* Both topology transitions are real restore cases, not direct helper
+     * tests: classic must have no STC hooks, and STC must regain them. */
+    stc.stc12_mode = false;
+    cpu.skip_timers = false;
+    cpu.mMachineCycleScale = 1;
+    stc12_rebind_callbacks(&cpu, &stc);
+    assert(cpu.sfrread[REG_P0] == NULL && cpu.sfrwrite[REG_SBUF] == NULL);
+    uint8_t *classic = malloc(size);
+    assert(classic);
+    assert(emu_checkpoint_encode(&cpu, &stc, &dbg, initialized, classic, size) == 0);
+    assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
+                                 again, size) == 0);
+    assert(stc.stc12_mode && cpu.sfrread[REG_P0] != NULL);
+    assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
+                                 classic, size) == 0);
+    assert(!stc.stc12_mode && cpu.sfrread[REG_P0] == NULL);
+    assert(cpu.sfrwrite[REG_SBUF] == NULL && callback_calls == 0);
 
     uint8_t before = cpu.mCodeMem[0x1234];
     blob[size - 1] ^= 1;
@@ -81,7 +124,7 @@ int main(void)
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
                                  blob, size) == EMU_CHECKPOINT_INCOMPATIBLE_BUILD);
 
-    free(again); free(blob);
+    free(classic); free(again); free(blob);
     free(cpu.mCodeMem); free(cpu.mExtData); free(cpu.mUpperData);
     free(stc.pin_history); free(dbg.pc_histogram);
     return 0;

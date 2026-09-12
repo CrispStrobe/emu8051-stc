@@ -1010,7 +1010,14 @@ void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState)
      * when a restore changes part topology (for example STC15 P5 -> STC89). */
     memset(aCPU->sfrread, 0, sizeof(aCPU->sfrread));
     memset(aCPU->sfrwrite, 0, sizeof(aCPU->sfrwrite));
-    stc12_init(aCPU, aState);
+    if (saved_state.stc12_mode) {
+        stc12_init(aCPU, aState);
+    } else {
+        /* Classic mode has no STC SFR interception. Keep the singleton
+         * back-pointers coherent for a later mode switch, but install none. */
+        g_cpu = aCPU;
+        g_stc = aState;
+    }
 
     memcpy(aCPU->mSFR, saved_sfr, sizeof(saved_sfr));
     *aState = saved_state;

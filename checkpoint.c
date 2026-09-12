@@ -483,6 +483,7 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
       (ts.pin_history && ts.pin_history_head != ts.pin_history_count) ||
       td.syms.n_tasks < 0 || td.syms.n_tasks > 8 || td.step_kind > STEP_CYCLE ||
       td.last_halt.cause > HALT_FAULT ||
+      (td.last_halt.is_watch && td.last_halt.watch_space > SPACE_BIT) ||
       (td.profiling && !td.pc_histogram)) {
     free(tc.mCodeMem);
     free(tc.mExtData);
