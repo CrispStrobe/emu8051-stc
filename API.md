@@ -23,6 +23,12 @@ using `Module.cwrap()` or `Module.ccall()`.
 | `emu_checkpoint_save(dst, len)` | `(ptr, u32) → int` | Saves complete rewind-visible state into an exact-size caller buffer. |
 | `emu_checkpoint_restore(src, len)` | `(ptr, u32) → int` | Fully validates before atomically replacing live state; external callbacks remain bound. |
 
+Checkpoint save/restore return `0` on success, or a stable negative code:
+`-1` not initialized, `-2` null buffer, `-3` wrong exact length, `-4`
+malformed/corrupt blob, `-5` unsupported version, `-6` incompatible layout
+build id, `-7` invalid encoded state, and `-8` allocation failure. Checkpoint
+v1 initially requires both its major and the exact deterministic layout build id.
+
 ## Memory
 
 | Function | Signature | Description |

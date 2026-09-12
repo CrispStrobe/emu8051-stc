@@ -557,6 +557,12 @@ uint8_t decode(struct em8051 *aCPU, uint16_t aPosition, char *aBuffer)
 void disasm_setptrs(struct em8051 *aCPU);
 void op_setptrs(struct em8051 *aCPU);
 
+void em8051_rebind_tables(struct em8051 *aCPU)
+{
+    disasm_setptrs(aCPU);
+    op_setptrs(aCPU);
+}
+
 void reset(struct em8051 *aCPU, bool aWipe)
 {
     // clear memory, set registers to bootup values, etc    
@@ -591,8 +597,7 @@ void reset(struct em8051 *aCPU, bool aWipe)
 
     // build function pointer lists
 
-    disasm_setptrs(aCPU);
-    op_setptrs(aCPU);
+    em8051_rebind_tables(aCPU);
 
     // Clean internal variables
     aCPU->mInterruptActive = 0;

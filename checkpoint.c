@@ -1,6 +1,10 @@
 #include "checkpoint.h"
+#include <limits.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+_Static_assert(sizeof(double) == 8, "checkpoint v1 requires IEEE-width double");
 
 /*
  * Every rewind-visible value is named below. Pointers, C padding, function
@@ -27,6 +31,10 @@ struct reader {
   int bad;
 };
 static void wu8(struct writer *w, uint8_t v) {
+  if (w->at == UINT32_MAX) {
+    w->bad = 1;
+    return;
+  }
   if (w->p && w->at < w->n)
     w->p[w->at] = v;
   else if (w->p)
@@ -46,6 +54,14 @@ static void wu64(struct writer *w, uint64_t v) {
   wu32(w, (uint32_t)(v >> 32));
 }
 static void wbytes(struct writer *w, const void *p, uint32_t n) {
+  if (!w->p) {
+    if (UINT32_MAX - w->at < n) {
+      w->bad = 1;
+      return;
+    }
+    w->at += n;
+    return;
+  }
   const uint8_t *b = p;
   for (uint32_t i = 0; i < n; i++)
     wu8(w, b[i]);
@@ -280,7 +296,10 @@ static void write_dbg(struct writer *w, const struct dbg_target *d) {
 static int read_dbg(struct reader *r, struct dbg_target *d,
                     struct dbg_task_pos *tasks) {
   d->state = ru8(r);
-  d->next_bp_id = (int)ru32(r);
+  uint32_t raw = ru32(r);
+  if (raw > INT_MAX)
+    return -2;
+  d->next_bp_id = (int)raw;
   for (int i = 0; i < DBG_MAX_BP; i++) {
     struct dbg_breakpoint *b = &d->bps[i];
     b->kind = ru8(r);
@@ -288,13 +307,18 @@ static int read_dbg(struct reader *r, struct dbg_target *d,
     uint32_t a = ru32(r);
     uint16_t z = ru16(r);
     if (b->kind == BP_YIELD) {
+      if (a > UINT8_MAX)
+        return -2;
       b->yield.task = (uint8_t)a;
       b->yield.state = z;
     } else {
       b->watch.space = (enum dbg_space)a;
       b->watch.len = z;
     }
-    b->id = (int)ru32(r);
+    raw = ru32(r);
+    if (raw > INT_MAX)
+      return -2;
+    b->id = (int)raw;
     if (!rbool(r, &b->active))
       return 0;
   }
@@ -307,11 +331,17 @@ static int read_dbg(struct reader *r, struct dbg_target *d,
     tasks[i].until_addr = ru16(r);
   }
   d->step_kind = ru8(r);
-  d->step_count = (int)ru32(r);
+  raw = ru32(r);
+  if (raw > INT_MAX)
+    return -2;
+  d->step_count = (int)raw;
   d->step_entry_sp = ru8(r);
   d->last_halt.cause = ru8(r);
   d->last_halt.pc = ru16(r);
-  d->last_halt.bp_id = (int)ru32(r);
+  raw = ru32(r);
+  if (raw != UINT32_MAX && raw > INT_MAX)
+    return -2;
+  d->last_halt.bp_id = raw == UINT32_MAX ? -1 : (int)raw;
   d->last_halt.t_ns = ru64(r);
   if (!rbool(r, &d->last_halt.is_watch))
     return 0;
@@ -359,13 +389,11 @@ uint32_t emu_checkpoint_codec_size(void) {
   if (!size) {
     struct writer w = {0};
     struct em8051 c = {0};
-    uint8_t mem[65536] = {0}, upper[128] = {0};
     struct stc12_state s = {0};
     struct dbg_target d = {0};
-    c.mCodeMem = mem;
-    c.mExtData = mem;
-    c.mUpperData = upper;
     write_all(&w, &c, &s, &d, 0, 0);
+    if (w.bad)
+      return 0;
     size = w.at;
   }
   return size;
@@ -434,13 +462,25 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
     free(tc.mUpperData);
     free(ts.pin_history);
     free(td.pc_histogram);
-    return (ss < 0 || dd < 0) ? -8 : -4;
+    if (ss == -1 || dd == -1)
+      return -8;
+    return dd == -2 ? -7 : -4;
   }
   if (tc.mCodeMemMaxIdx != 65535 || tc.mExtDataMaxIdx != 65535 ||
-      !tc.mMachineCycleScale || tc.serial_out_idx > 18 ||
-      tc.serial_out_remaining_bits > 10 || ts.part_id > PART_STC12_16 ||
-      ts.vcc < 0.0 || ts.vcc > 20.0 || td.state > DBG_RUNNING ||
+      (tc.mMachineCycleScale != 1 && tc.mMachineCycleScale != 12) ||
+      tc.mInterruptActive > 3 || tc.serial_out_idx >= 18 ||
+      tc.serial_out_remaining_bits > 10 || ts.timer0_prescaler >= 12 ||
+      ts.timer1_prescaler >= 12 || ts.brt_prescaler >= 12 ||
+      ts.pca_prescaler >= 12 || ts.part_id > PART_STC12_16 ||
+      !isfinite(ts.vcc) || ts.vcc < 0.0 || ts.vcc > 20.0 ||
+      (ts.stc12_mode && (!ts.fosc || !ts.ns_per_clock_x256)) ||
+      (ts.stc12_mode && ts.part_id == PART_STC89 &&
+       (tc.mMachineCycleScale != 12 || tc.skip_timers)) ||
+      (ts.stc12_mode && ts.part_id != PART_STC89 &&
+       (tc.mMachineCycleScale != 1 || !tc.skip_timers)) ||
+      td.state > DBG_RUNNING ||
       (!ts.pin_history && (ts.pin_history_head || ts.pin_history_count)) ||
+      (ts.pin_history && ts.pin_history_head != ts.pin_history_count) ||
       td.syms.n_tasks < 0 || td.syms.n_tasks > 8 || td.step_kind > STEP_CYCLE ||
       td.last_halt.cause > HALT_FAULT ||
       (td.profiling && !td.pc_histogram)) {
@@ -451,6 +491,28 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
     free(td.pc_histogram);
     return -7;
   }
+  for (int i = 0; i < 8; i++)
+    if (ts.adc_input[i] > 1023) {
+      free(tc.mCodeMem);
+      free(tc.mExtData);
+      free(tc.mUpperData);
+      free(ts.pin_history);
+      free(td.pc_histogram);
+      return -7;
+    }
+  if (ts.pin_history)
+    for (uint32_t i = 0; i < PIN_HISTORY_SIZE; i++) {
+      const struct stc12_pin_event *event = &ts.pin_history[i];
+      if (event->port >= 6 || event->bit >= 8 || event->mode > PIN_OPENDRAIN ||
+          event->drive > 1) {
+        free(tc.mCodeMem);
+        free(tc.mExtData);
+        free(tc.mUpperData);
+        free(ts.pin_history);
+        free(td.pc_histogram);
+        return -7;
+      }
+    }
   for (int i = 0; i < DBG_MAX_BP; i++) {
     const struct dbg_breakpoint *bp = &td.bps[i];
     if (bp->kind > BP_READ ||
@@ -472,6 +534,8 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
   *c = tc;
   *s = ts;
   *d = td;
+  em8051_rebind_tables(c);
+  stc12_rebind_callbacks(c, s);
   d->cpu = c;
   d->stc = s;
   d->on_halt = halt;

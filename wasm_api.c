@@ -79,6 +79,7 @@ void emu_init(int stc12_mode) {
     }
 
     reset(&cpu, 1);
+    cpu.mMachineCycleScale = 1;
 
     if (stc12_mode) {
         stc12_init(&cpu, &stc);

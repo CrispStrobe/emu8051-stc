@@ -374,6 +374,9 @@ struct stc12_state
  * Call after reset(). */
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState);
 
+/* Rebuild part-dependent SFR hooks without resetting CPU/peripheral state. */
+void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState);
+
 /* Is the core parked on PCON.IDL? The embedder's mirror of rp2040js's
  * `core.waiting`. */
 bool stc12_core_is_idle(struct em8051 *aCPU);

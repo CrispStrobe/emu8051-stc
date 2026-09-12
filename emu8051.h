@@ -106,6 +106,9 @@ struct em8051
 // all memory to zero.
 void reset(struct em8051 *aCPU, bool aWipe);
 
+/* Rebuild code/decode function tables without changing machine state. */
+void em8051_rebind_tables(struct em8051 *aCPU);
+
 // run one emulator tick, or 12 hardware clock cycles.
 // returns "true" if a new operation was executed.
 bool tick(struct em8051 *aCPU);

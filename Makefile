@@ -61,6 +61,9 @@ test_debug: test_debug.c $(CORE_SRC) $(HEADERS)
 test_cycles: test_cycles.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_cycles.c $(CORE_SRC)
 
+test_checkpoint: test_checkpoint.c checkpoint.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_checkpoint.c checkpoint.c $(CORE_SRC) -lm
+
 test_mass: test_mass.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_mass.c $(CORE_SRC)
 
@@ -79,7 +82,7 @@ test_pca_pwm_oracle: test_pca_pwm_oracle.c $(CORE_SRC) $(HEADERS)
 emu_trace: trace.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
 
-test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
+test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
 	@echo ""
@@ -103,6 +106,7 @@ test: test_stc12 test_blink test_adc test_integration test_multi_when test_suite
 	@echo ""
 	@echo "=== MCS-51 cycle count verification ==="
 	./test_cycles
+	./test_checkpoint
 	@echo ""
 	@echo "=== Mass firmware validation ==="
 	./test_mass
@@ -123,7 +127,7 @@ test-wasm: build/emu8051.js
 	node test_wasm.mjs
 
 clean:
-	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle emu_trace
+	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle emu_trace
 	$(MAKE) -C test_images clean
 
 .PHONY: clean all test test-wasm test-images
