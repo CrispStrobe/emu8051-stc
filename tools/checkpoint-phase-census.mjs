@@ -9,6 +9,7 @@ for (const scenario of adapter.scenarios) {
   try {
     for (let i = 0; i < scenario.points; i++) {
       const o = machine.observe();
+      machine.checkpointObserved?.(o);
       seen.add(o.phase); active.add(o.state.interrupts.active);
       const checkpoint = machine.save();
       for (const action of scenario.continuation) machine.apply(action);

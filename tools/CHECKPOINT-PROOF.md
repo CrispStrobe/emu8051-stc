@@ -2,13 +2,14 @@
 
 Base: `47c504191a8420676415a1b86766621d6ea0de86`.
 This branch owns tests only. Root's accepted codec and artifact head
-`0ad7215dfe6fd5d3191dcd6f82b7b7bf67651be4` was merged forward (source `a519b0d`).
+`a1de10cb7e8f128607ddc174cfbb83b9df5fc506` was merged forward (source `ed70da06`).
 Root owns production implementation and landing. Our live-state probes are
 test-only; they include the unchanged wasm_api.c in a separate WASM build.
 
 ## Current qualification status
 
-**Real integration exists; hosted acceptance is pending the repaired run.** The
+**The eight-scenario suite passed run `34694341945`; the active-state extension
+awaits its own hosted acceptance.** The
 committed checkpoint-capable WASM passes the boundary smoke and targeted semantic
 corruptions locally. Hosted run `34694012099` built both WASM variants and passed
 synthetic tests, then correctly failed the IRQ fixture's phase census. It must
@@ -27,8 +28,37 @@ specified 0/-1..-8 codes. It returns owned copies, reacquires the heap after nat
 calls, and frees scratch allocations. The smoke checks selected length boundaries,
 null pointers, uninitialized restore, deterministic bytes and restore round trips.
 The separate real adapter adds independent live-state probes, real pin/UART
-callback transcripts, exact-status semantic corruptions, and 195 checkpoint
-positions across eight scenarios. CI rejects empty receipts and missing mutations.
+callback transcripts, exact-status semantic corruptions, and 347 checkpoint
+positions across eleven scenarios. CI rejects empty receipts and missing mutations.
+
+### Final-core active-state extension
+
+Three additional owned firmware trajectories checkpoint IDL and a Timer0 ISR wake
+counter; a 70-clock ADC countdown and completed nonzero result with running PCA
+and watchdog counters; and debugger code-breakpoint, write-watch shadow/last-halt,
+and changing task state. The read-only probe now includes independent peripheral
+and debugger fields. Coverage witnesses are collected at checkpoint positions,
+not merely during the continuation replay. ADC/PCA/watchdog evidence is progression
+in these configurations, not exhaustive device modes, overflow/reset qualification,
+or a silicon oracle. Idle is tick-driven wake/return, not every fast-forward path.
+
+Checksum-recomputed mutations now additionally require -7 for clock quantum/FOSC
+mismatch and ADC countdown beyond 420. The quantum mutant is applicable only to
+STC-mode snapshots, matching the codec's invariant rather than imposing it on
+classic mode where the invariant is not required.
+
+`checkpoint-allocation-test.c` wraps only checkpoint.c's malloc/calloc calls in a
+test translation unit. Each of its five allocation sites (three CPU buffers,
+optional pin ring and histogram) is failed separately. All five locally produce
+-8, byte-identical live structures/tasks and snapshot, and a successful retry.
+Hosted CI repeats this under AddressSanitizer/UndefinedBehaviorSanitizer and
+requires exactly five receipt lines. No production allocator seam was added.
+
+Nonzero UART TX remaining bits are not reachable through this WASM build: the
+only starting assignment outside reset/codec is in the TUI's emu.c, not linked by
+Makefile.wasm. STC UART TX completes immediately. The probe observes this field
+and malformed values are rejected, but no artificial state injection is presented
+as a reachable TX trajectory. Future JS-owned RX queues remain outside the ABI.
 
 ### Red-1 evidence repair
 
@@ -100,13 +130,13 @@ boundary lengths to avoid quadratic copying of large fixed memory/histogram blob
 
 | Proof | Required fixture/probe evidence |
 | --- | --- |
-| Reachable phases | All delay values in owned MUL/IRQ fixtures; not all opcode sequences or idle/power-down wakeup combinations |
-| Timers/controller | Running T0/T1 and prescalers, interrupt priority/nesting observed. No exhaustive ADC/PCA/watchdog mode matrix |
+| Reachable phases | All delay values in owned MUL/IRQ fixtures plus IDL/T0 wake; not all opcode sequences, power-down or fast-forward combinations |
+| Timers/controller | Running T0/T1 and prescalers, interrupt priority/nesting; active ADC countdown/result, PCA/watchdog progression. No exhaustive mode matrix |
 | UART | Accepted RX latches/RI, both UART callbacks, UART1 ring/index/wrap, pending interrupt. Future JS input queues intentionally external. Classic WASM has no path starting bitwise TX; remaining bits are observed but not claimed nonzero-reachable |
 | Time/inputs | Independent clock/ns/quantum, port_ext and ADC input probes, deterministic replayed stimuli |
 | Pins/history | Full enabled ring event slots, head/count/timestamps and live shadows, real pin callback replay; disabled/enabled/wrapped fixtures |
-| Memory/debug | Code/XRAM probe hashes, full IRAM/SFR, live debug counters and full serialized histogram. No exhaustive breakpoint/watch/task matrix |
-| Identity/errors | Exact layout/status assertions with recomputed checksum. Allocation failure -8 still needs a separate allocation-fault test |
+| Memory/debug | Code/XRAM probe hashes, full IRAM/SFR, breakpoint/write-watch/task state, debug counters and serialized histogram. No exhaustive stepping/watch/task matrix |
+| Identity/errors | Exact layout/status assertions with recomputed checksum, quantum consistency, and five allocation-failure sites via a test-only native seam |
 | Atomicity | Byte equality and independent probes after every refusal, callback silence, identical continuation and restore-twice |
 
 Source inventory at baseline: `emu8051.h:69` (CPU, interrupt saved registers,

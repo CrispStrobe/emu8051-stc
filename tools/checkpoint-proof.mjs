@@ -35,6 +35,7 @@ export async function prove(adapter) {
       same(await machine.identity(), adapter.identity, 'runtime schema/build mismatch');
       for (let point = 0; point < scenario.points; point++) {
         const original = clone(await machine.observe());
+        const evidence = clone(await machine.checkpointObserved?.(original));
         assert.ok(scenario.expectedPhases.includes(original.phase), 'unexpected phase');
         seen.add(original.phase);
         for (const group of groups) {
@@ -97,7 +98,7 @@ export async function prove(adapter) {
         assert.equal(await machine.restore(checkpoint.slice()), true);
         await machine.apply(clone(scenario.advance));
         receipts.push({ scenario: scenario.name, point, phase: original.phase,
-          refusals: malformed.length, mutationKinds: malformed.map(m => m.kind) });
+          refusals: malformed.length, mutationKinds: malformed.map(m => m.kind), evidence });
       }
       same([...seen].sort(), [...scenario.expectedPhases].sort(), `incomplete phase census: ${scenario.name}`);
       await machine.verifyCoverage?.();

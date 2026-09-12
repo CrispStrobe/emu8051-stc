@@ -59,7 +59,22 @@ const char *proof_observe(void) {
         const struct stc12_pin_event *e = &stc.pin_history[i];
         out("%s[\"%" PRIu64 "\",%u,%u,%u,%u]", i ? "," : "", e->t_ns, e->port, e->bit, e->mode, e->drive);
     }
-    out("]},\"debug\":[%u,%u,%u,%u,%u,%u,%u]}}", dbg.state, dbg.step_kind,
+    out("]},\"peripheral\":[%u,%u,%u,%u,%u,%u,%u,%u],", stc.adc_countdown,
+        cpu.mSFR[STC_REG_ADC_CONTR], cpu.mSFR[STC_REG_ADC_RES], cpu.mSFR[STC_REG_ADC_RESL],
+        cpu.mSFR[STC_REG_CL], cpu.mSFR[STC_REG_CH], stc.wdt_counter, stc.wdt_prescaler_cnt);
+    out("\"debug\":{\"control\":[%u,%u,%u,%u,%u,%u,%u],\"bps\":[", dbg.state, dbg.step_kind,
         dbg.step_count, dbg.profiling, dbg.profile_total, dbg.last_halt.cause, dbg.syms.n_tasks);
+    for (int i = 0; i < DBG_MAX_BP; i++) {
+        const struct dbg_breakpoint *b = &dbg.bps[i];
+        out("%s[%u,%u,%d,%u,%u]", i ? "," : "", b->kind, b->addr, b->id, b->active, dbg.watch_shadow[i]);
+    }
+    out("],\"tasks\":[");
+    for (int i = 0; i < dbg.syms.n_tasks; i++)
+        out("%s[%u,%u]", i ? "," : "", dbg.syms.tasks[i].state_addr, dbg.syms.tasks[i].until_addr);
+    out("],\"stepTasks\":"); arr(dbg.step_task_state, 8);
+    out(",\"halt\":[%u,%u,%d,%u,%u,%u,%u,%u]}}}", dbg.last_halt.cause,
+        dbg.last_halt.pc, dbg.last_halt.bp_id, dbg.last_halt.is_watch,
+        dbg.last_halt.watch_space, dbg.last_halt.watch_addr,
+        dbg.last_halt.watch_value, dbg.last_halt.watch_prev);
     return proof_json;
 }

@@ -20,6 +20,12 @@ jobs:
           version: '4.0.14'
       - name: Test orchestration and synthetic mutations
         run: node --test tools/checkpoint-proof.test.mjs
+      - name: Native allocation-refusal atomicity (test-only seam)
+        run: |
+          gcc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -o /tmp/checkpoint-allocation-test tools/checkpoint-allocation-test.c core.c opcodes.c disasm.c stc12.c debug.c -lm
+          /tmp/checkpoint-allocation-test | tee allocation-receipt.txt
+          test "$(grep -c '^ALLOCATION_REFUSAL' allocation-receipt.txt)" -eq 5
+          grep -qx 'ALLOCATION_PROOF: 5/5' allocation-receipt.txt
       - name: Build production and read-only-probed WASM from this revision
         run: |
           make -f Makefile.wasm OUTDIR=build-checkpoint
@@ -37,5 +43,6 @@ jobs:
           path: |
             checkpoint-receipt.json
             checkpoint-phase-census.json
+            allocation-receipt.txt
             build-proof/
             build-checkpoint/
