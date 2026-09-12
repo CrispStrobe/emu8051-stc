@@ -398,6 +398,11 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState);
 /* Set an external analog input value for ADC channel 0-7 (0-1023). */
 void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value);
 
+/* Validated clock/reference setters. Invalid values leave state unchanged. */
+bool stc12_set_fosc(struct stc12_state *aState, uint32_t hz);
+bool stc12_set_vcc(struct stc12_state *aState, double vcc);
+uint64_t stc12_clock_quantum(uint32_t hz);
+
 /* Set external pin input for a port (0-5 = P0-P5).
  * Legacy API — use boundary A callbacks for new integrations. */
 void stc12_set_port_input(struct stc12_state *aState, int port, uint8_t value);

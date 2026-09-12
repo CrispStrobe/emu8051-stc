@@ -28,6 +28,7 @@
  * cross-checked against SDCC's mcs51/stc12.h.
  */
 
+#include <math.h>
 #include <string.h>
 #include "emu8051.h"
 #include "stc12.h"
@@ -917,8 +918,7 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
      * ×256 gives <7 ppm error at all standard FOSC values, down from
      * 166 ppm with the old ×16 representation. Max sim time ~2.3 years
      * at 11 MHz before uint64_t overflow — more than enough. */
-    if (aState->fosc > 0)
-        aState->ns_per_clock_x256 = (uint64_t)(256.0e9 / aState->fosc + 0.5);
+    aState->ns_per_clock_x256 = stc12_clock_quantum(aState->fosc);
 
     /* All external port pins default high (quasi-bidirectional pull-up) */
     for (int i = 0; i < 6; i++)
@@ -1028,6 +1028,26 @@ void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState)
 /* ================================================================== *
  * Utility functions                                                   *
  * ================================================================== */
+
+uint64_t stc12_clock_quantum(uint32_t hz)
+{
+    return hz ? (uint64_t)(256.0e9 / hz + 0.5) : 0;
+}
+
+bool stc12_set_fosc(struct stc12_state *aState, uint32_t hz)
+{
+    if (!aState || hz == 0) return false;
+    aState->fosc = hz;
+    aState->ns_per_clock_x256 = stc12_clock_quantum(hz);
+    return true;
+}
+
+bool stc12_set_vcc(struct stc12_state *aState, double vcc)
+{
+    if (!aState || !isfinite(vcc) || vcc < 0.0 || vcc > 20.0) return false;
+    aState->vcc = vcc;
+    return true;
+}
 
 void stc12_set_adc_input(struct stc12_state *aState, int channel, uint16_t value)
 {

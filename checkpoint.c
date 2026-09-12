@@ -473,7 +473,9 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
       ts.timer1_prescaler >= 12 || ts.brt_prescaler >= 12 ||
       ts.pca_prescaler >= 12 || ts.part_id > PART_STC12_16 ||
       !isfinite(ts.vcc) || ts.vcc < 0.0 || ts.vcc > 20.0 ||
-      (ts.stc12_mode && (!ts.fosc || !ts.ns_per_clock_x256)) ||
+      (ts.stc12_mode && (!ts.fosc ||
+       ts.ns_per_clock_x256 != stc12_clock_quantum(ts.fosc))) ||
+      ts.adc_countdown > ADC_CLOCKS_SPEED0 ||
       (ts.stc12_mode && ts.part_id == PART_STC89 &&
        (tc.mMachineCycleScale != 12 || tc.skip_timers)) ||
       (ts.stc12_mode && ts.part_id != PART_STC89 &&

@@ -306,9 +306,7 @@ void emu_set_port_input(int port, uint8_t value) {
 
 EMSCRIPTEN_KEEPALIVE
 void emu_set_fosc(uint32_t hz) {
-    stc.fosc = hz;
-    if (hz > 0)
-        stc.ns_per_clock_x256 = (uint64_t)(256.0e9 / hz + 0.5);
+    stc12_set_fosc(&stc, hz);
 }
 
 /* ------------------------------------------------------------------ *
@@ -420,7 +418,7 @@ uint32_t emu_get_time_ns_hi(void) {
 /* Set VCC (supply voltage for ADC reference). Default 5.0. */
 EMSCRIPTEN_KEEPALIVE
 void emu_set_vcc(double vcc) {
-    stc.vcc = vcc;
+    stc12_set_vcc(&stc, vcc);
 }
 
 /* Register boundary A board callbacks from JS.
