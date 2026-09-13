@@ -12,6 +12,30 @@ This is the **bundleable** 8051 emulator for
 project [ucsim-stc](https://github.com/CrispStrobe/ucsim-stc) (GPL-2,
 part of SDCC) is the accurate oracle; this one is the shippable core.
 
+Consumer contract and adoption
+------------------------------
+
+This repository is the source of truth for the emulator core, STC peripheral
+models, exported C/WASM ABI, checkpoint codec, and the committed browser bundle.
+Reusable fixes to those surfaces land and pass here first. Consumers such as
+`bw-board` adopt a reviewed full git SHA; they must not copy the fix locally,
+follow `master`, or silently fall back to another checkout when that SHA is
+unavailable.
+
+Three identifiers answer different questions and are not interchangeable:
+
+- the **git SHA** selects the complete reviewed source tree;
+- `build/BUILD-INFO.md` records the committed `emu8051.js`/`.wasm` hashes,
+  Emscripten version, and source revision used to build those exact bytes;
+- `EMU_CHECKPOINT_BUILD_ID` is a checkpoint-layout fingerprint, not a source
+  revision. It changes when an incompatible encoded-state layout changes, while
+  ordinary compatible source fixes keep it stable.
+
+An ABI or checkpoint change is complete only when its C declarations,
+`Makefile.wasm` export surface, native and exact-WASM tests, committed bundle and
+build provenance agree. Only then may a consumer advance its exact repository
+SHA. JavaScript and WASM files from different builds must never be mixed.
+
 What is in it
 -------------
 
