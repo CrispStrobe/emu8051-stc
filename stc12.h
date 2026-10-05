@@ -355,6 +355,15 @@ struct stc12_state
     stc12_serial_tx_callback   on_serial2_tx;
     void                      *board_user_data;
 
+    /* UART1 receive FIFO. A byte goes into SBUF only once the firmware has
+     * taken the previous one (RI clear): bytes typed faster than the program
+     * reads them used to overwrite each other in SBUF. */
+    #define STC12_RX_FIFO 64
+    uint8_t  rx_fifo[STC12_RX_FIFO];
+    uint8_t  rx_head;
+    uint8_t  rx_len;
+    uint64_t rx_next_clock;     /* earliest osc clock for the next delivery */
+
     /* Time tracking */
     uint64_t osc_clocks;        /* total oscillator clocks since reset */
     uint64_t idle_skipped_clocks; /* clocks jumped by the PCON.IDL fast-forward */
@@ -420,6 +429,7 @@ void stc12_configure_part(struct em8051 *aCPU, struct stc12_state *aState, uint8
 /* Serial port: write a byte into the receive buffer (simulates RX).
  * Sets RI in SCON and copies the byte to SBUF for the firmware to read. */
 void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte);
+int  stc12_serial_rx_pending(const struct stc12_state *aState);
 
 /* Set the serial TX callback. */
 void stc12_set_serial_callback(struct stc12_state *aState,

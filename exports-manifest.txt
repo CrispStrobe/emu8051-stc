@@ -74,6 +74,7 @@ _emu_run
 _emu_serial2_write
 _emu_serial_read_buf
 _emu_serial_read_idx
+_emu_serial_rx_pending
 _emu_serial_write
 _emu_set_adc_input
 _emu_set_adc_voltage
