@@ -195,7 +195,7 @@ int main(void) {
 
     /* 23-stc89-blink: STC89C52RC classic 8052 model */
     setup_and_load("test_images/23-stc89-blink.hex");
-    cpu.skip_timers = 0; /* STC89: upstream tick handles timers */
+    stc12_configure_part(&cpu, &stc, PART_STC89); /* the wasm build's STC89 configuration */
     run_ms(10);
     CHECK(cpu.mSFR[REG_TMOD] == 0x01, "23-stc89: TMOD = 0x01 (Timer 0 mode 1)");
     teardown();

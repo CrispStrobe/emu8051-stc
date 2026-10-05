@@ -412,6 +412,10 @@ bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr);
 
 /* Set the part identity. Call before stc12_init or after reset. */
 void stc12_set_part(struct stc12_state *aState, uint8_t part_id);
+/* Select the part AND the core configuration it implies (machine-cycle
+ * scale, who counts Timer 0/1). The one place this is decided: wasm_api.c and
+ * the native harnesses call it instead of each setting the fields. */
+void stc12_configure_part(struct em8051 *aCPU, struct stc12_state *aState, uint8_t part_id);
 
 /* Serial port: write a byte into the receive buffer (simulates RX).
  * Sets RI in SCON and copies the byte to SBUF for the firmware to read. */
