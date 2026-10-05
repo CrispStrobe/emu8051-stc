@@ -747,11 +747,14 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
     aState->osc_clocks++;
 
-    /* STC89: 12T timing is handled by mMachineCycleScale in core.c tick().
-     * Timer 0/1 are handled by upstream timer_tick (skip_timers=false).
-     * But upstream does NOT implement 8052 Timer 2 — we handle it here.
-     * Timer 2 ticks once per machine cycle (already scaled by 12T). */
+    /* STC89: 12T instruction timing is mMachineCycleScale in core.c tick().
+     * Timer 0/1 count here (stc12_timer0/1_tick, 12-clock prescale; the part
+     * has no AUXR so they read 12T) -- NOT in core.c's timer_tick, which runs
+     * once per oscillator clock. Upstream does not implement 8052 Timer 2, so
+     * it is handled here as well, once per machine cycle. */
     if (aState->part_id == PART_STC89) {
+        stc12_timer0_tick(aCPU, aState);
+        stc12_timer1_tick(aCPU, aState);
         /* 8052 Timer 2: T2CON at 0xC8, T2MOD at 0xC9.
          * Counter: TL2 (0xCC), TH2 (0xCD). Reload: RCAP2L (0xCA), RCAP2H (0xCB).
          *
@@ -1560,4 +1563,23 @@ static void sfr_write_auxr1(struct em8051 *aCPU, uint8_t aRegister)
         g_stc->dptr1_h = tmp_h;
         g_stc->last_dps = dps;
     }
+}
+
+void stc12_configure_part(struct em8051 *aCPU, struct stc12_state *aState, uint8_t part_id)
+{
+    stc12_set_part(aState, part_id);
+    aCPU->mCodeMemMaxIdx = 65535;
+    aCPU->mExtDataMaxIdx = 65535;
+    /* Every part's Timer 0/1 is counted here, by stc12_timer0/1_tick, which
+     * apply the 12-clock machine-cycle prescale. The STC89 used to leave them
+     * to core.c's timer_tick(), which tick() calls once per OSCILLATOR clock:
+     * its timers ran 11-12x fast (machine-cycle scaling only ever applied to
+     * instruction timing). The STC89 has no AUXR, so the STC path sees 12T. */
+    aCPU->skip_timers = true;
+    aCPU->mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
+    /* Re-init to install part-appropriate SFR callbacks; init resets the
+     * two fields above, so they are set again after it. */
+    stc12_init(aCPU, aState);
+    aCPU->skip_timers = true;
+    aCPU->mMachineCycleScale = (part_id == PART_STC89) ? 12 : 1;
 }

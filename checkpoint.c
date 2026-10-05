@@ -476,8 +476,12 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
       (ts.stc12_mode && (!ts.fosc ||
        ts.ns_per_clock_x256 != stc12_clock_quantum(ts.fosc))) ||
       ts.adc_countdown > ADC_CLOCKS_SPEED0 ||
+      /* STC89: 12T. skip_timers may be either way: checkpoints written
+       * before Timer 0/1 moved into the STC model carry it false; it is
+       * normalised to true below, since keeping it false would double-count
+       * the timers (stc12_tick counts them now). */
       (ts.stc12_mode && ts.part_id == PART_STC89 &&
-       (tc.mMachineCycleScale != 12 || tc.skip_timers)) ||
+       tc.mMachineCycleScale != 12) ||
       (ts.stc12_mode && ts.part_id != PART_STC89 &&
        (tc.mMachineCycleScale != 1 || !tc.skip_timers)) ||
       td.state > DBG_RUNNING ||
@@ -494,6 +498,8 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
     free(td.pc_histogram);
     return -7;
   }
+  if (ts.stc12_mode)
+    tc.skip_timers = true;
   for (int i = 0; i < 8; i++)
     if (ts.adc_input[i] > 1023) {
       free(tc.mCodeMem);
