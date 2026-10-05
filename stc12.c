@@ -33,6 +33,8 @@
 #include "emu8051.h"
 #include "stc12.h"
 
+static void serial_rx_deliver(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte);
+
 /* We stash the stc12_state pointer in a file-scope variable so that
  * the SFR callbacks (which only receive em8051*) can reach it.
  * This limits us to one emulator instance, which is fine for our use. */
@@ -747,6 +749,16 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
 
     aState->osc_clocks++;
 
+    /* The firmware took the last byte (RI clear) and a character time has
+     * passed since it arrived: the next queued one. */
+    if (aState->rx_len && !(aCPU->mSFR[REG_SCON] & SCONMASK_RI)
+        && aState->osc_clocks >= aState->rx_next_clock) {
+        uint8_t byte = aState->rx_fifo[aState->rx_head];
+        aState->rx_head = (aState->rx_head + 1) % STC12_RX_FIFO;
+        aState->rx_len--;
+        serial_rx_deliver(aCPU, aState, byte);
+    }
+
     /* STC89: 12T instruction timing is mMachineCycleScale in core.c tick().
      * Timer 0/1 count here (stc12_timer0/1_tick, 12-clock prescale; the part
      * has no AUXR so they read 12T) -- NOT in core.c's timer_tick, which runs
@@ -1450,18 +1462,41 @@ static void sfr_write_sbuf(struct em8051 *aCPU, uint8_t aRegister)
         g_stc->on_serial_tx(byte, g_stc->board_user_data);
 }
 
-void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
+/* Hand one byte to the firmware: SBUF, RI, and the serial interrupt. The
+ * next one may follow no sooner than one character later -- 10 bits at 9600
+ * baud, 1.042 ms -- or the usual `RI = 0; c = SBUF;` would read the byte
+ * AFTER the one it was told about. */
+static void serial_rx_deliver(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
 {
-    (void)aState;
-    /* Place byte in SBUF for firmware to read */
+    if (aState && aState->ns_per_clock_x256)
+        aState->rx_next_clock = aState->osc_clocks
+            + ((uint64_t)1041667 << 8) / aState->ns_per_clock_x256;
     aCPU->mSFR[REG_SBUF] = byte;
-
-    /* Set RI (receive interrupt flag) */
     aCPU->mSFR[REG_SCON] |= SCONMASK_RI;
-
-    /* Trigger serial interrupt if enabled */
     if (aCPU->mSFR[REG_IE] & IEMASK_ES)
         aCPU->serial_interrupt_trigger = true;
+}
+
+/* A byte arriving on RXD. Delivered at once when the receiver is free (RI
+ * clear, nothing queued) -- the old behaviour -- otherwise queued and handed
+ * over by stc12_tick as soon as the firmware clears RI. A full FIFO drops
+ * the byte, as an overrun on the chip would. */
+void stc12_serial_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
+{
+    if (!aState || (!aState->rx_len && !(aCPU->mSFR[REG_SCON] & SCONMASK_RI)
+                    && aState->osc_clocks >= aState->rx_next_clock)) {
+        serial_rx_deliver(aCPU, aState, byte);
+        return;
+    }
+    if (aState->rx_len >= STC12_RX_FIFO) return;
+    aState->rx_fifo[(aState->rx_head + aState->rx_len) % STC12_RX_FIFO] = byte;
+    aState->rx_len++;
+}
+
+/* Bytes waiting behind SBUF. */
+int stc12_serial_rx_pending(const struct stc12_state *aState)
+{
+    return aState ? aState->rx_len : 0;
 }
 
 void stc12_set_serial_callback(struct stc12_state *aState,

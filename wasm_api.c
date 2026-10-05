@@ -437,6 +437,12 @@ void emu_serial_write(uint8_t byte) {
     stc12_serial_rx(&cpu, &stc, byte);
 }
 
+/* Received bytes queued behind SBUF, not yet taken by the firmware. */
+EMSCRIPTEN_KEEPALIVE
+int emu_serial_rx_pending(void) {
+    return stc12_serial_rx_pending(&stc);
+}
+
 /* Read the serial output buffer (returns pointer, read via HEAPU8) */
 EMSCRIPTEN_KEEPALIVE
 int emu_serial_read_buf(void) {

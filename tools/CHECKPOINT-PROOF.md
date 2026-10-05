@@ -94,8 +94,9 @@ Export a default object with `contractVersion: 1`, exact `identity: {schema, bui
 `scenarios`, and `corrupt(checkpoint)` returning `{kind, blob, expectedCode}` mutations.
 Required mutation kinds are bad-version, bad-header, bad-build, invalid-state.
 Construct mutations from the actual documented codec layout, not guessed offsets.
-Version 1 and layout fingerprint 0x80510101 are the exact schema/build identity.
-The fixed v1 layout is 443483 bytes, with a 20-byte header and FNV-1a payload
+Version 1 and layout fingerprint 0x80510102 are the exact schema/build identity
+(0x80510101, 443483 bytes, before the UART1 receive FIFO joined the state).
+The fixed v1 layout is 443557 bytes, with a 20-byte header and FNV-1a payload
 checksum. Semantic mutations recompute the checksum so malformed boolean and
 invariant checks are actually reached; a separate mutant checks checksum failure.
 Header/version/build errors require exact -4/-5/-6 and state invariants exact -7.

@@ -105,6 +105,7 @@ EXPORTS := \
 	_emu_version \
 	_emu_dbg_consumes_count \
 	_emu_serial_write \
+	_emu_serial_rx_pending \
 	_emu_set_serial_callback \
 	_emu_serial_read_buf \
 	_emu_serial_read_idx \

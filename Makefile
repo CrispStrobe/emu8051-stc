@@ -40,6 +40,9 @@ test-images:
 test_stc89_timers: test_stc89_timers.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_stc89_timers.c $(CORE_SRC)
 
+test_uart_rx_fifo: test_uart_rx_fifo.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_uart_rx_fifo.c $(CORE_SRC)
+
 test_stc12: test_stc12.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_stc12.c $(CORE_SRC)
 
@@ -85,10 +88,11 @@ test_pca_pwm_oracle: test_pca_pwm_oracle.c $(CORE_SRC) $(HEADERS)
 emu_trace: trace.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
 
-test: test_stc12 test_stc89_timers test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
+test: test_stc12 test_stc89_timers test_uart_rx_fifo test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
 	./test_stc89_timers
+	./test_uart_rx_fifo
 	@echo ""
 	@echo "=== Firmware test suite ==="
 	./test_suite
