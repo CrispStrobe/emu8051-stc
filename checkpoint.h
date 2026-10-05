@@ -9,7 +9,7 @@
 #define EMU_CHECKPOINT_VERSION 1u
 /* Layout fingerprint, not a source revision. Change for any incompatible field
  * change. */
-#define EMU_CHECKPOINT_BUILD_ID 0x80510101u
+#define EMU_CHECKPOINT_BUILD_ID 0x80510102u
 
 enum emu_checkpoint_result {
   EMU_CHECKPOINT_OK = 0,

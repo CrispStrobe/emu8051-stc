@@ -15,7 +15,8 @@ _Static_assert(sizeof(double) == 8, "checkpoint v1 requires IEEE-width double");
  * V1 always reserves full code/XRAM/IRAM/SFR, all pin-history slots, and the
  * full profiling histogram. Presence bytes distinguish disabled optional
  * storage from allocated zeroes. JS-owned future-input queues are external;
- * already accepted UART/input latches live in SFR/serial/port_ext state here.
+ * already accepted UART/input latches live in SFR/serial/port_ext state here,
+ * and so do bytes queued in the UART1 receive FIFO (layout 0x80510102).
  */
 #define MAGIC 0x31435045u /* "EPC1" in little endian */
 #define HEADER_SIZE 20u
@@ -191,6 +192,12 @@ static void write_stc(struct writer *w, const struct stc12_state *s) {
   wbytes(w, s->pin_m1_shadow, 6);
   wbytes(w, s->pin_m0_shadow, 6);
   wbytes(w, s->pin_drive_shadow, 6);
+  /* UART1 receive FIFO: bytes already accepted from the host but not yet
+   * handed to the firmware, and when the next one may be. */
+  wbytes(w, s->rx_fifo, STC12_RX_FIFO);
+  wu8(w, s->rx_head);
+  wu8(w, s->rx_len);
+  wu64(w, s->rx_next_clock);
 }
 static int read_stc(struct reader *r, struct stc12_state *s) {
   s->timer0_prescaler = ru8(r);
@@ -246,6 +253,10 @@ static int read_stc(struct reader *r, struct stc12_state *s) {
   rbytes(r, s->pin_m1_shadow, 6);
   rbytes(r, s->pin_m0_shadow, 6);
   rbytes(r, s->pin_drive_shadow, 6);
+  rbytes(r, s->rx_fifo, STC12_RX_FIFO);
+  s->rx_head = ru8(r);
+  s->rx_len = ru8(r);
+  s->rx_next_clock = ru64(r);
   return 1;
 }
 static void write_dbg(struct writer *w, const struct dbg_target *d) {
@@ -476,6 +487,7 @@ int emu_checkpoint_decode(struct em8051 *c, struct stc12_state *s,
       (ts.stc12_mode && (!ts.fosc ||
        ts.ns_per_clock_x256 != stc12_clock_quantum(ts.fosc))) ||
       ts.adc_countdown > ADC_CLOCKS_SPEED0 ||
+      ts.rx_head >= STC12_RX_FIFO || ts.rx_len > STC12_RX_FIFO ||
       /* STC89: 12T. skip_timers may be either way: checkpoints written
        * before Timer 0/1 moved into the STC model carry it false; it is
        * normalised to true below, since keeping it false would double-count
