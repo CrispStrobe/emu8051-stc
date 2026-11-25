@@ -41,6 +41,11 @@ static void serial_rx_deliver(struct em8051 *aCPU, struct stc12_state *aState, u
 static struct stc12_state *g_stc = NULL;
 static struct em8051 *g_cpu = NULL;
 
+static bool is_stc15_part(uint8_t part_id)
+{
+    return part_id == PART_STC15 || part_id == PART_STC15W;
+}
+
 /* ================================================================== *
  * Boundary A — pin change detection and board callbacks                *
  * ================================================================== */
@@ -252,9 +257,35 @@ static void sfr_write_adc_contr(struct em8051 *aCPU, uint8_t r)
  * stc12_tick() once per osc clock and using prescalers for 12T mode.   *
  * ================================================================== */
 
+/* STC15 datasheet, section 7.2.1: stopped writes update both the
+ * counter and hidden reload latch; running writes update only the latch.
+ * STC12/STC89 keep their original register semantics. */
+static void sfr_write_timer0(struct em8051 *aCPU, uint8_t aRegister)
+{
+    if (!g_stc || !is_stc15_part(g_stc->part_id)) return;
+    uint8_t reg = aRegister - 0x80;
+    uint8_t value = aCPU->mSFR[reg];
+    bool high = reg == REG_TH0;
+    if (high)
+        g_stc->timer0_reload = (g_stc->timer0_reload & 0x00ff) | ((uint16_t)value << 8);
+    else
+        g_stc->timer0_reload = (g_stc->timer0_reload & 0xff00) | value;
+
+    if ((aCPU->mSFR[REG_TMOD] & 0x03) == 0 &&
+        (aCPU->mSFR[REG_TCON] & TCONMASK_TR0)) {
+        aCPU->mSFR[reg] = high ? (g_stc->timer0_counter >> 8)
+                                  : (g_stc->timer0_counter & 0xff);
+    } else {
+        g_stc->timer0_counter = aCPU->mSFR[REG_TL0] |
+                                ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
+    }
+}
+
 /* Returns true if Timer 0 overflowed this tick (for PCA clock source) */
 static bool stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
+    st->timer0_counter = aCPU->mSFR[REG_TL0] |
+                         ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
     /* Check AUXR.T0x12: 1 = 1T mode, 0 = 12T mode */
     bool is_1t = aCPU->mSFR[STC_REG_AUXR] & AUXR_T0x12;
 
@@ -266,6 +297,26 @@ static bool stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
     }
 
     bool overflowed = false;
+
+    if (is_stc15_part(st->part_id) && (aCPU->mSFR[REG_TMOD] & 0x03) == 0) {
+        /* STC15 mode 0 is a 16-bit auto-reload timer, unlike the classic
+         * 13-bit mode. External counter edges are still not implemented. */
+        bool gate_open = !(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) ||
+                         (port_read(aCPU, 3) & (1u << 2));
+        if ((aCPU->mSFR[REG_TCON] & TCONMASK_TR0) && gate_open &&
+            !(aCPU->mSFR[REG_TMOD] & TMODMASK_CT_0)) {
+            uint16_t value = st->timer0_counter + 1;
+            if (value == 0) {
+                value = st->timer0_reload;
+                aCPU->mSFR[REG_TCON] |= TCONMASK_TF0;
+                overflowed = true;
+            }
+            aCPU->mSFR[REG_TL0] = value & 0xff;
+            aCPU->mSFR[REG_TH0] = value >> 8;
+            st->timer0_counter = value;
+        }
+        return overflowed;
+    }
 
     /* Now we should increment Timer 0 if it's running.
      * We replicate the upstream logic but only for the increment part.
@@ -350,11 +401,15 @@ static bool stc12_timer0_tick(struct em8051 *aCPU, struct stc12_state *st)
             }
         }
     }
+    st->timer0_counter = aCPU->mSFR[REG_TL0] |
+                         ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
     return overflowed;
 }
 
 static void stc12_timer1_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
+    /* W408AS has T0 and T2; the F2K60S2's Timer 1 is not present. */
+    if (st->part_id == PART_STC15W) return;
     bool is_1t = aCPU->mSFR[STC_REG_AUXR] & AUXR_T1x12;
 
     if (!is_1t) {
@@ -425,7 +480,7 @@ static void stc12_timer1_tick(struct em8051 *aCPU, struct stc12_state *st)
 
 static void stc12_brt_tick(struct em8051 *aCPU, struct stc12_state *st)
 {
-    if (st->part_id == PART_STC15) {
+    if (is_stc15_part(st->part_id)) {
         /* STC15: Timer 2 replaces BRT.
          * AUXR.4 = T2R (run), AUXR.2 = T2x12 (1T/12T)
          * T2H/T2L (0xD6/0xD7) = 16-bit auto-reload timer */
@@ -504,7 +559,7 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
          * STC12: AUXR1 (0xA2) bit 2
          * STC15: CLK_DIV (0x97) bit 5  (STC15-PERIPHERAL-MODEL.md §2.1) */
         bool adrj;
-        if (st->part_id == PART_STC15)
+        if (is_stc15_part(st->part_id))
             adrj = aCPU->mSFR[STC_REG_CLK_DIV] & STC15_CLK_DIV_ADRJ;
         else
             adrj = aCPU->mSFR[STC_REG_AUXR1] & AUXR1_ADRJ;
@@ -529,18 +584,28 @@ static void stc12_adc_tick(struct em8051 *aCPU, struct stc12_state *st)
  * PCA tick                                                            *
  * ================================================================== */
 
-/* Resolve PCA module pin: port and bit for CCP0/CCP1/CCP2.
- * STC12: CCP0=P1.3, CCP1=P1.4 (or P4.2, P4.3 if PCA_P4).
- * STC15: CCP2=P3.7 default. CCP_S pin switching not yet implemented. */
+/* Resolve PCA module pin. STC15 P_SW1.CCP_S is not STC12's PCA_P4.
+ * STC15 datasheet section 11.1, P_SW1 table: the default pins are
+ * P1.1/CCP0, P1.0/CCP1 and P3.7/CCP2. */
 static void pca_pin(struct em8051 *aCPU, struct stc12_state *st,
                     int mod, int *port, int *bit)
 {
     static const uint8_t default_bits[] = { 3, 4, 7 }; /* P1.3, P1.4, P3.7 */
     static const uint8_t p4_bits[] = { 2, 3, 1 };      /* P4.2, P4.3, P4.1 */
-    if (mod == 2 && st->part_id == PART_STC15) {
-        /* CCP2 default is P3.7 on STC15 */
-        *port = 3;
-        *bit = 7;
+    if (is_stc15_part(st->part_id)) {
+        unsigned group = (aCPU->mSFR[STC_REG_AUXR1] >> 4) & 3;
+        if (group == 1) {
+            *port = 3;
+            *bit = 5 + mod;
+        } else if (group == 2) {
+            *port = 2;
+            *bit = 5 + mod;
+        } else {
+            /* Reserved group 3 has no defined pin mapping; keep the
+             * default mapping rather than index outside the pin table. */
+            *port = mod == 2 ? 3 : 1;
+            *bit = mod == 0 ? 1 : (mod == 1 ? 0 : 7);
+        }
     } else {
         *port = 1;
         *bit = default_bits[mod];
@@ -635,9 +700,9 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
     static const uint8_t ccf_masks[]  = { CCON_CCF0, CCON_CCF1, CCON_CCF2 };
     int n_modules;
     switch (st->part_id) {
-    case PART_STC15:  n_modules = 3; break;
+    case PART_STC15:
+    case PART_STC15W: n_modules = 3; break;
     case PART_STC12:  n_modules = 2; break;
-    case PART_STC15W: n_modules = 0; break; /* no PCA on W408AS */
     default:          n_modules = 2; break;
     }
 
@@ -729,7 +794,7 @@ static void stc12_pca_tick(struct em8051 *aCPU, struct stc12_state *st)
             if (capture) {
                 aCPU->mSFR[ccapl_reg] = aCPU->mSFR[STC_REG_CL];
                 aCPU->mSFR[ccaph_reg] = aCPU->mSFR[STC_REG_CH];
-                aCPU->mSFR[STC_REG_CCON] |= (mod == 0) ? CCON_CCF0 : CCON_CCF1;
+                aCPU->mSFR[STC_REG_CCON] |= ccf_mask;
             }
         }
     }
@@ -814,7 +879,7 @@ void stc12_tick(struct em8051 *aCPU, struct stc12_state *aState)
         aState->pca_t0_overflow_pending = true;
 
         /* STC15 INT_CLKO.T0CLKO: toggle P3.5 on Timer 0 overflow */
-        if (aState->part_id == PART_STC15 &&
+        if (is_stc15_part(aState->part_id) &&
             (aCPU->mSFR[STC_REG_INT_CLKO] & INT_CLKO_T0CLKO)) {
             aCPU->mSFR[REG_P3] ^= (1 << 5); /* toggle P3.5 */
             emit_pin_changes(aCPU, aState, 3);
@@ -1013,6 +1078,12 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 
     /* Serial port TX: all parts have UART1 */
     aCPU->sfrwrite[REG_SBUF] = sfr_write_sbuf;
+
+    /* Apply all part-specific callback choices, including clearing hooks
+     * left by a previous part selected in the same emulator instance. */
+    stc12_set_part(aState, aState->part_id);
+    aState->timer0_counter = aCPU->mSFR[REG_TL0] |
+                             ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
 }
 
 void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState)
@@ -1237,6 +1308,8 @@ static uint64_t stc12_idle_skip_clocks(struct em8051 *aCPU,
     } else {
         aCPU->mSFR[REG_TL0] = (uint8_t)(aCPU->mSFR[REG_TL0] + (uint32_t)ticks);
     }
+    st->timer0_counter = aCPU->mSFR[REG_TL0] |
+                         ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
 
     st->idle_skipped_clocks += clocks;
     return clocks;
@@ -1351,6 +1424,10 @@ static const uint8_t stc12_only_sfr_set[] = {
 
 bool stc12_is_valid_sfr(struct stc12_state *aState, uint8_t addr)
 {
+    /* W408AS is the single-UART, T0/T2 STC15 variant. */
+    if (aState && aState->part_id == PART_STC15W &&
+        (addr == 0x8B || addr == 0x8D || addr == 0x9A || addr == 0x9B))
+        return false;
     /* STC89: classic 8052, completely different SFR set */
     if (aState && aState->part_id == PART_STC89) {
         for (unsigned i = 0; i < sizeof(stc89_valid_sfr_set); i++)
@@ -1384,6 +1461,22 @@ void stc12_set_part(struct stc12_state *aState, uint8_t part_id)
     struct em8051 *cpu = g_cpu;
     aState->part_id = part_id;
     if (!cpu) return;
+
+    bool stc15 = is_stc15_part(part_id);
+    cpu->sfrwrite[REG_TL0] = stc15 ? sfr_write_timer0 : NULL;
+    cpu->sfrwrite[REG_TH0] = stc15 ? sfr_write_timer0 : NULL;
+
+    cpu->sfrwrite[STC_REG_SPDAT] = NULL;
+    cpu->sfrwrite[STC_REG_SPSTAT] = NULL;
+    cpu->sfrwrite[STC15_REG_SPDAT] = NULL;
+    cpu->sfrwrite[STC15_REG_SPSTAT] = NULL;
+    if (part_id != PART_STC89) {
+        cpu->sfrwrite[stc15 ? STC15_REG_SPDAT : STC_REG_SPDAT] = sfr_write_spdat;
+        cpu->sfrwrite[stc15 ? STC15_REG_SPSTAT : STC_REG_SPSTAT] = sfr_write_spstat;
+    }
+    bool second_uart = part_id != PART_STC89 && part_id != PART_STC15W;
+    cpu->sfrwrite[STC_REG_S2BUF] = second_uart ? sfr_write_s2buf : NULL;
+    cpu->sfrwrite[STC_REG_AUXR1] = second_uart ? sfr_write_auxr1 : NULL;
 
     /* P5 exists only on STC15 family. On STC12/STC89, 0xC8 is T2CON. */
     if (part_id == PART_STC15 || part_id == PART_STC15W) {
@@ -1532,7 +1625,8 @@ static void sfr_write_s2buf(struct em8051 *aCPU, uint8_t aRegister)
 
 void stc12_serial2_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t byte)
 {
-    (void)aState;
+    if (aState && (aState->part_id == PART_STC15W || aState->part_id == PART_STC89))
+        return;
     aCPU->mSFR[STC_REG_S2BUF] = byte;
     aCPU->mSFR[STC_REG_S2CON] |= S2CON_S2RI;
 }
@@ -1549,10 +1643,10 @@ void stc12_serial2_rx(struct em8051 *aCPU, struct stc12_state *aState, uint8_t b
  * STC12: SPCTL=0x85, SPDAT=0x86, SPSTAT=0xCE
  * STC15: SPSTAT=0xCD, SPCTL=0xCE, SPDAT=0xCF */
 static uint8_t spi_reg_spctl(void) {
-    return (g_stc && g_stc->part_id == PART_STC15) ? STC15_REG_SPCTL : STC_REG_SPCTL;
+    return (g_stc && is_stc15_part(g_stc->part_id)) ? STC15_REG_SPCTL : STC_REG_SPCTL;
 }
 static uint8_t spi_reg_spstat(void) {
-    return (g_stc && g_stc->part_id == PART_STC15) ? STC15_REG_SPSTAT : STC_REG_SPSTAT;
+    return (g_stc && is_stc15_part(g_stc->part_id)) ? STC15_REG_SPSTAT : STC_REG_SPSTAT;
 }
 
 static void sfr_write_spdat(struct em8051 *aCPU, uint8_t aRegister)

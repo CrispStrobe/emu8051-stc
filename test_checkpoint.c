@@ -32,6 +32,13 @@ static void put32(uint8_t *p, uint32_t value)
     p[0] = value; p[1] = value >> 8; p[2] = value >> 16; p[3] = value >> 24;
 }
 
+static void write_sfr(struct em8051 *cpu, uint8_t address, uint8_t value)
+{
+    cpu->mSFR[address - 0x80] = value;
+    if (cpu->sfrwrite[address - 0x80])
+        cpu->sfrwrite[address - 0x80](cpu, address);
+}
+
 int main(void)
 {
     struct em8051 cpu = {0};
@@ -57,6 +64,16 @@ int main(void)
     cpu.mCodeMem[0x1234] = 0x42;
     cpu.mExtData[0x2345] = 0x99;
     cpu.mLowerData[7] = 0x11;
+    /* Save midway through a period whose next reload has already changed.
+     * A snapshot containing only visible TH0/TL0 would lose this distinction. */
+    write_sfr(&cpu, 0x89, 0);
+    write_sfr(&cpu, 0x8e, 0x80);
+    write_sfr(&cpu, 0x8a, 0xfc);
+    write_sfr(&cpu, 0x8c, 0xff);
+    write_sfr(&cpu, 0x88, 0x10);
+    stc12_tick(&cpu, &stc);
+    write_sfr(&cpu, 0x8a, 0xf8);
+    assert(stc.timer0_counter == 0xfffd && stc.timer0_reload == 0xfff8);
     stc.osc_clocks = 987654321;
     stc.pin_history = calloc(PIN_HISTORY_SIZE, sizeof(*stc.pin_history));
     assert(stc.pin_history);
@@ -74,6 +91,7 @@ int main(void)
     assert(stc.vcc == saved_vcc); /* invalid public setters preserve validity */
 
     uint32_t size = emu_checkpoint_codec_size();
+    assert(size == 443561 && EMU_CHECKPOINT_BUILD_ID == 0x80510103u);
     uint8_t *blob = malloc(size);
     assert(blob && size > 393216);
     assert(emu_checkpoint_encode(&cpu, &stc, &dbg, initialized, blob, size) == 0);
@@ -104,6 +122,7 @@ int main(void)
     assert(cpu.mCodeMem[0x1234] == 0x42 && cpu.mExtData[0x2345] == 0x99);
     assert(cpu.mLowerData[7] == 0x11 && stc.osc_clocks == 987654321);
     assert(stc.pin_history_count == 1 && stc.pin_history[0].port == 5);
+    assert(stc.timer0_counter == 0xfffd && stc.timer0_reload == 0xfff8);
 
     uint8_t *again = malloc(size);
     assert(again);
@@ -112,6 +131,11 @@ int main(void)
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
                                  again, size) == 0); /* restore twice */
     assert(callback_calls == 0);
+    for (int i = 0; i < 3; ++i) stc12_tick(&cpu, &stc);
+    assert(cpu.mSFR[REG_TH0] == 0xff && cpu.mSFR[REG_TL0] == 0xf8);
+    assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
+                                 again, size) == 0);
+    assert(stc.timer0_counter == 0xfffd && stc.timer0_reload == 0xfff8);
 
     /* Both topology transitions are real restore cases, not direct helper
      * tests: classic must have no STC hooks, and STC must regain them. */
@@ -154,6 +178,8 @@ int main(void)
     assert(cpu.mCodeMem[0x1234] == before && callback_calls == 0);
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
                                  blob, size - 1) == EMU_CHECKPOINT_WRONG_LENGTH);
+    assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,
+                                 blob, size - 4) == EMU_CHECKPOINT_WRONG_LENGTH);
     memcpy(blob, again, size);
     blob[4] = 2;
     assert(emu_checkpoint_decode(&cpu, &stc, &dbg, tasks, &initialized,

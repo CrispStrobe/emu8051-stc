@@ -39,11 +39,11 @@ jobs:
           # test_blink / test_adc / test_multi_when take a .hex on the command
           # line and print usage without one; they belong to the canary job's
           # world, not this one.
-          for t in test_stc12 test_suite test_debug test_cycles test_checkpoint test_integration; do
+          for t in test_stc12 test_stc15_fidelity test_stc89_timers test_suite test_debug test_cycles test_checkpoint test_integration; do
             make "$t"
           done
           fail=0
-          for t in test_stc12 test_suite test_debug test_cycles test_checkpoint test_integration; do
+          for t in test_stc12 test_stc15_fidelity test_stc89_timers test_suite test_debug test_cycles test_checkpoint test_integration; do
             echo "::group::$t"
             if ./"$t"; then echo "$t OK"; else echo "::error::$t FAILED"; fail=1; fi
             echo "::endgroup::"
@@ -74,7 +74,7 @@ jobs:
 
       - uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 'latest'
+          version: '6.0.11'
 
       - name: Test the COMMITTED build
         run: |
@@ -84,19 +84,21 @@ jobs:
           # prove something nobody depends on.
           node check-exports.mjs "$PWD/build/emu8051.js"
           node test_wasm.mjs
+          node test_stc15_fidelity.mjs
           node test_gdb.mjs || echo "::warning::test_gdb reported a failure"
 
       - name: The committed build/ is what the committed source produces
         run: |
-          # Not a byte-identity check: emcc's output moves between versions and
-          # this job's emsdk is not pinned to the one a maintainer built with.
-          # The claim is narrower and is the one that matters — the exports the
-          # manifest promises are all still reachable from a fresh build of
-          # THIS source, so build/ cannot silently fall behind the C.
-          cp build/emu8051.js /tmp/committed-emu8051.js
+          # Pin the compiler to BUILD-INFO.md. Exercise the source build as
+          # well as the exact committed bundle: export names alone cannot
+          # prove that a model fix reached the shipped artifact.
+          touch stc12.c
           make -f Makefile.wasm
           node check-exports.mjs "$PWD/build/emu8051.js"
-          echo "A fresh build of this source exports everything the manifest names."
+          node test_wasm.mjs
+          node test_stc15_fidelity.mjs
+          git diff --exit-code -- build/emu8051.js build/emu8051.wasm
+          echo "The fresh build matches the committed JavaScript and WASM."
           git diff --stat -- build/ || true
 
   canary:

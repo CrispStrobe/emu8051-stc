@@ -1,63 +1,64 @@
 # 007 — STC15W408AS peripheral model delta
 
-**Date:** 2026-08-09
-**Status:** Proposed for `stc/docs/STC15W408AS-PERIPHERAL-MODEL.md`
-**Against:** STC15-PERIPHERAL-MODEL.md (which is itself a delta against STC12)
+**Updated:** 2026-11-25, bw8051_1 qualification. This replaces the 2026-08-09
+proposal, whose claims of no PCA, two UARTs, and a Timer 1 were incorrect.
 
-## Summary
+## Hardware identity
 
-The STC15W408AS is a **smaller STC15** — same 1T core, same SFR address
-map for the registers it has, but fewer peripherals and less memory.
-It is a delta against the STC15F2K60S2, not against the STC12.
+The manufacturer's [English product page](https://stcmicro.com/stc/stc15w408as.html)
+and [Chinese product page](https://stcmicro.com/cn/stc/stc15w408as.html) specify
+the following W408AS resources. The STC15 family programming details come from
+the [STC15 series manual](https://stcmicro.com/datasheet/STC15F2K60S2-en.pdf).
 
-## Comparison to STC15F2K60S2
-
-| Feature | STC15F2K60S2 | STC15W408AS |
+| Resource | STC15F2K60S2 | STC15W408AS |
 |---|---|---|
-| Flash | 60 KB | **8 KB** |
-| SRAM | 2048 B (256+1792) | **512 B** (256+256) |
-| ADC | 8 ch, 10-bit | 8 ch, 10-bit (same) |
-| PCA/CCP/PWM | 3 modules | **none** |
-| UARTs | 2 | 2 (same) |
-| SPI | yes | yes (same) |
-| Timers | T0, T1, T2 | T0, T1, T2 (same) |
-| Watchdog | yes | yes (same) |
-| Port modes | yes | yes (same) |
-| Packages | PDIP-40, LQFP-44 | **SOP-16 to LQFP-44** |
-| Max I/O pins | 38 | **varies by package (as few as 14)** |
+| Flash | 60 KB | 8 KB |
+| SRAM | 2048 B: 256 internal + 1792 auxiliary | 512 B: 256 internal + 256 auxiliary |
+| Main timers | T0, T1, T2 | T0, T2 |
+| UARTs | 2 | 1 |
+| PCA / CCP / PWM channels | 3 | 3 |
+| ADC | 8 channels, 10 bits | 8 channels, 10 bits |
+| SPI | Present | Present |
+| DPTRs | 2 | 1 |
+| EEPROM / IAP | Present | 5 KB EEPROM advertised; not emulated |
 
-## What is ABSENT relative to STC15F2K60S2
+Package pin availability is a separate constraint. The emulator currently
+exposes all six port banks and eight ADC channels, without package-specific
+bond-out validation.
 
-| Feature | STC15F2K60S2 registers | STC15W408AS |
-|---|---|---|
-| **PCA/CCP/PWM** | CCON, CMOD, CCAPM0-2, CCAPnL/H, CL, CH, PCA_PWMn | **absent** |
-| **IAP/EEPROM** ⚠ | IAP_DATA..IAP_CONTR | **may differ — check datasheet** |
+## Native part 3
 
-## What is IDENTICAL
+Use `PART_STC15W` / `emu_set_part(3)`, not the F2K60S2 identifier `1`.
+The model reports 8192 bytes of flash and 256 bytes of auxiliary RAM.
+Its capability list includes `timer0`, `timer2`, `adc`, `pca`, `pwm`, `uart1`,
+`spi`, and `watchdog`; it omits `timer1`, `uart2`, and `dualDptr`.
+These names describe available models, not complete peripheral qualification.
 
-Everything else — same 1T core, same AUXR layout (Timer 2 at
-T2H/T2L for baud), same port mode registers, same ADC registers
-(ADRJ at CLK_DIV.5), same SPI, same UART1/2, same watchdog, same
-INT_CLKO. The SFR addresses that both parts share are identical.
+The following behaviors now use the STC15-family path for both parts:
 
-## For the emulator
+- Timer 0 mode 0 is 16-bit auto-reload. Stopped writes update both the counter
+  and hidden reload latch; running writes change the next reload only.
+- All three PCA modules run. P_SW1.CCP_S selects the STC15 pin groups:
+  P1.1/P1.0/P3.7, P3.5/P3.6/P3.7, or P2.5/P2.6/P2.7.
+- ADC justification uses `CLK_DIV.5`, with the result packing in the manual's
+  ADC_RES / ADC_RESL table.
+- SPI uses SPSTAT/SPCTL/SPDAT at `0xCD` / `0xCE` / `0xCF`.
+- The existing Timer 2 counter uses T2H/T2L, not the STC12 baud-rate timer.
 
-- Same as `PART_STC15` except:
-  - `n_modules = 0` in PCA tick (no PCA processing)
-  - `capabilities()` omits `pca`, `pwm`
-  - XRAM size 256 (vs 1792)
-  - Code memory 8K (vs 60K)
-- Firmware compiled for this part should refuse `ANALOG` on pins
-  that don't exist on the selected package, but the emulator does
-  not model package variants — it provides all 8 ADC channels.
+Timer 1 does not tick on W408AS. TL1/TH1 and S2CON/S2BUF are excluded by
+`stc12_is_valid_sfr`; UART2 transmit and receive hooks are inactive, and writing
+the F2K60S2's DPS bit does not switch the single DPTR. Raw debugger SFR storage
+remains writable, as on other parts.
 
-## ⚠ Unverified
+## Qualification boundary
 
-- Exact list of absent SFRs (only PCA confirmed absent)
-- IAP/EEPROM presence and address compatibility
-- Whether all SPI addresses match F2K60S2 (0xCD/0xCE/0xCF)
-- Package-specific pin count gating
+This revision fixes the profile and the exercised Timer 0 / PCA / ADC / SPI
+paths. It does not implement the complete W408AS. In particular, STC15 Timer 2
+auto-reload and interrupt delivery, ADC interrupt delivery, SPI bit shifting,
+watchdog CPU reset, and IAP/EEPROM transactions remain unavailable. UART timing
+is simplified. Reserved PCA pin group 3 has no qualified mapping; firmware
+must use a documented group.
 
-These should be checked against the STC15W408AS datasheet section
-before relying on them. The delta structure above is from the STC15
-series overview; per-part confirmation is pending.
+See [bw8051_1 qualification](../docs/bw8051-1-qualification.md) for the exact
+test boundary, checkpoint change, and reproducible commands. This is
+datasheet- and software-tested behavior, not new silicon evidence.

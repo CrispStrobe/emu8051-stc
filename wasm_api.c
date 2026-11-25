@@ -778,17 +778,17 @@ const char *emu_capabilities(void) {
     switch (stc.part_id) {
     case PART_STC15:
         part = "stc15f2k60s2";
-        peripherals = "\"timer0\",\"timer1\",\"adc\",\"pca\",\"pwm\","
+        peripherals = "\"timer0\",\"timer1\",\"timer2\",\"adc\",\"pca\",\"pwm\","
                       "\"uart1\",\"uart2\",\"spi\",\"watchdog\",\"dualDptr\"";
         break;
     case PART_STC89:
         part = "stc89c52rc";
-        peripherals = "\"timer0\",\"timer1\",\"uart1\"";
+        peripherals = "\"timer0\",\"timer1\",\"timer2\",\"uart1\"";
         break;
     case PART_STC15W:
         part = "stc15w408as";
-        peripherals = "\"timer0\",\"timer1\",\"adc\","
-                      "\"uart1\",\"watchdog\"";
+        peripherals = "\"timer0\",\"timer2\",\"adc\",\"pca\",\"pwm\","
+                      "\"uart1\",\"spi\",\"watchdog\"";
         break;
     case PART_STC12_16:
         part = "stc12c5a16s2";
