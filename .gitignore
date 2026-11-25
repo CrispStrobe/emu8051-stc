@@ -16,6 +16,7 @@
 emu
 test_stc12
 test_stc15_fidelity
+test_reset
 test_stc89_timers
 test_uart_rx_fifo
 test_checkpoint

@@ -95,7 +95,7 @@ int dbg_supports_step(enum dbg_step_kind kind)
 void dbg_reset(struct dbg_target *t)
 {
     reset(t->cpu, 0);
-    stc12_init(t->cpu, t->stc);
+    stc12_reset(t->cpu, t->stc);
     t->cpu->skip_timers = true;
     t->state = DBG_HALTED;
     t->step_count = 0;

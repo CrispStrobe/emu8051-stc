@@ -32,12 +32,13 @@ const char *proof_observe(void) {
     arr(cpu.mSFR, 128); out(",\"iram\":"); arr(cpu.mLowerData, 128);
     out(",\"upper\":"); arr(cpu.mUpperData, 128);
     out(",\"memoryHashes\":[%u,%u]},", memory_hash(cpu.mCodeMem, 65536), memory_hash(cpu.mExtData, 65536));
-    out("\"timers\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],",
+    out("\"timers\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],",
         stc.timer0_prescaler, stc.timer1_prescaler, stc.brt_prescaler,
         stc.adc_countdown, stc.wdt_counter, stc.wdt_prescaler_cnt,
         stc.pca_prescaler, stc.pca_t0_overflow_pending, stc.last_tf1,
         cpu.mSFR[REG_TCON], cpu.mSFR[REG_TMOD], cpu.mSFR[REG_TL0],
-        cpu.mSFR[REG_TH0], cpu.mSFR[REG_TL1], cpu.mSFR[REG_TH1]);
+        cpu.mSFR[REG_TH0], cpu.mSFR[REG_TL1], cpu.mSFR[REG_TH1],
+        stc.timer0_reload, stc.timer0_counter);
     out("\"interrupts\":{\"active\":%u,\"ie\":%u,\"ip\":%u,\"pendingSerial\":%u,\"saved\":[",
         cpu.mInterruptActive, cpu.mSFR[REG_IE], cpu.mSFR[REG_IP], cpu.serial_interrupt_trigger);
     arr(cpu.int_a, 2); out(","); arr(cpu.int_psw, 2); out(","); arr(cpu.int_sp, 2); out("]},");

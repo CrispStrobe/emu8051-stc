@@ -77,17 +77,40 @@ firmware SFR callbacks. Tests of reload-buffer writes therefore execute real
 MOV opcodes in the exact WASM artifact as well as testing the native callback
 path. Debugger edits of TH0/TL0 are not a way to configure the hidden latch.
 
+## Reset integration
+
+A real Brickwright debug-runner test found that starting an already-configured
+12MHz firmware target called debug reset and silently restored the native core's
+11.0592MHz default. The adapter still advertised 12MHz. Three NOPs therefore took
+271ns in the core instead of approximately 250ns. Reset also discarded configured
+Vcc and serial callback bindings.
+
+Hardware and debugger reset now call `stc12_reset`, which restarts volatile state
+while retaining oscillator, supply, part, and external board/serial connections.
+`stc12_init` keeps its existing fresh-target defaults. Native tests exercise four
+resets per STC12, STC15F2K60S2, W408AS, and STC89 target. Exact-WASM tests measure
+three NOPs at 12MHz and an actual 1.65V ADC conversion against a 3.3V reference,
+then verify digital input, GPIO, analog, advance, and serial callback delivery
+without re-registering them. They also distinguish cold code-memory wipe from
+warm/debug reset and check fresh initialization's 11.0592MHz / 5V defaults.
+
+Callback owners must unregister a binding before freeing its Emscripten function
+table entry. The old smoke-test serial teardown relied on reset clearing a stale
+pointer; it now unregisters explicitly, as the board callback teardown already did.
+
 ## Regression gates
 
 Run these from this repository:
 
 ```sh
-make test_stc15_fidelity test_checkpoint test_stc12 test_stc89_timers
+make test_stc15_fidelity test_reset test_checkpoint test_stc12 test_stc89_timers
 ./test_stc15_fidelity
+./test_reset
 ./test_checkpoint
 ./test_stc12
 ./test_stc89_timers
 node test_stc15_fidelity.mjs
+node test_reset.mjs
 node test_wasm.mjs
 node check-exports.mjs "$PWD/build/emu8051.js"
 ```
@@ -104,6 +127,13 @@ three default PCA outputs. This test also runs after a source rebuild in CI.
 CI pins Emscripten 6.0.11 and requires the rebuilt JS/WASM bytes to match the
 committed files. `build/BUILD-INFO.md` identifies the source revision and the
 SHA-256 of both deliverables.
+
+The checkpoint proof harness uses the same `0x80510103` / 443561-byte layout,
+including both hidden Timer0 fields in its independent native-state observation.
+Its ABI smoke, phase census, continuation/refusal proof, receipt check, and five
+allocation-refusal cases remain required; see
+[`tools/CHECKPOINT-PROOF.md`](../tools/CHECKPOINT-PROOF.md). The focused STC15
+tests above additionally prove rewind while the counter and next reload differ.
 
 The existing instruction, debugger, integration, and STC89 timing suites
 remain regression gates. Guest programs and board/circuit integration belong

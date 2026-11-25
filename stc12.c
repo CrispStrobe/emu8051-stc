@@ -965,8 +965,9 @@ static void sfr_write_auxr1(struct em8051 *aCPU, uint8_t aRegister);
 
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
 {
-    /* Preserve configuration across init (not callbacks — in WASM they
-     * may point to invalidated addFunction entries after removeFunction). */
+    /* Raw initialization keeps the selected part, board wiring and optional
+     * history storage, but establishes default clock/supply and clears serial
+     * bindings. Hardware/debug reset uses stc12_reset() below instead. */
     stc12_pin_callback         saved_pin    = aState->on_pin_change;
     stc12_read_pin_callback    saved_read   = aState->on_read_pin;
     stc12_read_analog_callback saved_analog = aState->on_read_analog;
@@ -991,8 +992,8 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     aState->board_user_data = saved_ud;
     aState->part_id        = saved_part;
     aState->pin_history    = saved_hist;
-    /* Serial callbacks are NOT preserved — they must be re-registered
-     * after reset since they may be WASM addFunction pointers. */
+    /* A new target must register serial callbacks again. A reset of the
+     * existing target preserves its still-live bindings in stc12_reset(). */
 
     /* Pre-compute ns per clock (fixed-point * 256 for precision).
      * ×256 gives <7 ppm error at all standard FOSC values, down from
@@ -1084,6 +1085,22 @@ void stc12_init(struct em8051 *aCPU, struct stc12_state *aState)
     stc12_set_part(aState, aState->part_id);
     aState->timer0_counter = aCPU->mSFR[REG_TL0] |
                              ((uint16_t)aCPU->mSFR[REG_TH0] << 8);
+}
+
+void stc12_reset(struct em8051 *aCPU, struct stc12_state *aState)
+{
+    /* Oscillator, supply and external connections belong to the board, not
+     * the CPU's volatile state. Reset must not silently restore 11.0592MHz
+     * while the debugger still reports the caller's configured clock. */
+    uint32_t fosc = aState->fosc;
+    double vcc = aState->vcc;
+    stc12_serial_tx_callback serial = aState->on_serial_tx;
+    stc12_serial_tx_callback serial2 = aState->on_serial2_tx;
+    stc12_init(aCPU, aState);
+    stc12_set_fosc(aState, fosc);
+    stc12_set_vcc(aState, vcc);
+    aState->on_serial_tx = serial;
+    aState->on_serial2_tx = serial2;
 }
 
 void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState)

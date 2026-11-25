@@ -386,9 +386,13 @@ struct stc12_state
  * Public API                                                          *
  * ------------------------------------------------------------------ */
 
-/* Initialize STC12 peripheral state and install SFR callbacks.
- * Call after reset(). */
+/* Initialize peripheral state with the default clock/supply and no serial
+ * bindings. Call after the initial CPU reset, or when creating a new target. */
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState);
+
+/* Reset peripherals after a CPU reset, preserving the configured oscillator,
+ * supply, part, and all external board/serial callback bindings. */
+void stc12_reset(struct em8051 *aCPU, struct stc12_state *aState);
 
 /* Rebuild part-dependent SFR hooks without resetting CPU/peripheral state. */
 void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState);

@@ -192,11 +192,11 @@ emu_set_sfr(0x92, 0x01); // P1M0 = push-pull for bit 0
 // This is correct behavior — emu_set_sfr is a debugger API.
 assert(true, 'Push mode: emu_set_sfr is debugger-only (no callback expected)');
 
-Module.removeFunction(pinCbPtr);
-// Clear board callbacks so stale pointers don't crash on next emu_run
+// Clear board callbacks before releasing their function-table entries.
 const setBoardCbs = Module.cwrap('emu_set_board_callbacks', null,
     ['number', 'number', 'number', 'number', 'number']);
 setBoardCbs(0, 0, 0, 0, 0);
+Module.removeFunction(pinCbPtr);
 assert(true, 'Push mode: removeFunction cleanup — no crash');
 
 // --- Serial and profiling tests ---
@@ -224,6 +224,9 @@ if (serialBytes.length > 0) {
     assert(serialBytes[0] === 0x48, `Serial TX byte: ${serialBytes[0]} (expected 0x48 = 'H')`);
 }
 
+// Reset preserves live serial bindings. Unregister before freeing the host
+// function-table entry, just as the board callback teardown above does.
+setSerialCb(0);
 Module.removeFunction(serialCbPtr);
 
 // Test 18: Serial RX

@@ -97,7 +97,7 @@ void emu_reset(int wipe) {
     int stc_mode = stc.stc12_mode;
     reset(&cpu, wipe ? true : false);
     if (stc_mode) {
-        stc12_init(&cpu, &stc);
+        stc12_reset(&cpu, &stc);
         cpu.skip_timers = true;
     }
 }

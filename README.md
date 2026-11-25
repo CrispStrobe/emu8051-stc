@@ -98,7 +98,8 @@ What is verified
 
 Native suites, checkpoint round trips, and tests of the exact committed WASM
 bundle cover the exercised behavior. The bw8051_1 qualification adds 94 native
-checks and 52 exact-WASM checks. See
+peripheral checks and 52 exact-WASM checks; reset integration adds 180 native
+checks and 189 exact-WASM checks. See
 [the qualification report](docs/bw8051-1-qualification.md) for primary sources,
 reproducible commands, and the boundary of these results.
 
@@ -106,6 +107,7 @@ reproducible commands, and the boundary of these results.
 |-------|-------|----------------|
 | `test_stc12` | 12 | Timer 0/1 1T/12T, port modes, ADC ADRJ |
 | `test_stc15_fidelity` | 94 | STC15 mode 0 reload/writes/gate, W408AS identity, ADC/SPI maps, three PCA modules and pin groups |
+| `test_reset` | 180 | Repeated hardware/debug resets retain oscillator, supply, part, and live board/serial callbacks; raw init defaults remain |
 | `test_stc89_timers` | 4 | Classic 12T timer behavior and STC12 control |
 | `test_suite` | 136 | Firmware-level: blink, ADC, button, pot, scheduler, PCA, serial |
 | `test_integration` | 196 | PCA, GPIO, ADC, timer, UART, SPI, dual DPTR, and debug integration |
@@ -113,6 +115,7 @@ reproducible commands, and the boundary of these results.
 | `test_cycles` | 36 | MCS-51 instruction cycle counts |
 | `test_checkpoint` | Assertion-based | Atomic save/restore, callback rebinding, hidden reload state, layout rejection |
 | `test_stc15_fidelity.mjs` | 52 | Exact-WASM firmware writes, repeated reloads, checkpoint replay, capabilities, PCA output |
+| `test_reset.mjs` | 189 | Exact-WASM 12MHz NOP timing, 3.3V ADC scaling, callback delivery, and warm/cold reset behavior |
 
 **Differential trace:** `emu_trace` emits per-event traces for cross-checking
 against ucsim-stc. Third-party corpus: 220/349 byte-identical event streams;
