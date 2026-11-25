@@ -19,7 +19,7 @@ CORE_SRC := core.c opcodes.c disasm.c stc12.c debug.c
 # Rules
 #####################################################################
 HEADERS := $(wildcard *.h)
-SRC := $(filter-out wasm_api.c test_stc12.c test_blink.c test_adc.c test_integration.c test_multi_when.c test_suite.c test_bench.c test_debug.c test_cycles.c test_mass.c test_soak.c test_adc_oracle.c test_tone_oracle.c test_pca_pwm_oracle.c trace.c, $(wildcard *.c))
+SRC := $(filter-out wasm_api.c test_%.c trace.c, $(wildcard *.c))
 OBJ := $(SRC:.c=.o)
 
 %.o: %.c $(HEADERS)
@@ -45,6 +45,12 @@ test_uart_rx_fifo: test_uart_rx_fifo.c $(CORE_SRC) $(HEADERS)
 
 test_stc12: test_stc12.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_stc12.c $(CORE_SRC)
+
+test_stc15_fidelity: test_stc15_fidelity.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_stc15_fidelity.c $(CORE_SRC)
+
+test_reset: test_reset.c $(CORE_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_reset.c $(CORE_SRC)
 
 test_blink: test_blink.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_blink.c $(CORE_SRC)
@@ -88,9 +94,11 @@ test_pca_pwm_oracle: test_pca_pwm_oracle.c $(CORE_SRC) $(HEADERS)
 emu_trace: trace.c $(CORE_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ trace.c $(CORE_SRC)
 
-test: test_stc12 test_stc89_timers test_uart_rx_fifo test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
+test: test_stc12 test_stc15_fidelity test_reset test_stc89_timers test_uart_rx_fifo test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle test-images
 	@echo "=== Unit tests ==="
 	./test_stc12
+	./test_stc15_fidelity
+	./test_reset
 	./test_stc89_timers
 	./test_uart_rx_fifo
 	@echo ""
@@ -133,9 +141,11 @@ test: test_stc12 test_stc89_timers test_uart_rx_fifo test_blink test_adc test_in
 
 test-wasm: build/emu8051.js
 	node test_wasm.mjs
+	node test_stc15_fidelity.mjs
+	node test_reset.mjs
 
 clean:
-	-rm -f $(BIN) $(OBJ) test_stc12 test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle emu_trace
+	-rm -f $(BIN) $(OBJ) test_stc12 test_stc15_fidelity test_reset test_stc89_timers test_uart_rx_fifo test_blink test_adc test_integration test_multi_when test_suite test_debug test_cycles test_checkpoint test_mass test_soak test_adc_oracle test_tone_oracle test_pca_pwm_oracle emu_trace
 	$(MAKE) -C test_images clean
 
 .PHONY: clean all test test-wasm test-images

@@ -7,19 +7,19 @@ using `Module.cwrap()` or `Module.ccall()`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `emu_init(stc12)` | `(i32) → void` | Initialize. `1` = STC12 mode. |
-| `emu_reset(wipe)` | `(i32) → void` | Reset CPU. `1` = wipe memory. |
+| `emu_init(stc12)` | `(i32) → void` | Initialize a new target. `1` = STC peripheral mode. Restores the 11.0592MHz / 5V defaults and clears serial callback bindings. |
+| `emu_reset(wipe)` | `(i32) → void` | Reset CPU/peripherals, retaining part, oscillator, supply, and board/serial callbacks. `1` = also wipe memory. |
 | `emu_tick()` | `() → i32` | One osc clock. Returns 1 if instruction completed. |
 | `emu_run(cycles)` | `(i32) → i32` | Run N osc clocks. Returns instructions executed. |
 | `emu_advance_to_ns(lo,hi)` | `(i32,i32) → i32` | Run until nanosecond target. Returns instructions. |
 | `emu_set_fosc(hz)` | `(i32) → void` | Set oscillator frequency. |
-| `emu_set_part(id)` | `(i32) → void` | Set part: 0=STC12, 1=STC15. Call after init. |
+| `emu_set_part(id)` | `(i32) → void` | Select part: 0=STC12, 1=STC15F2K60S2, 2=STC89C52RC, 3=STC15W408AS, 4=STC12C5A16S2. Call after init, before configuring clock/supply/callbacks. |
 | `emu_set_vcc(v)` | `(f64) → void` | Set supply voltage (default 5.0). |
 | `emu_capabilities()` | `() → string` | JSON capabilities per DEBUG-CONTROL-MODEL.md §7. |
 | `emu_version()` | `() → string` | Returns `"emu8051-stc 1.0.0"`. |
 | `emu_checkpoint_version()` | `() → u32` | Checkpoint wire-format major (`1`). |
-| `emu_checkpoint_build_id()` | `() → u32` | Deterministic codec/layout fingerprint (`0x80510102`; `0x80510101` before the UART1 receive FIFO joined the state); changes whenever v1 interpretation or completeness changes. |
-| `emu_checkpoint_size()` | `() → u32` | Exact caller-buffer size for checkpoint v1. |
+| `emu_checkpoint_build_id()` | `() → u32` | Deterministic codec/layout fingerprint (`0x80510103`); changes whenever v1 interpretation or completeness changes. This revision adds STC15 Timer 0's hidden reload and counter shadow. `0x80510102` introduced the UART1 receive FIFO; `0x80510101` predates it. |
+| `emu_checkpoint_size()` | `() → u32` | Exact caller-buffer size for checkpoint v1: `443561` bytes with build ID `0x80510103`. Always query this function before allocating. |
 | `emu_checkpoint_save(dst, len)` | `(ptr, u32) → int` | Saves complete rewind-visible state into an exact-size caller buffer. |
 | `emu_checkpoint_restore(src, len)` | `(ptr, u32) → int` | Fully validates before atomically replacing live state; external callbacks remain bound. |
 
@@ -28,6 +28,13 @@ Checkpoint save/restore return `0` on success, or a stable negative code:
 malformed/corrupt blob, `-5` unsupported version, `-6` incompatible layout
 build id, `-7` invalid encoded state, and `-8` allocation failure. Checkpoint
 v1 initially requires both its major and the exact deterministic layout build id.
+
+Hardware reset and `emu_dbg_reset()` restart native time, CPU registers, timer
+latches, and UART receive state. They retain the board's configured oscillator,
+supply voltage, part identity, callback function pointers, and callback user data.
+Neither reset emits a fabricated board or serial event. Configure a new target
+with `emu_init()`, `emu_set_part()`, then the clock/supply/callback setters; use
+reset to restart that target without silently returning to the default clock.
 
 ## Memory
 
@@ -174,7 +181,7 @@ firmware that reads P3 without writing it, verifying `readPin` is called
 | `emu_dbg_halt()` | `() → void` | Halt execution. |
 | `emu_dbg_step(kind,count)` | `(i32,i32) → i32` | Step. kind: 0=insn, 1=line, 2=block, 3=over, 4=out, **5=cycle**. Returns 0, or **-1** for a kind this build does not implement (`line` is one of them). |
 | `emu_dbg_supports_step(kind)` | `(i32) → i32` | 1 if `kind` is really implemented. Ask this rather than trusting `emu_dbg_step`'s return: see below. |
-| `emu_dbg_reset()` | `() → void` | Reset CPU (keeps code memory). |
+| `emu_dbg_reset()` | `() → void` | Reset CPU/peripherals and halt, retaining code memory and board configuration, including clock, supply, and callback bindings. |
 | `emu_dbg_tick()` | `() → i32` | One tick in debug mode. Returns 1 if halted. |
 | `emu_dbg_run_until_ns(lo,hi)` | `(i32,i32) → i32` | Run until time or halt. Returns 1 if BP/step. |
 | `emu_dbg_set_bp_code(addr)` | `(i32) → i32` | Set code breakpoint. Returns handle. |

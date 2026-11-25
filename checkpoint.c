@@ -16,7 +16,8 @@ _Static_assert(sizeof(double) == 8, "checkpoint v1 requires IEEE-width double");
  * full profiling histogram. Presence bytes distinguish disabled optional
  * storage from allocated zeroes. JS-owned future-input queues are external;
  * already accepted UART/input latches live in SFR/serial/port_ext state here,
- * and so do bytes queued in the UART1 receive FIFO (layout 0x80510102).
+ * and so do bytes queued in the UART1 receive FIFO. Layout 0x80510103
+ * also includes STC15 Timer 0's hidden reload latch and counter shadow.
  */
 #define MAGIC 0x31435045u /* "EPC1" in little endian */
 #define HEADER_SIZE 20u
@@ -198,6 +199,8 @@ static void write_stc(struct writer *w, const struct stc12_state *s) {
   wu8(w, s->rx_head);
   wu8(w, s->rx_len);
   wu64(w, s->rx_next_clock);
+  wu16(w, s->timer0_reload);
+  wu16(w, s->timer0_counter);
 }
 static int read_stc(struct reader *r, struct stc12_state *s) {
   s->timer0_prescaler = ru8(r);
@@ -257,6 +260,8 @@ static int read_stc(struct reader *r, struct stc12_state *s) {
   s->rx_head = ru8(r);
   s->rx_len = ru8(r);
   s->rx_next_clock = ru64(r);
+  s->timer0_reload = ru16(r);
+  s->timer0_counter = ru16(r);
   return 1;
 }
 static void write_dbg(struct writer *w, const struct dbg_target *d) {

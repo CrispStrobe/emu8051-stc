@@ -296,6 +296,13 @@ struct stc12_state
     uint8_t timer1_prescaler;
     uint8_t brt_prescaler;      /* for the independent baud rate timer */
 
+    /* STC15 Timer 0 mode 0: hidden reload latch and current counter.
+     * Writes while TR0=1 update the latch without replacing the counter.
+     * The counter shadow preserves the pre-write byte for SFR callbacks,
+     * which are called after the core has stored the firmware's value. */
+    uint16_t timer0_reload;
+    uint16_t timer0_counter;
+
     /* ADC state */
     uint16_t adc_countdown;     /* osc clocks remaining until conversion done */
     uint16_t adc_input[8];      /* external analog values, 0-1023 (10-bit) */
@@ -340,7 +347,7 @@ struct stc12_state
     #define PART_STC12    0  /* STC12C5A60S2: 1T, 60K flash, 1280B SRAM */
     #define PART_STC15    1  /* STC15F2K60S2: 1T, 60K flash, 2048B SRAM, 3 PCA */
     #define PART_STC89    2  /* STC89C52RC: 12T, 8K flash, 512B SRAM, classic 8052 */
-    #define PART_STC15W   3  /* STC15W408AS: 1T, 8K flash, 512B SRAM, no PCA */
+    #define PART_STC15W   3  /* STC15W408AS: 1T, 8K flash, 512B SRAM, 3 PCA, T0/T2, UART1 */
     #define PART_STC12_16 4  /* STC12C5A16S2: 1T, 16K flash, 1280B SRAM (same peripherals as STC12) */
     uint8_t  part_id;
     /* Count of accesses to SFRs not modelled for this part */
@@ -379,9 +386,13 @@ struct stc12_state
  * Public API                                                          *
  * ------------------------------------------------------------------ */
 
-/* Initialize STC12 peripheral state and install SFR callbacks.
- * Call after reset(). */
+/* Initialize peripheral state with the default clock/supply and no serial
+ * bindings. Call after the initial CPU reset, or when creating a new target. */
 void stc12_init(struct em8051 *aCPU, struct stc12_state *aState);
+
+/* Reset peripherals after a CPU reset, preserving the configured oscillator,
+ * supply, part, and all external board/serial callback bindings. */
+void stc12_reset(struct em8051 *aCPU, struct stc12_state *aState);
 
 /* Rebuild part-dependent SFR hooks without resetting CPU/peripheral state. */
 void stc12_rebind_callbacks(struct em8051 *aCPU, struct stc12_state *aState);

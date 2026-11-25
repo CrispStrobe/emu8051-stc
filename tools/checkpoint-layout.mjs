@@ -1,6 +1,6 @@
-// Explicit layout derived from the frozen a519b0d codec, not host C offsetof.
+// Explicit layout derived from checkpoint.c's 0x80510103 codec, not C offsetof.
 import assert from 'node:assert/strict';
-export const identity = Object.freeze({ schema: 1, build: 0x80510102 });
+export const identity = Object.freeze({ schema: 1, build: 0x80510103 });
 let cursor = 20;
 const offsets = {};
 const field = (name, width) => { offsets[name] = cursor; cursor += width; };
@@ -19,6 +19,7 @@ field('hasHistory', 1); field('historyHead', 4); field('historyCount', 4); field
 field('part', 1); field('unmodelled', 4); field('clocks', 8); field('idleClocks', 8);
 field('quantum', 8); field('shadows', 18);
 field('rxFifo', 64); field('rxHead', 1); field('rxLen', 1); field('rxNextClock', 8);
+field('timer0Reload', 2); field('timer0Counter', 2);
 field('dbgState', 1); field('nextBp', 4); field('bps', 32 * 14);
 field('bwMs', 2); field('taskCount', 1); field('tasks', 32);
 field('stepKind', 1); field('stepCount', 4); field('stepSp', 1);
@@ -46,7 +47,7 @@ export function corruptions(original) {
   };
   return [
     mutate('bad-header', 0, 0, -4), mutate('bad-version', 4, 2, -5, 4),
-    mutate('bad-build', 8, 0x80510101, -6, 4)   /* the pre-FIFO layout's id */, mutate('header-size', 12, 1, -4, 4),
+    mutate('bad-build', 8, 0x80510102, -6, 4) /* before STC15 Timer0 reload state */, mutate('header-size', 12, 1, -4, 4),
     mutate('bad-checksum', 16, original[16] ^ 1, -4, 1, false),
     mutate('invalid-state', layout.scale, 2, -7),
     mutate('invalid-state', layout.rxLen, 65, -7),   /* a FIFO fuller than 64 */

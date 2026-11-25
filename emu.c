@@ -562,12 +562,12 @@ int main(int parc, char ** pars)
         case 'z':
 	    // Equivalent of "R)eset (init regs, set PC to zero)"
 	    reset(&emu, 0);
-	    if (stc12_enabled) stc12_init(&emu, &stc12);
+	    if (stc12_enabled) stc12_reset(&emu, &stc12);
 	    break;
         case 'Z':
 	    // Equivalent of "W)ipe (init regs, set PC to zero, clear memory)"
 	    reset(&emu, 1);
-	    if (stc12_enabled) stc12_init(&emu, &stc12);
+	    if (stc12_enabled) stc12_reset(&emu, &stc12);
 	    break;
         case KEY_END:
             clocks = 0;

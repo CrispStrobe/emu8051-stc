@@ -46,21 +46,25 @@ What is in it
 | STC12C5A60S2 | 1T | 60 KB | 1280 B | 2 |
 | STC12C5A16S2 | 1T | 16 KB | 1280 B | 2 |
 | STC15F2K60S2 | 1T | 60 KB | 2048 B | 3 |
-| STC15W408AS | 1T | 8 KB | 512 B | 0 |
+| STC15W408AS | 1T | 8 KB | 512 B | 3 |
 | STC89C52RC | 12T | 8 KB | 512 B | 0 (8052 Timer 2) |
 
-**Peripherals:** Timer 0/1 (1T and 12T via AUXR.7/AUXR.6), port modes
+**Peripherals:** Timer 0/1 (1T and 12T via AUXR.7/AUXR.6; W408AS has T0/T2), port modes
 (quasi-bidirectional / push-pull / input-only / open-drain per pin), 10-bit
 ADC (8 channels, 4 speed settings, ADRJ justification), PCA (16-bit counter,
 8 clock sources, compare/match, 8-bit PWM, capture, toggle), UART1/2 with
-TX callback and RX inject, dual DPTR, STC15 Timer 2, STC89 8052 Timer 2.
+TX callback and RX inject (W408AS has UART1 only), dual DPTR on STC12/F2K60S2,
+STC15 Timer 2 counting, and STC89 8052 Timer 2. STC15 Timer 0 mode 0 is
+16-bit auto-reload, with buffered reload writes while running. STC12/STC89
+retain classic 13-bit mode 0. Peripheral names describe available models;
+the qualification limits below still apply.
 
 **Debug control (boundary D):** run / halt / step (5 kinds: instruction,
 tick, over, out, ns-target), breakpoints (code address, yield-point, SFR
 write), memory access (5 address spaces), register read, PC histogram
 profiling, pin history ring buffer, cooperative-scheduler position tracking.
 
-**WASM API:** 75 exports. `createEmu8051()` factory, modularized, no
+**WASM API:** `createEmu8051()` factory, modularized, no
 SharedArrayBuffer required (single-threaded, runs on GitHub Pages).
 
 **AVR adapter** (`avr-adapter/`): boundary-A adapter around
@@ -72,7 +76,8 @@ firmware-driven conversion). AVR compilation to WASM is deferred
 
 **UART entry points** for serial DebugTarget integration: TX callback fires
 synchronously on SBUF write, RX inject via `emu_serial_write`. Baud timing
-is NOT modelled — bytes are instant. See `docs/UART-ENTRY-POINTS.md` for
+is simplified: TX is immediate, and UART1 queued RX uses fixed 9600-baud
+character spacing. See `docs/UART-ENTRY-POINTS.md` for
 the full contract including SFR story and the trap about untimed models.
 
 **SDCC 4.5.0 as WASM** (`.github/workflows/build-sdcc-wasm.yml`): four-stage
@@ -91,17 +96,26 @@ runbook at `docs/BENCH-FLASH-RUNBOOK.md`. NOT verified on real silicon.
 What is verified
 ----------------
 
-**417 test assertions, 0 failures** across 9 native test suites plus WASM
-tests. 32 firmware test images.
+Native suites, checkpoint round trips, and tests of the exact committed WASM
+bundle cover the exercised behavior. The bw8051_1 qualification adds 94 native
+peripheral checks and 52 exact-WASM checks; reset integration adds 180 native
+checks and 189 exact-WASM checks. See
+[the qualification report](docs/bw8051-1-qualification.md) for primary sources,
+reproducible commands, and the boundary of these results.
 
 | Suite | Count | What it covers |
 |-------|-------|----------------|
 | `test_stc12` | 12 | Timer 0/1 1T/12T, port modes, ADC ADRJ |
+| `test_stc15_fidelity` | 94 | STC15 mode 0 reload/writes/gate, W408AS identity, ADC/SPI maps, three PCA modules and pin groups |
+| `test_reset` | 180 | Repeated hardware/debug resets retain oscillator, supply, part, and live board/serial callbacks; raw init defaults remain |
+| `test_stc89_timers` | 4 | Classic 12T timer behavior and STC12 control |
 | `test_suite` | 136 | Firmware-level: blink, ADC, button, pot, scheduler, PCA, serial |
-| `test_integration` | 171 | PCA (counter, compare, PWM, T0 clock, capture), open-drain, ADC edges, 13-bit timer, hex loader |
-| `test_debug` | 37 | Boundary D: run/halt/step, breakpoints, memory spaces |
-| `test_cycles` | 34 | MCS-51 instruction cycle counts |
-| `test_mass` | 39 | 32 firmware images, pass/fail per image |
+| `test_integration` | 196 | PCA, GPIO, ADC, timer, UART, SPI, dual DPTR, and debug integration |
+| `test_debug` | 68 | Boundary D: run/halt/step, breakpoints, memory spaces |
+| `test_cycles` | 36 | MCS-51 instruction cycle counts |
+| `test_checkpoint` | Assertion-based | Atomic save/restore, callback rebinding, hidden reload state, layout rejection |
+| `test_stc15_fidelity.mjs` | 52 | Exact-WASM firmware writes, repeated reloads, checkpoint replay, capabilities, PCA output |
+| `test_reset.mjs` | 189 | Exact-WASM 12MHz NOP timing, 3.3V ADC scaling, callback delivery, and warm/cold reset behavior |
 
 **Differential trace:** `emu_trace` emits per-event traces for cross-checking
 against ucsim-stc. Third-party corpus: 220/349 byte-identical event streams;
@@ -131,11 +145,22 @@ What is NOT done
 - **SDCC WASM byte-identity:** code generation matches native; link layout
   has a 1-byte origin shift (lib/small vs lib/small-stack-auto). Specified,
   partially built.
-- **Baud-rate timing:** UART TX and RX are instant. Baud mismatch is
-  undetectable in emulation. Idle-timeout resync needs a `-inject` flag in
+- **Baud-rate timing:** UART TX is instant and UART1 queued RX uses fixed
+  spacing. Configured baud mismatch is undetectable. Idle-timeout resync needs a `-inject` flag in
   the trace harness (specified in `docs/UART-ENTRY-POINTS.md` §9, not built).
-- **SPI, watchdog:** SFR storage only, no logic.
-- **PCA PWM pin output:** computed internally, not wired to observable port pin.
+- **SPI:** immediate SPIF flag behavior; no pin-level shifting or peer exchange.
+- **Watchdog:** feed/count/flag behavior; expiration does not reset the CPU.
+- **Timer/ADC interrupts:** STC15 Timer 2 auto-reload and IRQ delivery, STC89
+  Timer 2 IRQ delivery, and ADC IRQ delivery are not implemented.
+- **STC15 ADC latency:** conversion still uses the STC12 speed table; polling
+  and result packing are qualified, exact STC15 conversion delay is not.
+- **Other STC15 timer modes:** Timer 1 mode 0 and Timer 0 mode 3 retain generic
+  semantics; external timer counter inputs are not implemented.
+- **IAP/EEPROM, comparator, wake-up timer, CLK_DIV clock division:** no
+  functional models. ADC justification at CLK_DIV.5 is supported.
+- **PCA/package fidelity:** pin-level 8-bit PWM, toggle, and capture are
+  modeled; ECI clocking, CIDL gating, extended-resolution PWM, and
+  package-specific pin availability are not qualified.
 - **UART mode 0 (synchronous):** not implemented.
 - **Framing errors, parity, multi-processor communication:** not modelled.
 - **AVR conformance:** 3/10 tests fail (structural gaps, not bugs).
@@ -166,7 +191,8 @@ make -f Makefile.wasm
 ```bash
 sudo apt-get install sdcc   # for test image compilation
 make test-images
-make test                   # 417 assertions, 9 suites
+make test                   # native suites and firmware/corpus tests
+make test-wasm              # exact committed JavaScript/WASM bundle
 ```
 
 ### Differential trace
